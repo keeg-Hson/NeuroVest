@@ -31,6 +31,7 @@ print("CWD:", os.getcwd())
 from sklearn.utils import resample #DEALS WITH IMBALANCED DATASETS
 import matplotlib.pyplot as plt #GRAPHICAL VISUALIZATION
 
+
 #Alpha Vantage API key configuration
 load_dotenv(dotenv_path="/Users/keeganhutchinson/CS2704-Market-Prediction-Algorithm/.env") #"/Users/keeganhutchinson/CS2704-Market-Prediction-Algorithm/AV-API-key.env" 
 api_key = os.getenv("ALPHA_VANTAGE_KEY")
@@ -42,6 +43,37 @@ if not api_key:
     print("DEBUG: API key not found! check .env file or file path")
 else:
     print ("DEBUG: API Key loaded successfully!")
+
+#Features
+def get_feature_list():
+    return [
+        "MA_20", "EMA_12", "EMA_26", "MACD", "MACD_Signal", "MACD_Histogram",
+        "BB_Width", "OBV", "Vol_Ratio", "Price_Momentum_10", "Acceleration",
+        "RSI", "RSI_Delta", "ZMomentum",
+        "Return_Lag1", "Return_Lag3", "Return_Lag5",
+        "RSI_Lag_1", "RSI_Lag_3", "RSI_Lag_5"
+    ]
+
+
+#logging function to log predictions to a CSV file
+import csv
+from datetime import datetime
+def log_prediction_to_file(prediction, class_probs, file_path="daily_predictions.csv"):
+    headers = ["timestamp", "prediction", "normal_prob", "crash_prob", "spike_prob"]
+    data = [
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        prediction,
+        round(class_probs[0] * 100, 2),
+        round(class_probs[1] * 100, 2),
+        round(class_probs[2] * 100, 2),
+    ]
+
+    file_exists = os.path.isfile(file_path)
+    with open(file_path, mode="a", newline="") as file:
+        writer = csv.writer(file)
+        if not file_exists:
+            writer.writerow(headers)
+        writer.writerow(data)
 
 #-----------GENERAL PSEUDOCODE/HIERARCHICAL LAYOUT-----------
 
@@ -257,8 +289,9 @@ def balance_dataset(X,y):
 #-RECURSIVE SELF TRAINING OF ML MODEL
 #-- WILL UTILIZE "RANDOM FOREST" STYLED ML MODEL, BASED OFF OF THESE EXTRACTED VALUATIONS/EVERCHANGING DATASET VALUATIONS
 #---RANDOM FOREST MODEL: USED FOR INTERPRETABILITLY/ROBUSTNESS OF OVERALL ML ALGORITHM AND ARCHITECHTURE
-def train_model(df, features=["RSI", "MA_20", "Volatility", "Return"], target="Event"): #in theory, trains our model on above extractions
-    
+def train_model(df, features=None, target="Event"):  #in theory, trains our model on above extractions
+    if features is None:
+        features = get_feature_list()
     #selection of feature and target (X and y variables respectively) from DataFrame
     X=df[features] #features inputted to be used to train our model below
     y=df[target] #deals w/ output labels (0=='normal, 1=='crash", 2=='spike')
@@ -319,24 +352,32 @@ def live_predict(df, model_path="market_crash_model.pkl"):
     
     model = joblib.load(model_path)
 
-    latest_row = df.iloc[-5:].mean().to_frame().T #averages the last 5 rows of data to get a more stable valuation
-    features = [
-        "SMA_20", "EMA_12", "EMA_26",
-        "MACD", "MACD_Signal", "MACD_Histogram",
-        "BB_Width", "OBV", "Vol_Ratio",
-        "Momentum_10", "Acceleration",
-        "RSI", "RSI_Delta", "ZMomentum",
-        "Return_Lag1", "Return_Lag3", "Return_Lag5",
-        "RSI_Lag_1", "RSI_Lag_3", "RSI_Lag_5"
-    ]
+    #latest_row = df[get_feature_list()].iloc[-5:].mean().to_frame().T  #averages the last 5 rows of data to get a more stable valuation
+    features = get_feature_list() #get feature list from above function
 
     #prediction=model.predict(latest_row[features])[0]
     #prob=model.predict_proba(latest_row[features])[0][1] #DEALS W/ CRASH CLASS PROBABILITY
     #NEW: Crash Probability logic
-    prediction=model.predict(latest_row[features])[0]
+    #prediction=model.predict(latest_row[get_feature_list()])[0]
 
     #pull class probs
-    class_probs=model.predict_proba(latest_row[features])[0]
+    #class_probs=model.predict_proba(latest_row[get_feature_list()])[0]
+    features = get_feature_list()
+    latest_row = df[features].iloc[-5:].mean().to_frame().T
+    prediction = model.predict(latest_row[features])[0]
+    class_probs = model.predict_proba(latest_row[features])[0]
+
+
+
+    # Human-readable output
+    print(f"\nLive Prediction: {prediction}")
+    print("Class Probabilities:")
+    print(f"Normal: {class_probs[0]*100:.2f}%")
+    print(f"Crash:  {class_probs[1]*100:.2f}%")
+    print(f"Spike:  {class_probs[2]*100:.2f}%")
+
+    # Log to file
+    log_prediction_to_file(prediction, class_probs)
 
     #check classes present
     class_labels=model.classes_
@@ -353,6 +394,10 @@ def live_predict(df, model_path="market_crash_model.pkl"):
     with open('prediction_log.txt', "a") as f:
         f.write(log_entry)
 
+    
+
+    
+
     in_human_speak(prediction, crash_confidence, spike_confidence)
     return prediction, crash_confidence, spike_confidence 
 
@@ -361,7 +406,9 @@ def live_predict(df, model_path="market_crash_model.pkl"):
 # RETRAIN ML MODEL MONTHLY WITH UPDATED DATASET VALUATIONS 
 # --THIS IN THEORY WILL HELP FOR OUR ML MODEL TO ADAPT TO EVER CHANGING MARKET BEHAVIOUR + MAINTAIN A LAYER OF PREDICTION ACCURACY
 
-def retrain_model_monthly(df, features=['RSI', 'MA_20', "Volatility", "Return"], target='Crash'): 
+def retrain_model_monthly(df, features=None, target='Crash'): 
+    if features is None:
+        features = get_feature_list()
     print("Retraining model with updated data figures...")
     model = train_model(df, features=features, target="Event")
     print("Model retraining successful!")
