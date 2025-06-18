@@ -5,7 +5,7 @@
 #ADDITIONALLY: BUILD IN FUCNTIONALITY THAT CPMPARES PREDICTED VALUATIONS WITH REAL TIME ONES/FUTURE ONES. THIS COULD BE ACHEVED WITH A GRAPHICAL VISUALIZATION OF PREDICTED VS. REAL TIME VALUATIONS
 
 #BOOTING PROGRAM PROMPT
-print("Welcome! Booting program now, please wait momemntarily...")
+print("Welcome! Booting program now, please wait momentarily...")
 
 #LIBRARIES REQD'
 import requests #PULLS STOCK MARKET DATA
@@ -30,6 +30,10 @@ print("CWD:", os.getcwd())
 
 from sklearn.utils import resample #DEALS WITH IMBALANCED DATASETS
 import matplotlib.pyplot as plt #GRAPHICAL VISUALIZATION
+from utils import get_feature_list, log_prediction_to_file, in_human_speak
+from predict import live_predict
+
+
 
 
 #Alpha Vantage API key configuration
@@ -44,41 +48,12 @@ if not api_key:
 else:
     print ("DEBUG: API Key loaded successfully!")
 
-#Features
-def get_feature_list():
-    return [
-        "MA_20", "EMA_12", "EMA_26", "MACD", "MACD_Signal", "MACD_Histogram",
-        "BB_Width", "OBV", "Vol_Ratio", "Price_Momentum_10", "Acceleration",
-        "RSI", "RSI_Delta", "ZMomentum",
-        "Return_Lag1", "Return_Lag3", "Return_Lag5",
-        "RSI_Lag_1", "RSI_Lag_3", "RSI_Lag_5"
-    ]
+#global log file
+LOG_FILE = "logs/daily_predictions.csv"
 
 
-#logging function to log predictions to a CSV file
-import csv
-from datetime import datetime
-def log_prediction_to_file(prediction, class_probs, file_path="daily_predictions.csv"):
-    headers = ["timestamp", "prediction", "normal_prob", "crash_prob", "spike_prob"]
-
-    readable_label = "NORMAL" if prediction == 0 else "CRASH" if prediction == 1 else "SPIKE"
 
 
-    data = [
-        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        prediction,
-        readable_label,
-        round(class_probs[0] * 100, 2),
-        round(class_probs[1] * 100, 2),
-        round(class_probs[2] * 100, 2),
-    ]
-
-    file_exists = os.path.isfile(file_path)
-    with open(file_path, mode="a", newline="") as file:
-        writer = csv.writer(file)
-        if not file_exists:
-            writer.writerow(headers)
-        writer.writerow(data)
 
 #-----------GENERAL PSEUDOCODE/HIERARCHICAL LAYOUT-----------
 
@@ -168,16 +143,6 @@ def fetch_ohlcv(symbol="SPY", interval='1min', outputsize='full', api_key=None):
     raw_df=raw_df.sort_index()
     print('DATA PARSED/EXTRACTED SUCCESSFULLY!')
     return raw_df
-
-#new: test call
-if __name__ == "__main__":
-    print("DEBUG: Starting program...")
-    df = fetch_ohlcv(symbol="SPY", api_key=api_key)
-    if df is not None:
-        print("DEBUG: Data fetched successfully!")
-        print(df.head())
-    else:
-        print("ERROR: Failed to fetch data.")
 
 #2. FEATURE ENGINEERING
 #-STUCTURES ACTUAL SET FUNCTIONALITY OF ALGORITHMS TECHNICAL FEATURES
@@ -315,75 +280,13 @@ def train_model(df, features=None, target="Event"):  #in theory, trains our mode
     print('Classification Report:\n', classification_report(y_test, y_pred))
 
     #saving of trained model above for future use.
-    joblib.dump(model, "market_crash_model.pkl") #Saves our pre trained model (ideally)
+    os.makedirs('models', exist_ok=True)
+    joblib.dump(model, 'models/market_crash_model.pkl') #Saves our pre trained model (ideally)
     return model
 
 
-def in_human_speak(prediction, crash_conf, spike_conf):
-    #CRASH
-    if prediction==1:
-        print(f"\n🚨 WARNING!: Market Crash Imminent! Confidence: {crash_conf*100:.1f}%")
-        if crash_conf < 0.2:
-            print(f"\n✅ MARKET APPEARS STABLE! Model confidence of crash probablitiy very low (confidence: {crash_conf*100:.1f}%)")
-        elif crash_conf  < 0.5:
-            print(f"\n ⚠️ CAUTION ADVISED!: Model predicts {crash_conf*100:.1f}% chance of crash! Stay aware of market conditions")
-        else:
-            print(f"\n🔍 MIXED SIGNALS: while model predicts that crash is unlikely, the model shows moderate confidence ({crash_conf*100:.1f}%). Stay vigilant!")
-    #SPIKE
-    elif prediction == 2:
-        if spike_conf > 0.8:
-            print(f'\n📈STRONG BUY SIGNAL!: High confidence in spike probability detected! ({spike_conf * 100:.1f}% confidence)')
-        elif spike_conf > 0.5:
-            print(f"\n✅POSSIBLE UPWARD TREND!: Moderate likelihood of market rally detected ({spike_conf * 100:.1f}% confidence)")
-        else:
-            print(f"\n🔍 Mild upward movement expected! ({spike_conf * 100:.1f}% confidence)")
-    #NEUTRAL
-    else:
-        if crash_conf > 0.4:
-            print(f"\n⚠️NEUTRAL CONSENSUS: however slight crash indicators detected ({crash_conf * 100:.1f}% confidence)")
-        elif spike_conf > 0.4:
-            print(f"\n⚠️NEUTRAL CONSENSUS: But possible emergence of upward trend present ({crash_conf * 100:.1f}% confidence)")
-        else:
-            print(f"\n✅MARKET APPEARS STABLE: no significant crash/spike behaviour detected! ({crash_conf * 100:.1f}% confidence)")
-
 #6. LIVE PREDICTION PIPELINE
-#6.1: 
-#-WILL INCLUDE ACCOMPANYING CUMULATIVE CONFIDENCE SCORES, AS DISTILLED FROM ABOVE PROCESSES
-#--MAITENCNCE OF A LIVE CONSISTENT LOG IMPORTANT HERE, AS EVEN IF NO CRASH IS PREDICTED IS STILL CRITICAL COMPONTNET OF GENERATIING A CUMULATIVE DAILY CONFIDENCE TREND VISUALIZATION
-def live_predict(df, model_path="market_crash_model.pkl"):
-    if not os.path.exists(model_path):
-        print('Model file not found')
-        return None
-    
-    model = joblib.load(model_path)
-
-    try:
-        features = get_feature_list()
-        latest_row = df[features].iloc[-5:].mean().to_frame().T
-
-        prediction = model.predict(latest_row[features])[0]
-        class_probs = model.predict_proba(latest_row[features])[0]
-
-        log_prediction_to_file(prediction, class_probs)
-
-        # Human-readable output
-        print(f"\nLive Prediction: {prediction}")
-        print("Class Probabilities:")
-        print(f"Normal: {class_probs[0]*100:.2f}%")
-        print(f"Crash:  {class_probs[1]*100:.2f}%")
-        print(f"Spike:  {class_probs[2]*100:.2f}%")
-
-        crash_confidence = class_probs[list(model.classes_).index(1)] if 1 in model.classes_ else 0
-        spike_confidence = class_probs[list(model.classes_).index(2)] if 2 in model.classes_ else 0
-
-        print(f'Live Prediction: {"CRASH" if prediction == 1 else "SPIKE" if prediction == 2 else "NORMAL"} | Crash Confidence: {crash_confidence:.2f} | Spike Confidence: {spike_confidence:.2f}')
-
-        in_human_speak(prediction, crash_confidence, spike_confidence)
-        return prediction, crash_confidence, spike_confidence
-
-    except Exception as e:
-        print(f"⚠️ Prediction error: {e}")
-        return None, None, None
+#(NOW LOCATED IN PREDICT.PY)
  
 
 
@@ -455,45 +358,33 @@ def plot_confidence_trend(log_file="daily_predictions.csv", show=True):
     plt.tight_layout()
     plt.show()
 
-#9. MAIN PIPELINE
+#9. MAIN PIPELINE (moved to scheduler)
 #-MAIN FUNCTIONALITY OF PROGRAM
 #--WILL INCLUDE ALL ABOVE FUNCTIONS IN A SEQUENTIAL ORDER
 #---WILL ALSO INCLUDE A MAIN FUNCTIONALITY FOR USER TO RUN PROGRAM
-if __name__ == '__main__':
-    print ("DEBUG: starting program...")
-    df=fetch_ohlcv(symbol="SPY", api_key = api_key, outputsize="full")
-
-    if df is not None:
-        df = calculate_technical_indicators(df)
-        df=label_events(df)
-        df = df.replace([np.inf, -np.inf], np.nan).dropna()
-
-        model=train_model(df, target='Event')
-        live_predict(df) 
-
-    else:
-        print("ERROR: Failed to fetch data")
 
 #10. PREDICTION LOG CLEANER
-def clean_predicton_log(log_file="prediction_log.txt"):
-    df=pd.read_csv(
-        log_file,
-        names=["Timestamp", 'Prediction', 'Crash_Conf', "Spike_Conf"],
-        parse_dates=["Timestamp"],
-        dtype={"Prediction": str, "Crash_Conf": str, "Spike_Conf": str}, #loads figures as "str" 
-        on_bad_lines='skip', 
-    )
-    
-    #   #Keep only rowsnwhere conf valuations are valid floats
-    df = df[pd.to_numeric(df["Crash_Conf"], errors='coerce').notnull()]
-    df = df[pd.to_numeric(df["Spike_Conf"], errors="coerce").notnull()]
-    df["Crash_Conf"]=df["Crash_Conf"].astype(float)
-    df["Spike_Conf"]=df["Spike_Conf"].astype(float)
+def clean_prediction_log():
+    try:
+        log_df = pd.read_csv('logs/daily_predictions.csv', names=["Timestamp", "Prediction", "Crash_Conf", "Spike_Conf", "Close_Price"], skiprows=1)
 
-    #removal of duplicates with nearly iodentical timestamps
-    df = df.drop_duplicates(subset="Timestamp") 
-    df.to_csv(log_file, index=False, header=False)
-    print(f"[Log Cleaner] Cleaned log file {log_file} of duplicates and NaN values")
+
+        # Drop any rows that are just headers written as data
+        log_df = log_df[log_df["Crash_Conf"] != "Crash_Conf"]
+
+        # Convert to float safely
+        log_df["Crash_Conf"] = pd.to_numeric(log_df["Crash_Conf"], errors="coerce")
+        log_df["Spike_Conf"] = pd.to_numeric(log_df["Spike_Conf"], errors="coerce")
+
+        log_df = log_df.dropna(subset=["Crash_Conf", "Spike_Conf"])
+
+        return log_df
+
+    except Exception as e:
+        print(f"❌ clean_prediction_log() failed: {e}")
+        return pd.DataFrame()
+
+
 
 
 
@@ -512,7 +403,7 @@ def daily_job():
         model=train_model(df, target='Event')
         live_predict(df)
         show_combined_dashboard(df) #will handle both graphs anyway
-        clean_predicton_log()
+        clean_prediction_log()
     else:
         print("ERROR: Failed to fetch data")
 
@@ -533,11 +424,24 @@ def start_scheduler():
             print(f"ERROR: {e}")
             #time.sleep(60)
 
+def label_real_outcomes_from_log():
+    df = pd.read_csv("logs/daily_predictions.csv", parse_dates=["Timestamp"])
+    df["Next_Close"] = df["Close_Price"].shift(-1)
+    df["Future_Return"] = (df["Next_Close"] - df["Close_Price"]) / df["Close_Price"]
+    df["Actual_Event"] = np.select(
+        [df["Future_Return"] < -0.03, df["Future_Return"] > 0.03],
+        [1, 2],
+        default=0
+    )
+    df.to_csv("logs/labeled_predictions.csv", index=False)
+
+
 #-----ENTRY POINT FOR SCHEDULER-----#
 
 def run_once_then_schedule():
     daily_job()
     schedule.every().day.at('18:00').do(daily_job)
+    schedule.every().day.at("18:05").do(label_real_outcomes_from_log)
     print('[Scheduler] Scheduled daily_job for 6:00pm')
     print('Press Ctrl+C to exit the scheduler')
 
@@ -555,18 +459,22 @@ def run_once_then_schedule():
         time.sleep(60)
 
 #12. Combined Dashboard Functionality
-def show_combined_dashboard(df, log_file="prediction_log.txt"):
+def show_combined_dashboard(df, log_file=LOG_FILE):
     #load pred log
     os.makedirs("graphs", exist_ok=True)  # ✅ This ensures 'graphs/' exists
 
 
 
     try:
-        log_df=pd.read_csv(
-            log_file,
-            names=["Timestamp", 'Prediction', 'Crash_Conf', "Spike_Conf"],
-            parse_dates=["Timestamp"],
+        log_df = pd.read_csv(
+        log_file,
+        names=["Timestamp", "Prediction", "Crash_Conf", "Spike_Conf", "Close_Price"],
+        parse_dates=["Timestamp"],
+        skiprows=1
         )
+        
+
+        
         log_df=log_df.dropna(subset=["Crash_Conf", "Spike_Conf"])
         log_df["Crash_Conf"]=log_df["Crash_Conf"].astype(float)
         log_df["Spike_Conf"]=log_df["Spike_Conf"].astype(float)
