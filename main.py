@@ -60,9 +60,14 @@ import csv
 from datetime import datetime
 def log_prediction_to_file(prediction, class_probs, file_path="daily_predictions.csv"):
     headers = ["timestamp", "prediction", "normal_prob", "crash_prob", "spike_prob"]
+
+    readable_label = "NORMAL" if prediction == 0 else "CRASH" if prediction == 1 else "SPIKE"
+
+
     data = [
         datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         prediction,
+        readable_label,
         round(class_probs[0] * 100, 2),
         round(class_probs[1] * 100, 2),
         round(class_probs[2] * 100, 2),
@@ -352,54 +357,34 @@ def live_predict(df, model_path="market_crash_model.pkl"):
     
     model = joblib.load(model_path)
 
-    #latest_row = df[get_feature_list()].iloc[-5:].mean().to_frame().T  #averages the last 5 rows of data to get a more stable valuation
-    features = get_feature_list() #get feature list from above function
+    try:
+        features = get_feature_list()
+        latest_row = df[features].iloc[-5:].mean().to_frame().T
 
-    #prediction=model.predict(latest_row[features])[0]
-    #prob=model.predict_proba(latest_row[features])[0][1] #DEALS W/ CRASH CLASS PROBABILITY
-    #NEW: Crash Probability logic
-    #prediction=model.predict(latest_row[get_feature_list()])[0]
+        prediction = model.predict(latest_row[features])[0]
+        class_probs = model.predict_proba(latest_row[features])[0]
 
-    #pull class probs
-    #class_probs=model.predict_proba(latest_row[get_feature_list()])[0]
-    features = get_feature_list()
-    latest_row = df[features].iloc[-5:].mean().to_frame().T
-    prediction = model.predict(latest_row[features])[0]
-    class_probs = model.predict_proba(latest_row[features])[0]
+        log_prediction_to_file(prediction, class_probs)
 
+        # Human-readable output
+        print(f"\nLive Prediction: {prediction}")
+        print("Class Probabilities:")
+        print(f"Normal: {class_probs[0]*100:.2f}%")
+        print(f"Crash:  {class_probs[1]*100:.2f}%")
+        print(f"Spike:  {class_probs[2]*100:.2f}%")
 
+        crash_confidence = class_probs[list(model.classes_).index(1)] if 1 in model.classes_ else 0
+        spike_confidence = class_probs[list(model.classes_).index(2)] if 2 in model.classes_ else 0
 
-    # Human-readable output
-    print(f"\nLive Prediction: {prediction}")
-    print("Class Probabilities:")
-    print(f"Normal: {class_probs[0]*100:.2f}%")
-    print(f"Crash:  {class_probs[1]*100:.2f}%")
-    print(f"Spike:  {class_probs[2]*100:.2f}%")
+        print(f'Live Prediction: {"CRASH" if prediction == 1 else "SPIKE" if prediction == 2 else "NORMAL"} | Crash Confidence: {crash_confidence:.2f} | Spike Confidence: {spike_confidence:.2f}')
 
-    # Log to file
-    log_prediction_to_file(prediction, class_probs)
+        in_human_speak(prediction, crash_confidence, spike_confidence)
+        return prediction, crash_confidence, spike_confidence
 
-    #check classes present
-    class_labels=model.classes_
-
-    #crash/spike confidence:
-    crash_confidence=class_probs[list(class_labels).index(1)] if 1 in class_labels else 0
-    spike_confidence=class_probs[list(class_labels).index(2)] if 2 in class_labels else 0
-
-    #print prediction
-    print(f'Live Prediction: {"CRASH" if prediction == 1 else "SPIKE" if prediction == 2 else "NORMAL"} | Crash Confidence: {crash_confidence:.2f} | Spike Confidence: {spike_confidence:.2f}')
-    print(f'Crash Confidence: {crash_confidence:.2f} | Spike Confidence: {spike_confidence:.2f}')
-
-    log_entry=f'{pd.Timestamp.now()},{prediction},{crash_confidence:.4f},{spike_confidence:.4f}\n'
-    with open('prediction_log.txt', "a") as f:
-        f.write(log_entry)
-
-    
-
-    
-
-    in_human_speak(prediction, crash_confidence, spike_confidence)
-    return prediction, crash_confidence, spike_confidence 
+    except Exception as e:
+        print(f"⚠️ Prediction error: {e}")
+        return None, None, None
+ 
 
 
 #6.2: (OPTIONAL, FOR ACCURACY SAKE)
@@ -453,36 +438,22 @@ def visualize_data(df, save_path='graphs/daily_plot.png', show=True):
     plt.close() #frees up unneeded memory this way
 
 #8. CONDIDENCE TREND VISUALIZER
-def plot_confidence_trend(log_file="prediction_log.txt", show=True):
-    try:
-        df = pd.read_csv(
-            log_file,
-            names=["Timestamp", 'Prediction', 'Crash_Conf', "Spike_Conf"],
-            parse_dates=["Timestamp"]
-        )
-        df = df.dropna(subset=["Crash_Conf", "Spike_Conf"]) #drops rows with missing or confiused data (NaN values)
-    except FileNotFoundError:
-        print(f"ERROR: Log file {log_file} not found.")
-        return
-    
-    plt.figure(figsize=(14,7))
-    plt.plot(df['Timestamp'], df['Crash_Conf'], label="Crash Confidence", color='red', linewidth=2)
-    plt.plot(df['Timestamp'], df['Spike_Conf'], label="Spike Confidence", color='green', linewidth=2)
-    plt.title("Market Crash/Spike Confidence Trends Over Time")
-    plt.xlabel("Date")
-    plt.ylabel("Level of Confidence")
-    plt.ylim(0,1.05)
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
-
+def plot_confidence_trend(log_file="daily_predictions.csv", show=True):
+    df = pd.read_csv(log_file)
     os.makedirs('graphs', exist_ok=True)
-    plt.savefig('graphs/confidence_trend_plot.png')
-    print('[Graph] Saved confidence trend plot to graphs/confidence_trend_plot.png')
 
-    if show:
-        plt.show()
-    plt.close()
+
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df.set_index("timestamp", inplace=True)
+
+    plt.figure(figsize=(10, 6))
+    df[["crash_prob", "spike_prob"]].plot(ax=plt.gca())
+    plt.title("Crash/Spike Confidence Over Time")
+    plt.ylabel("Probability (%)")
+    plt.xlabel("Time")
+    plt.grid(True)
+    plt.tight_layout()
+    plt.show()
 
 #9. MAIN PIPELINE
 #-MAIN FUNCTIONALITY OF PROGRAM
@@ -586,6 +557,10 @@ def run_once_then_schedule():
 #12. Combined Dashboard Functionality
 def show_combined_dashboard(df, log_file="prediction_log.txt"):
     #load pred log
+    os.makedirs("graphs", exist_ok=True)  # ✅ This ensures 'graphs/' exists
+
+
+
     try:
         log_df=pd.read_csv(
             log_file,
@@ -630,7 +605,13 @@ def show_combined_dashboard(df, log_file="prediction_log.txt"):
     ax2.grid(True)
     ax2.legend()
     
-    plt.savefig(f'graphs/combined_dashboard_{pd.Timestamp.now().date()}.png')
+    
+    # Save directory check and figure save
+    save_dir = "graphs"
+    os.makedirs(save_dir, exist_ok=True)
+    filename = f"{save_dir}/combined_dashboard_{pd.Timestamp.now().date()}.png"
+    plt.savefig(filename)
+    print(f"[✅] Saved plot to {filename}")
     plt.show()
 
 
