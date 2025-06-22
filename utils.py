@@ -1,18 +1,26 @@
-#utils.py
+# utils.py
 import os
 import csv
 from datetime import datetime
+import pandas as pd
+import numpy as np
 
-#ensures repective folders exist
+# --- Ensure folders exist ---
 os.makedirs("logs", exist_ok=True)
 os.makedirs("graphs", exist_ok=True)
 
-#global log file
+# --- Global log file paths ---
 LOG_FILE = "logs/daily_predictions.csv"
+LABELED_LOG_FILE = "logs/labeled_predictions.csv"
 
+# --- Ensure labeled_predictions.csv exists ---
+def init_labeled_log_file():
+    if not os.path.exists(LABELED_LOG_FILE):
+        print("[Init] Creating blank labeled_predictions.csv")
+        with open(LABELED_LOG_FILE, "w") as f:
+            f.write("Timestamp,Prediction,Crash_Conf,Spike_Conf,Close_Price,Actual_Event\n")
 
-
-#Features
+# --- Feature List ---
 def get_feature_list():
     return [
         "MA_20", "EMA_12", "EMA_26", "MACD", "MACD_Signal", "MACD_Histogram",
@@ -22,12 +30,8 @@ def get_feature_list():
         "RSI_Lag_1", "RSI_Lag_3", "RSI_Lag_5"
     ]
 
-#logging function to log predictions to a CSV file
-#import csv
-#from datetime import datetime
-#def log_prediction_to_file(timestamp,prediction,Crash_Conf,Spike_Conf, file_path=LOG_FILE):
-    
-def log_prediction_to_file(timestamp, prediction, crash_conf, spike_conf, close_price, log_path='logs/daily_predictions.csv'):
+# --- Log prediction to file ---
+def log_prediction_to_file(timestamp, prediction, crash_conf, spike_conf, close_price, log_path=LOG_FILE):
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     file_exists = os.path.isfile(log_path)
 
@@ -38,7 +42,7 @@ def log_prediction_to_file(timestamp, prediction, crash_conf, spike_conf, close_
             f.write("Timestamp,Prediction,Crash_Conf,Spike_Conf\n")
         f.write(entry)
 
-
+# --- Human-readable prediction output ---
 def in_human_speak(prediction, crash_conf, spike_conf):
     if prediction == 1:
         if crash_conf < 0.2:
@@ -64,5 +68,27 @@ def in_human_speak(prediction, crash_conf, spike_conf):
         else:
             return f"✅ MARKET APPEARS STABLE: no significant crash/spike behaviour detected! ({crash_conf*100:.1f}% crash confidence)"
 
+# --- Label real outcomes using future close data ---
+def label_real_outcomes_from_log():
+    if not os.path.exists(LOG_FILE):
+        print("[⚠️] daily_predictions.csv not found — skipping outcome labeling.")
+        return
 
+    df = pd.read_csv(LOG_FILE, parse_dates=["Timestamp"])
+    df.drop_duplicates(subset=["Timestamp"], keep="last", inplace=True)
 
+    if len(df) < 2:
+        print("[⏭] Not enough data to label real outcomes — skipping for now.")
+        return
+
+    df["Next_Close"] = df["Close_Price"].shift(-1)
+    df["Future_Return"] = (df["Next_Close"] - df["Close_Price"]) / df["Close_Price"]
+    df["Actual_Event"] = np.select(
+        [df["Future_Return"] < -0.03, df["Future_Return"] > 0.03],
+        [1, 2],
+        default=0
+    )
+
+    df.dropna(subset=["Future_Return"], inplace=True)
+    df.to_csv(LABELED_LOG_FILE, index=False)
+    print("[✅] Labeled outcomes written to logs/labeled_predictions.csv")
