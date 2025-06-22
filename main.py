@@ -1,3 +1,4 @@
+#main.py
 #-----------MARKET PREDICTION ALGORITHM-----------
 #ADDITIONAL: INSTALL LIBRARIES ON LOCAL MACHINE (OR FROM TERMINAL TO REPO DIRECTLY? LOOK INTO THIS)
 
@@ -32,6 +33,20 @@ from sklearn.utils import resample #DEALS WITH IMBALANCED DATASETS
 import matplotlib.pyplot as plt #GRAPHICAL VISUALIZATION
 from utils import get_feature_list, log_prediction_to_file, in_human_speak
 from predict import live_predict
+from train import retrain_model
+from utils import label_real_outcomes_from_log
+
+from train import retrain_model
+import os
+
+#FILE PATH CREATION
+os.makedirs("logs", exist_ok=True)
+
+from utils import init_labeled_log_file
+init_labeled_log_file()
+
+
+
 
 
 
@@ -50,6 +65,8 @@ else:
 
 #global log file
 LOG_FILE = "logs/daily_predictions.csv"
+LABELED_LOG_FILE = "logs/labeled_predictions.csv"
+
 
 
 
@@ -404,6 +421,15 @@ def daily_job():
         live_predict(df)
         show_combined_dashboard(df) #will handle both graphs anyway
         clean_prediction_log()
+
+        #weekly retraining check
+        if pd.Timestamp.now().weekday() == 6:  # Sunday == 6
+            print("[Retrain] Initiating weekly model retraining...")
+            from utils import label_real_outcomes_from_log
+            label_real_outcomes_from_log()
+
+            retrain_model(df)
+
     else:
         print("ERROR: Failed to fetch data")
 
@@ -424,16 +450,7 @@ def start_scheduler():
             print(f"ERROR: {e}")
             #time.sleep(60)
 
-def label_real_outcomes_from_log():
-    df = pd.read_csv("logs/daily_predictions.csv", parse_dates=["Timestamp"])
-    df["Next_Close"] = df["Close_Price"].shift(-1)
-    df["Future_Return"] = (df["Next_Close"] - df["Close_Price"]) / df["Close_Price"]
-    df["Actual_Event"] = np.select(
-        [df["Future_Return"] < -0.03, df["Future_Return"] > 0.03],
-        [1, 2],
-        default=0
-    )
-    df.to_csv("logs/labeled_predictions.csv", index=False)
+
 
 
 #-----ENTRY POINT FOR SCHEDULER-----#
@@ -442,6 +459,18 @@ def run_once_then_schedule():
     daily_job()
     schedule.every().day.at('18:00').do(daily_job)
     schedule.every().day.at("18:05").do(label_real_outcomes_from_log)
+
+    def safe_retrain():
+        if os.path.exists(LABELED_LOG_FILE):
+            print("[Retrain] Initiating weekly model retraining...")
+            retrain_model()
+        else:
+            print("[⚠️] No labeled outcomes found — skipping retraining.")
+
+
+
+    schedule.every().sunday.at("18:10").do(safe_retrain)
+
     print('[Scheduler] Scheduled daily_job for 6:00pm')
     print('Press Ctrl+C to exit the scheduler')
 
@@ -450,13 +479,10 @@ def run_once_then_schedule():
             schedule.run_pending()
             time.sleep(1)
     except KeyboardInterrupt:
-        print("Scehduler terminated by user")
+        print("Scheduler terminated by user")
         print("\nExiting program...")
         exit(0)
 
-    while True:
-        schedule.run_pending()
-        time.sleep(60)
 
 #12. Combined Dashboard Functionality
 def show_combined_dashboard(df, log_file=LOG_FILE):
