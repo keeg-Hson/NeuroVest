@@ -32,6 +32,7 @@ def get_feature_list():
 
 # --- Log prediction to file ---
 def log_prediction_to_file(timestamp, prediction, crash_conf, spike_conf, close_price, log_path=LOG_FILE):
+    print("[DEBUG] Entering log_prediction_to_file")
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     file_exists = os.path.isfile(log_path)
 
@@ -39,8 +40,9 @@ def log_prediction_to_file(timestamp, prediction, crash_conf, spike_conf, close_
 
     with open(log_path, "a") as f:
         if not file_exists or os.path.getsize(log_path) == 0:
-            f.write("Timestamp,Prediction,Crash_Conf,Spike_Conf\n")
+            f.write("Timestamp,Prediction,Crash_Conf,Spike_Conf,Close_Price\n")  # ✅ FIXED
         f.write(entry)
+        print(f"[DEBUG] Wrote entry to {log_path}: {entry.strip()}")
 
 # --- Human-readable prediction output ---
 def in_human_speak(prediction, crash_conf, spike_conf):
@@ -75,6 +77,9 @@ def label_real_outcomes_from_log():
         return
 
     df = pd.read_csv(LOG_FILE, parse_dates=["Timestamp"])
+    print(f"[DEBUG] read {len(df)} rows from {LOG_FILE}")
+    print(df.tail())
+
     df.drop_duplicates(subset=["Timestamp"], keep="last", inplace=True)
 
     if len(df) < 2:
@@ -91,4 +96,7 @@ def label_real_outcomes_from_log():
 
     df.dropna(subset=["Future_Return"], inplace=True)
     df.to_csv(LABELED_LOG_FILE, index=False)
+    print(f"[DEBUG] wrote {len(df)} rows to {LABELED_LOG_FILE}")
+    #print(f"[Labeling] Return: {future_return:.4f} → Event: {actual_event}")
+
     print("[✅] Labeled outcomes written to logs/labeled_predictions.csv")

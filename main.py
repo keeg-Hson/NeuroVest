@@ -31,19 +31,22 @@ print("CWD:", os.getcwd())
 
 from sklearn.utils import resample #DEALS WITH IMBALANCED DATASETS
 import matplotlib.pyplot as plt #GRAPHICAL VISUALIZATION
-from utils import get_feature_list, log_prediction_to_file, in_human_speak
+from utils import get_feature_list, log_prediction_to_file, in_human_speak, label_real_outcomes_from_log, init_labeled_log_file
+
 from predict import live_predict
 from train import retrain_model
-from utils import label_real_outcomes_from_log
+
 
 from train import retrain_model
 import os
 
+
+
 #FILE PATH CREATION
 os.makedirs("logs", exist_ok=True)
 
-from utils import init_labeled_log_file
 init_labeled_log_file()
+label_real_outcomes_from_log()
 
 
 
@@ -52,7 +55,9 @@ init_labeled_log_file()
 
 
 #Alpha Vantage API key configuration
-load_dotenv(dotenv_path="/Users/keeganhutchinson/CS2704-Market-Prediction-Algorithm/.env") #"/Users/keeganhutchinson/CS2704-Market-Prediction-Algorithm/AV-API-key.env" 
+load_dotenv() # will load ./ .env automatically
+
+#^^^^^update to account for new repo key (market-pred-bot vs cs2704...... thing) #"/Users/keeganhutchinson/CS2704-Market-Prediction-Algorithm/AV-API-key.env" 
 api_key = os.getenv("ALPHA_VANTAGE_KEY")
 print(f"DEBUG: Loaded API key: {api_key}")
 
@@ -412,23 +417,31 @@ def clean_prediction_log():
 def daily_job():
     print('[Scheduler] Executing daily market prediction...')
 
-    df=fetch_ohlcv(symbol="SPY", api_key=api_key, outputsize="full")
-    if df is not None:
-        df=calculate_technical_indicators(df)
-        df=label_events(df)
-        df=df.replace([np.inf, -np.inf], np.nan).dropna()
-        model=train_model(df, target='Event')
-        live_predict(df)
-        show_combined_dashboard(df) #will handle both graphs anyway
-        clean_prediction_log()
+    df = fetch_ohlcv(symbol="SPY", api_key=api_key, outputsize="full")
+    if df is None:
+        print("ERROR: Failed to fetch data")
+        return
 
-        #weekly retraining check
-        if pd.Timestamp.now().weekday() == 6:  # Sunday == 6
-            print("[Retrain] Initiating weekly model retraining...")
-            from utils import label_real_outcomes_from_log
-            label_real_outcomes_from_log()
+    # 1) feature-engineer & label
+    df = calculate_technical_indicators(df)
+    df = label_events(df)
+    df = df.replace([np.inf, -np.inf], np.nan).dropna()
 
-            retrain_model(df)
+    # 2) train & live predict
+    model = train_model(df, target='Event')
+    live_predict(df)
+
+    # 3) label the real outcome for this run
+    label_real_outcomes_from_log()
+
+    # 4) dashboard & clean
+    show_combined_dashboard(df)
+    clean_prediction_log()
+
+    # 5) weekly retrain (Sunday)
+    if pd.Timestamp.now().weekday() == 6:  # Sunday == 6
+        print("[Retrain] Initiating weekly model retraining…")
+        retrain_model(df)
 
     else:
         print("ERROR: Failed to fetch data")
