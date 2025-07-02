@@ -55,9 +55,18 @@ label_real_outcomes_from_log()
 
 
 #Alpha Vantage API key configuration
-load_dotenv() # will load ./ .env automatically
+#load_dotenv() # will load ./ .env automatically
 
 #^^^^^update to account for new repo key (market-pred-bot vs cs2704...... thing) #"/Users/keeganhutchinson/CS2704-Market-Prediction-Algorithm/AV-API-key.env" 
+#api_key = os.getenv("ALPHA_VANTAGE_KEY")
+#print(f"DEBUG: Loaded API key: {api_key}")
+
+#Alpha Vantage API key configuration
+print("ENV file exists?", os.path.isfile("/Users/keeganhutchinson/CS2704-Market-Prediction-Algorithm/.env"))
+with open("/Users/keeganhutchinson/CS2704-Market-Prediction-Algorithm/.env") as f:
+    print(f.read())
+
+load_dotenv("/Users/keeganhutchinson/CS2704-Market-Prediction-Algorithm/.env") #"/Users/keeganhutchinson/CS2704-Market-Prediction-Algorithm/AV-API-key.env" 
 api_key = os.getenv("ALPHA_VANTAGE_KEY")
 print(f"DEBUG: Loaded API key: {api_key}")
 
@@ -124,6 +133,13 @@ def fetch_ohlcv(symbol="SPY", interval='1min', outputsize='full', api_key=None):
     #parse .json response
     data=response.json()
     print(f"DEBUG: API response: {data}")
+
+    print("DEBUG: JSON response keys:", list(data.keys()))
+    if "Note" in data:
+        print("ERROR: Rate limit hit:", data["Note"])
+        return None
+    time_series_key = [k for k in data.keys() if 'Time Series' in k]
+    print("DEBUG: using key →", time_series_key)
 
 
     #DEBUG: check if API response was successful
@@ -444,7 +460,7 @@ def daily_job():
         retrain_model(df)
 
     else:
-        print("ERROR: Failed to fetch data")
+        print("[Scheduler] Skipping weekly retrain (not Sunday)")
 
 #-----START DAILY SCHEDULER-----#
 def start_scheduler():
