@@ -1,3 +1,5 @@
 .env
 prediction_log.txt
+/logs/
+/backups/
 

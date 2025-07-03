@@ -30,8 +30,12 @@ def live_predict(df, model_path='models/market_crash_model.pkl'):
 
 
 
+
+
         timestamp = datetime.now()
         log_prediction_to_file(timestamp, prediction, crash_confidence, spike_confidence, close_price)
+
+        timestamp = pd.Timestamp.now()
 
 
         print(f"🔮 Prediction: {prediction}")
