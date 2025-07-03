@@ -28,7 +28,7 @@ def generate_more_labels(df):
     df["Future_Close"] = df["Close"].shift(-1)
     df["Future_Return"] = (df["Future_Close"] - df["Close"]) / df["Close"]
     df["Actual_Event"] = np.select(
-        [df["Future_Return"] < -0.03, df["Future_Return"] > 0.03],
+        [df["Future_Return"] < -0.005, df["Future_Return"] > 0.005],
         [1, 2],
         default=0
     )
@@ -79,26 +79,39 @@ def train_model(df, features=None, target="Event"):
     X = df[features]
     y = df[target]
 
-    # Sanity check
-    for col in features:
-        if col not in df.columns:
-            raise ValueError(f"[❌] Missing expected feature column: {col}")
-    
-    if df[features].isnull().any().any():
-        raise ValueError("[❌] NaNs found in input features — check preprocessing pipeline.")
+    # 1) Show raw class counts
+    print("\n📊 Overall class distribution before splitting:")
+    print(y.value_counts(), "\n")
 
+    # 2) Split into train/test
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42
+    )
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    print("📊 Training set distribution before SMOTE:")
+    print(y_train.value_counts(), "\n")
+
+    # 3) SMOTE up-sampling on training set
+    smote = SMOTE(random_state=42)
+    X_train_bal, y_train_bal = smote.fit_resample(X_train, y_train)
+
+    print("📊 Training set distribution after SMOTE:")
+    print(pd.Series(y_train_bal).value_counts(), "\n")
+
+    # 4) Train
     model = RandomForestClassifier(n_estimators=100, random_state=42)
-    model.fit(X_train, y_train)
+    model.fit(X_train_bal, y_train_bal)
 
+    # 5) Evaluate on the untouched test set
     y_pred = model.predict(X_test)
-    print('\n📊 Model Performance:')
-    print(classification_report(y_test, y_pred))
-    print(f"Features used for training: {features}")
+    print("\n📊 Model performance on TEST set:")
+    print(classification_report(y_test, y_pred, digits=4))
 
-    joblib.dump(model, "models/market_crash_model.pkl")
-    print("✅ Model trained and saved as 'models/market_crash_model.pkl'")
+    # 6) Persist the model
+    out_path = "models/market_crash_model.pkl"
+    joblib.dump(model, out_path)
+    print(f"✅ Model trained and saved to '{out_path}'\n")
+
     return model
 
 

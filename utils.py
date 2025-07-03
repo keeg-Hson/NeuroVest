@@ -4,6 +4,8 @@ import csv
 from datetime import datetime
 import pandas as pd
 import numpy as np
+import os, shutil, datetime
+
 
 # --- Ensure folders exist ---
 os.makedirs("logs", exist_ok=True)
@@ -71,7 +73,7 @@ def in_human_speak(prediction, crash_conf, spike_conf):
             return f"✅ MARKET APPEARS STABLE: no significant crash/spike behaviour detected! ({crash_conf*100:.1f}% crash confidence)"
 
 # --- Label real outcomes using future close data ---
-def label_real_outcomes_from_log():
+def label_real_outcomes_from_log(crash_thresh=-0.005, spike_thresh=0.005):
     if not os.path.exists(LOG_FILE):
         print("[⚠️] daily_predictions.csv not found — skipping outcome labeling.")
         return
@@ -89,7 +91,7 @@ def label_real_outcomes_from_log():
     df["Next_Close"] = df["Close_Price"].shift(-1)
     df["Future_Return"] = (df["Next_Close"] - df["Close_Price"]) / df["Close_Price"]
     df["Actual_Event"] = np.select(
-        [df["Future_Return"] < -0.03, df["Future_Return"] > 0.03],
+        [df["Future_Return"] < -0.005, df["Future_Return"] > 0.005],
         [1, 2],
         default=0
     )
@@ -100,3 +102,18 @@ def label_real_outcomes_from_log():
     #print(f"[Labeling] Return: {future_return:.4f} → Event: {actual_event}")
 
     print("[✅] Labeled outcomes written to logs/labeled_predictions.csv")
+
+    #backup_logs()
+    df.to_csv(LABELED_LOG_FILE, index=False)
+    print("[✅] Labeled outcomes written to logs/labeled_predictions.csv")
+
+    backup_logs()
+
+
+def backup_logs():
+    """Make timestamped copies of your two main CSVs into ./backups/"""
+    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+    os.makedirs("backups", exist_ok=True)
+    shutil.copy(LOG_FILE, f"backups/daily_predictions_{ts}.csv")
+    shutil.copy(LABELED_LOG_FILE, f"backups/labeled_predictions_{ts}.csv")
+

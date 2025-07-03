@@ -259,7 +259,7 @@ def calculate_technical_indicators(df):
 #BINARY CLASSIFICATION ON BASIS OF (PREDICTED) FUTURE RETURNS
 #--Each row labeled as followed: (0==NORMAL (ELSE), 1==CRASH ) 
 # + CONFIDENCE PROBABLITY VALUATION (LOOK INTO A LIL BIT)
-def label_events(df, crash_threshold=-0.03, spike_threshold=0.03):
+def label_events(df, crash_threshold=-0.005, spike_threshold=0.005):
     df=df.copy()
     df["Future_Close"]=df['Close'].shift(-1)
     df["Future_Return"]=(df["Future_Close"]-df['Close'])/df['Close']
@@ -432,6 +432,11 @@ def clean_prediction_log():
 #------DAILY SCHEDULER FUNCTION--------#
 def daily_job():
     print('[Scheduler] Executing daily market prediction...')
+
+    #daily job counter
+    counts = df["Event"].value_counts().to_dict()
+    print(f"[Daily Label Counts] {counts}")
+
 
     df = fetch_ohlcv(symbol="SPY", api_key=api_key, outputsize="full")
     if df is None:
