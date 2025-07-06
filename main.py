@@ -433,11 +433,7 @@ def clean_prediction_log():
 def daily_job():
     print('[Scheduler] Executing daily market prediction...')
 
-    #daily job counter
-    counts = df["Event"].value_counts().to_dict()
-    print(f"[Daily Label Counts] {counts}")
-
-
+    # Fetch latest OHLCV data
     df = fetch_ohlcv(symbol="SPY", api_key=api_key, outputsize="full")
     if df is None:
         print("ERROR: Failed to fetch data")
@@ -447,6 +443,10 @@ def daily_job():
     df = calculate_technical_indicators(df)
     df = label_events(df)
     df = df.replace([np.inf, -np.inf], np.nan).dropna()
+
+    #daily job counter (events)
+    counts = df["Event"].value_counts().to_dict()
+    print(f"[Daily Label Counts] {counts}")
 
     # 2) train & live predict
     model = train_model(df, target='Event')
