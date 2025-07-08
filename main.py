@@ -39,6 +39,12 @@ from train import retrain_model
 
 from train import retrain_model
 import os
+from data_utils import load_spy_daily_data
+
+spy_df = load_spy_daily_data()
+# now spy_df.index is datetime element that can be sliced, resampled, backtested, etc.
+
+
 
 
 

@@ -117,3 +117,5 @@ def backup_logs():
     shutil.copy(LOG_FILE, f"backups/daily_predictions_{ts}.csv")
     shutil.copy(LABELED_LOG_FILE, f"backups/labeled_predictions_{ts}.csv")
 
+
+
