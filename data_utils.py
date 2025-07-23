@@ -3,6 +3,7 @@ from config import SPY_DAILY_CSV
 import pandas as pd
 import yfinance as yf
 from datetime import datetime
+import os
 
 
 def load_spy_daily_data() -> pd.DataFrame:
@@ -31,4 +32,4 @@ def log_rolling_accuracy(current_date, acc_7d, acc_30d, filepath="logs/model_per
         "Accuracy_7d": acc_7d,
         "Accuracy_30d": acc_30d
     }])
-    df.to_csv(filepath, mode='a', index=False, header=not pd.io.common.file_exists(filepath))
+    df.to_csv(filepath, mode='a', index=False, header=not os.path.exists(filepath))
