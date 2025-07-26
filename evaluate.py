@@ -1,40 +1,88 @@
 # evaluate.py
-#model evaluation  
+#Model Evaluation + Outcome Labeling
+
 
 import pandas as pd
 from sklearn.metrics import classification_report, accuracy_score
+import json
 
 LABELED_LOG = "logs/labeled_predictions.csv"
+METRIC_OUTPUT_CSV = "logs/model_performance.csv"
+
+def label_prediction_outcomes():
+    print("🔖 Labeling prediction outcomes...")
+
+    try:
+        pred = pd.read_csv("logs/daily_predictions.csv", parse_dates=["Timestamp"])
+        spy = pd.read_csv("data/spy_daily.csv", parse_dates=["Date"])
+        spy["Date"] = pd.to_datetime(spy["Date"])
+
+        #align formats
+        pred["Date"] = pred["Timestamp"].dt.date
+        spy["Date"] = spy["Date"].dt.date
+
+        merged = pd.merge(pred, spy, on="Date", how="left")
+
+        if "4. close" not in merged.columns:
+            raise KeyError("'4. close' column missing from SPY data.")
+
+        #create 'Actual_Event': 1 if tomorrow’s return > 0.5%, else 0
+        merged["next_close"] = merged["4. close"].shift(-1)
+        merged["return_tomorrow"] = (merged["next_close"] - merged["4. close"]) / merged["4. close"]
+        merged["Actual_Event"] = (merged["return_tomorrow"] > 0.005).astype(int)
+
+        # add Outcome label
+        def classify_outcome(row):
+            if row["Prediction"] == 1 and row["Actual_Event"] == 1:
+                return "TP"
+            elif row["Prediction"] == 1 and row["Actual_Event"] == 0:
+                return "FP"
+            elif row["Prediction"] == 0 and row["Actual_Event"] == 0:
+                return "TN"
+            elif row["Prediction"] == 0 and row["Actual_Event"] == 1:
+                return "FN"
+            else:
+                return "?"
+
+        merged["Outcome"] = merged.apply(classify_outcome, axis=1)
+
+        merged.to_csv(LABELED_LOG, index=False)
+        print(f"✅ Labeled outcomes saved to {LABELED_LOG}")
+    except Exception as e:
+        print(f"[❌] Failed to label outcomes: {e}")
 
 def evaluate_predictions():
-    print("🔍 Evaluating predictions...")
+    print("📊 Evaluating classification metrics...")
     try:
         df = pd.read_csv(LABELED_LOG, parse_dates=["Timestamp"])
-
-        # Drop rows where Actual_Event is missing (NaN)
         df = df.dropna(subset=["Actual_Event"])
         df["Actual_Event"] = df["Actual_Event"].astype(int)
 
-        total = len(df)
-        if total == 0:
-            print("[⚠️] No labeled actual events found — cannot evaluate.")
-            return
+        if "Outcome" not in df.columns:
+            raise ValueError("Missing Outcome column — did labeling fail?")
 
-        # Basic comparison
+        total = len(df)
         correct = (df["Prediction"] == df["Actual_Event"]).sum()
         accuracy = correct / total
 
         print(f"\n📊 Evaluation Report:")
-        print(f"Total predictions with real outcomes: {total}")
-        print(f"Correct predictions: {correct}")
-        print(f"Basic accuracy: {accuracy*100:.2f}%\n")
+        print(f"Total evaluated: {total}")
+        print(f"Accuracy: {accuracy:.2%}")
 
-        print("🔍 Classification Report:")
-        print(classification_report(df["Actual_Event"], df["Prediction"], digits=2))
+        #get full classification metrics
+        clf_report = classification_report(
+            df["Actual_Event"],
+            df["Prediction"],
+            output_dict=True,
+            zero_division=0  #prevent errors when division by zero
+        )
 
-        print("\n📊 Class distribution:")
-        print(df['Actual_Event'].value_counts())
+        print("\n🔍 Classification Report:")
+        print(pd.DataFrame(clf_report).transpose())
 
+        #save report to CSV
+        pd.DataFrame(clf_report).transpose().to_csv(METRIC_OUTPUT_CSV)
+        print(f"\n💾 Saved detailed report to {METRIC_OUTPUT_CSV}")
 
     except FileNotFoundError:
         print("[❌] Labeled predictions file not found. Run labeling first.")
@@ -42,4 +90,5 @@ def evaluate_predictions():
         print(f"[⚠️] Evaluation failed: {e}")
 
 if __name__ == "__main__":
+    label_prediction_outcomes()
     evaluate_predictions()
