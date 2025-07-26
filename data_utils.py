@@ -9,7 +9,7 @@ import os
 def load_spy_daily_data() -> pd.DataFrame:
     # load & parse your CSV
     df = pd.read_csv(
-        SPY_DAILY_CSV,
+        "data/spy.csv",
         parse_dates=["Date"],    # or whatever your date column is
         index_col="Date"
     )
@@ -22,6 +22,8 @@ def load_spy_daily_data() -> pd.DataFrame:
         "4. close":  "Close",
         "5. volume": "Volume"
     })
+
+    print("🔍 SPY data columns loaded:", df.columns.tolist())
     return df
 
 
