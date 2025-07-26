@@ -5,6 +5,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 from data_utils import load_spy_daily_data, log_rolling_accuracy
 from datetime import timedelta, datetime
+import subprocess
+
+#auto update SPY data before anything else
+subprocess.run(["python3", "update_spy_data.py"])
+
 
 #sets a reference portfolio size to simulate dollar returns from % returns.
 
@@ -18,10 +23,19 @@ EXIT_SHIFT    = 2    # exit at the following bar’s close
 POSITION_SIZE = 1.0  # 1x notional per trade
 CAPITAL_BASE  = 100_000  #initial capital base for dollar-return tracking
 
-def run_backtest(crash_thresh=None, spike_thresh=None):
+def run_backtest(crash_thresh=2.0, spike_thresh=2.0, confidence_thresh=0.5, simulate_mode=False): #comment out threshholds if running simulated trades
     # 1) load signals and history
     preds  = pd.read_csv("logs/daily_predictions.csv", parse_dates=["Timestamp"])
     spy_df = load_spy_daily_data()
+
+    #apply confidence filtering to reduce noise
+    
+    preds = preds[
+        (preds["Crash_Conf"] >= confidence_thresh) | 
+        (preds["Spike_Conf"] >= confidence_thresh)
+    ]
+
+
 
     simulate_mode = True  # <- Set to False for real runs
         
@@ -71,8 +85,10 @@ def run_backtest(crash_thresh=None, spike_thresh=None):
         print(preds.loc[inject_idx])
     else:
         print("⚠️  Not enough valid prediction rows to inject spike at index 10.")
+        inject_idx=None
 
-    print(preds.loc[inject_idx])
+
+    
 
     # 2) join after injection
     df = (
@@ -146,9 +162,16 @@ def run_backtest(crash_thresh=None, spike_thresh=None):
             "trades":            0,
             "total_return":      0.0,
             "annualized_return": 0.0,
-            "sharpe":            0.0
+            "sharpe":            0.0,
+            "avg_return":        0.0,
+            "median_return":     0.0,
+            "win_rate":          0.0,
+            "avg_long":          0.0,
+            "avg_short":         0.0,
+            "max_drawdown":      0.0,
+            "profit_factor":     0.0
         }
-        return pd.DataFrame(), zero_metrics
+        return pd.DataFrame(), zero_metrics, simulate_mode
     
 
     # 4) convert to DataFrame & index
