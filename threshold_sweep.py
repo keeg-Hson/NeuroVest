@@ -1,109 +1,104 @@
 #threshold_sweep.py
 import pandas as pd
 import numpy as np
+import json
+import os
 from backtest import run_backtest
 import seaborn as sns
 import matplotlib.pyplot as plt
+import subprocess
+
+#auto update SPY data before anything else
+subprocess.run(["python3", "update_spy_data.py"])
+
+
+# ensure configs folder exists
+os.makedirs("configs", exist_ok=True)
 
 # Define threshold sweep function
-def sweep_thresholds(crash_thresh_list, spike_thresh_list):
+def sweep_thresholds(crash_thresh_list, spike_thresh_list, confidence_thresh_list):
     results = []
 
     for crash in crash_thresh_list:
         for spike in spike_thresh_list:
-            print(f"\n🚦 Testing thresholds — Crash: {crash}, Spike: {spike}")
+            for conf in confidence_thresh_list:
+                print(f"\n🚦 Testing thresholds — Crash: {crash}, Spike: {spike}, Confidence: {conf}")
 
-            # NOTE: In full integration, you'd modify model thresholding here,
-            # or load pre-labeled predictions according to these thresholds.
-            # For now, assume prediction file already uses generic predictions.
+                trades, metrics, _ = run_backtest(
+                    crash_thresh=crash,
+                    spike_thresh=spike,
+                    confidence_thresh=conf,
+                )
 
-            # Suggestion: Only use simulate_mode=True for single manual test runs, not sweeping
-            trades, metrics, _ = run_backtest(
-                crash_thresh=crash,
-                spike_thresh=spike,
-                #simulate_mode=False   # << Disable simulate_mode for sweep
-            )
-
-            result = {
-                "crash_thresh": crash,
-                "spike_thresh": spike,
-                **metrics
-            }
-            results.append(result)
+                result = {
+                    "crash_thresh": crash,
+                    "spike_thresh": spike,
+                    "confidence_thresh": conf,
+                    **metrics
+                }
+                results.append(result)
 
     return pd.DataFrame(results)
 
-
 if __name__ == "__main__":
-    # Example threshold ranges
+    # Threshold Ranges (adjustable)
     crash_range = [1.5, 2.0, 2.5]
     spike_range = [1.5, 2.0, 2.5]
+    confidence_range = [0.5, 0.6, 0.7, 0.8]  # 🔧 NEW sweep dimension
 
     # Run sweep
-    df_sweep = sweep_thresholds(crash_range, spike_range)
+    df_sweep = sweep_thresholds(crash_range, spike_range, confidence_range)
 
-    # Save results to CSV
+    # Save to CSV
     df_sweep.to_csv("logs/threshold_sweep_results.csv", index=False)
     print("\n✅ Saved sweep results to logs/threshold_sweep_results.csv")
 
-    # Show top Sharpe combos
-    top = df_sweep.sort_values("sharpe", ascending=False).head()
-    print("\n🏆 Top Threshold Combos by Sharpe:")
-    print(top[["crash_thresh", "spike_thresh", "sharpe", "annualized_return", "profit_factor"]])
+    # 🧠 Composite scoring: prioritize good Sharpe + win rate
+    df_sweep["composite_score"] = df_sweep["sharpe"].fillna(0) * df_sweep["win_rate"].fillna(0)
+    best = df_sweep.sort_values("composite_score", ascending=False).head(1).iloc[0]
 
+    # Save best config
+    best_config = {
+        "crash_thresh": best["crash_thresh"],
+        "spike_thresh": best["spike_thresh"],
+        "confidence_thresh": best["confidence_thresh"]
+    }
 
-    df = pd.read_csv("logs/threshold_sweep_results.csv")
+    with open("configs/best_thresholds.json", "w") as f:
+        json.dump(best_config, f, indent=4)
+    print("\n💾 Best thresholds saved to configs/best_thresholds.json:")
+    print(best_config)
+
+    # Print Top 5
+    print("\n🏆 Top Composite Thresholds:")
+    print(df_sweep.sort_values("composite_score", ascending=False).head(5))
+
+    # Optional: Heatmap Visuals (aggregated over confidence threshold)
+    df_avg = df_sweep.groupby(["crash_thresh", "spike_thresh"]).agg({
+        "total_return": "mean",
+        "win_rate": "mean",
+        "profit_factor": "mean",
+        "trades": "sum"
+    }).reset_index()
 
     fig, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(28, 6))
 
+    pivot_return = df_avg.pivot(index="crash_thresh", columns="spike_thresh", values="total_return")
+    sns.heatmap(pivot_return, annot=True, fmt=".2%", cmap="viridis", ax=ax1, vmin=0, vmax=0.02)
+    ax1.set_title("Avg Return by Crash/Spike")
 
-    # Total Return heatmap
-    pivot_return = df_sweep.pivot(index="crash_thresh", columns="spike_thresh", values="total_return")
-    sns.heatmap(pivot_return, annot=True, fmt=".2%", cmap="viridis", ax=ax1,
-            vmin=0, vmax=0.02)  # Adjust range based on expectations
+    pivot_wr = df_avg.pivot(index="crash_thresh", columns="spike_thresh", values="win_rate")
+    sns.heatmap(pivot_wr, annot=True, fmt=".0%", cmap="coolwarm", ax=ax2, vmin=0, vmax=1)
+    ax2.set_title("Avg Win Rate by Crash/Spike")
 
-    ax1.set_title("Total Return by Threshold Combo")
-    ax1.set_xlabel("Spike Threshold")
-    ax1.set_ylabel("Crash Threshold")
+    df_avg["profit_factor_plot"] = df_avg["profit_factor"].replace(np.inf, 10)
+    pivot_pf = df_avg.pivot(index="crash_thresh", columns="spike_thresh", values="profit_factor_plot")
+    sns.heatmap(pivot_pf, annot=True, fmt=".2f", cmap="magma", ax=ax3)
+    ax3.set_title("Avg Profit Factor")
 
-    # Profit Factor heatmap (replace inf for clarity)
-    df_plot = df_sweep.copy()
-    df_plot["profit_factor_plot"] = df_plot["profit_factor"].replace(np.inf, 10)
-    pivot_pf = df_plot.pivot(index="crash_thresh", columns="spike_thresh", values="profit_factor_plot")
-    sns.heatmap(pivot_pf, annot=True, fmt=".2f", cmap="magma", ax=ax2)
-    ax2.set_title("Profit Factor by Threshold Combo")
-    ax2.set_xlabel("Spike Threshold")
-    ax2.set_ylabel("Crash Threshold")
-
-    # Win Rate heatmap
-    pivot_wr = df_sweep.pivot(index="crash_thresh", columns="spike_thresh", values="win_rate")
-    sns.heatmap(pivot_wr, annot=True, fmt=".0%", cmap="coolwarm", ax=ax3,
-            vmin=0, vmax=1)  # Ensures 0–100% scale across all heatmaps
-
-    ax3.set_title("Win Rate by Threshold Combo")
-    ax3.set_xlabel("Spike Threshold")
-    ax3.set_ylabel("Crash Threshold")
-
-    # Trade Count heatmap (or swap for Sharpe if preferred)
-    pivot_trades = df_sweep.pivot(index="crash_thresh", columns="spike_thresh", values="trades")
+    pivot_trades = df_avg.pivot(index="crash_thresh", columns="spike_thresh", values="trades")
     sns.heatmap(pivot_trades, annot=True, fmt=".0f", cmap="Greens", ax=ax4)
-    ax4.set_title("Trade Count by Threshold Combo")
-    ax4.set_xlabel("Spike Threshold")
-    ax4.set_ylabel("Crash Threshold")
-
+    ax4.set_title("Trade Count")
 
     plt.tight_layout()
     plt.show()
-
-
-
-
-    print("\n🔝 Top 5 Threshold Combos by Total Return:")
-    print(df_sweep.sort_values("total_return", ascending=False).head())
-
-    print("\n📈 Trades per Combo:")
-    print(df_sweep.pivot(index="crash_thresh", columns="spike_thresh", values="trades"))
-
-
-
-
