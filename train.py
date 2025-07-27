@@ -8,6 +8,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report
 from utils import get_feature_list
 from datetime import datetime
+from utils import add_features
+
 
 # Ensure required directories exist
 os.makedirs("logs", exist_ok=True)
@@ -25,6 +27,7 @@ from imblearn.over_sampling import SMOTE  # Only if using SMOTE
 import numpy as np  # Required for np.select
 
 def generate_more_labels(df):
+    df = df.copy()
     df["Future_Close"] = df["Close"].shift(-1)
     df["Future_Return"] = (df["Future_Close"] - df["Close"]) / df["Close"]
     df["Actual_Event"] = np.select(
@@ -32,6 +35,10 @@ def generate_more_labels(df):
         [1, 2],
         default=0
     )
+    
+    print("Label distribution (Actual_Event):")
+    print(df["Actual_Event"].value_counts())
+
     return df
 
 
@@ -72,7 +79,7 @@ def balance_dataset(X, y):
 
 
 
-def train_model(df, features=None, target="Event"):
+def train_model(df, features=None, target="Actual_Event"):
     if features is None:
         features = get_feature_list()
 
@@ -88,8 +95,14 @@ def train_model(df, features=None, target="Event"):
         X, y, test_size=0.2, random_state=42
     )
 
+    print("✅ Training target preview:")
+    print(y.value_counts())
+
+
     print("📊 Training set distribution before SMOTE:")
     print(y_train.value_counts(), "\n")
+
+
 
     # 3) SMOTE up-sampling on training set
     smote = SMOTE(random_state=42)
@@ -97,6 +110,9 @@ def train_model(df, features=None, target="Event"):
 
     print("📊 Training set distribution after SMOTE:")
     print(pd.Series(y_train_bal).value_counts(), "\n")
+
+    print("🧪 Test set distribution:")
+    print(pd.Series(y_test).value_counts(), "\n")
 
     # 4) Train
     model = RandomForestClassifier(n_estimators=100, random_state=42)
@@ -141,6 +157,8 @@ def build_retraining_dataset(df):
 
     X = merged[get_feature_list()]
     y = merged["Actual_Event"].astype(int)
+
+
 
     return X, y
 
@@ -191,8 +209,27 @@ def retrain_model(df, model_path='models/market_crash_model.pkl'):
     print("\n📊 Class distribution in retraining set:")
     print(y.value_counts())
 
+    
+
+
 
     # Save and plot
     joblib.dump(clf, model_path)
     print(f"✅ Model retrained and saved to {model_path}")
     plot_model_performance()
+
+if __name__ == "__main__":
+    from utils import load_SPY_data
+
+    print("📥 Loading SPY data...")
+    df = load_SPY_data()
+
+    df = add_features(df)
+
+
+    print("🏗️  Generating labels...")
+    df = generate_more_labels(df)
+
+    print("🧠 Training model...")
+    train_model(df)
+
