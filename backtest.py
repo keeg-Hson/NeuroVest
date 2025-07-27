@@ -28,6 +28,10 @@ def run_backtest(crash_thresh=2.0, spike_thresh=2.0, confidence_thresh=0.5, simu
     preds  = pd.read_csv("logs/daily_predictions.csv", parse_dates=["Timestamp"])
     spy_df = load_spy_daily_data()
 
+    print("\n🔎 Confidence Range Stats:")
+    print("📈 Raw Spike confidence range:", preds["Spike_Conf"].min(), "→", preds["Spike_Conf"].max())
+    print("📉 Raw Crash confidence range:", preds["Crash_Conf"].min(), "→", preds["Crash_Conf"].max())
+
     #apply confidence filtering to reduce noise
     
     preds = preds[
@@ -86,6 +90,9 @@ def run_backtest(crash_thresh=2.0, spike_thresh=2.0, confidence_thresh=0.5, simu
     else:
         print("⚠️  Not enough valid prediction rows to inject spike at index 10.")
         inject_idx=None
+
+    preds = preds.drop(columns=["Open", "Close"], errors="ignore")
+
 
 
     
@@ -173,6 +180,9 @@ def run_backtest(crash_thresh=2.0, spike_thresh=2.0, confidence_thresh=0.5, simu
         }
         return pd.DataFrame(), zero_metrics, simulate_mode
     
+    
+
+    
 
     # 4) convert to DataFrame & index
     trades = pd.DataFrame(trades_list).set_index("signal_time")
@@ -188,6 +198,8 @@ def run_backtest(crash_thresh=2.0, spike_thresh=2.0, confidence_thresh=0.5, simu
     trades["equity_curve"] = (1 + trades["return_pct"]).cumprod()
     total_return      = trades["equity_curve"].iloc[-1] - 1
     annualized_return = (1 + total_return) ** (252 / len(trades)) - 1
+
+    
 
 
     #Prevent sharpe divide-by-zero
@@ -279,6 +291,16 @@ def run_backtest(crash_thresh=2.0, spike_thresh=2.0, confidence_thresh=0.5, simu
     #    "annualized_return": annualized_return,
     #    "sharpe":            sharpe
     #}
+
+    #print("\n🔎 Confidence Range Stats:")
+    #print("📈 Raw Spike confidence range:", preds["Spike_Conf"].min(), "→", preds["Spike_Conf"].max())
+    #print("📉 Raw Crash confidence range:", preds["Crash_Conf"].min(), "→", preds["Crash_Conf"].max())
+    #print("📈 Spike confidence range:", preds["Spike_Conf"].min(), "→", preds["Spike_Conf"].max())
+    #print("📉 Crash confidence range:", preds["Crash_Conf"].min(), "→", preds["Crash_Conf"].max())
+
+
+
+
 
     return trades, metrics, simulate_mode
 
