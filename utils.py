@@ -118,7 +118,130 @@ def backup_logs():
     shutil.copy(LOG_FILE, f"backups/daily_predictions_{ts}.csv")
     shutil.copy(LABELED_LOG_FILE, f"backups/labeled_predictions_{ts}.csv")
 
+def summarize_trades(trades, initial_balance=10000, save_plot_path=None):
+    """
+    Summarizes trade results: final balance, win rate, trade count.
+    Compatible with trades from both simulate_trades() and run_backtest().
 
+    Returns dict with balance, win rate, and equity curve.
+    """
+    if not trades:
+        return {
+            'final_balance': initial_balance,
+            'total_trades': 0,
+            'win_rate': 0.0,
+            'equity_curve': [initial_balance]
+        }
+
+    equity = [initial_balance]
+    wins = 0
+    total_trades = 0
+
+    for trade in trades:
+        if 'ROI' in trade:
+            roi = trade['ROI']
+        elif 'Entry_Price' in trade and 'Exit_Price' in trade:
+            roi = (trade['Exit_Price'] - trade['Entry_Price']) / trade['Entry_Price']
+        else:
+            print("⚠️ Skipping trade — missing ROI or price data:", trade)
+            continue
+
+        total_trades += 1
+        if roi > 0:
+            wins += 1
+        equity.append(equity[-1] * (1 + roi))
+
+    final_balance = equity[-1]
+    win_rate = wins / total_trades if total_trades > 0 else 0.0
+
+    if save_plot_path:
+        import matplotlib.pyplot as plt
+        plt.figure(figsize=(8, 4))
+        plt.plot(equity, linewidth=2)
+        plt.title("Equity Curve")
+        plt.xlabel("Trade #")
+        plt.ylabel("Account Balance ($)")
+        plt.grid(True)
+        plt.tight_layout()
+        plt.savefig(save_plot_path)
+        plt.close()
+
+    return {
+        'final_balance': final_balance,
+        'total_trades': total_trades,
+        'win_rate': win_rate,
+        'equity_curve': equity
+    }
+
+import pandas as pd
+import os
+
+def load_SPY_data():
+    """
+    Loads SPY OHLCV data from local CSV.
+    Assumes it's saved in 'data/SPY.csv'.
+    """
+    spy_path = "data/SPY.csv"
+    if not os.path.exists(spy_path):
+        raise FileNotFoundError(f"[❌] Could not find SPY data at {spy_path}")
+
+    df = pd.read_csv(spy_path, parse_dates=["Date"])
+    df.set_index("Date", inplace=True)
+    df.sort_index(inplace=True)
+
+    return df
+
+def add_features(df):
+    df = df.copy()
+    df["MA_20"] = df["Close"].rolling(window=20).mean()
+    df["EMA_12"] = df["Close"].ewm(span=12, adjust=False).mean()
+    df["EMA_26"] = df["Close"].ewm(span=26, adjust=False).mean()
+    
+    df["MACD"] = df["EMA_12"] - df["EMA_26"]
+    df["MACD_Signal"] = df["MACD"].ewm(span=9, adjust=False).mean()
+    df["MACD_Histogram"] = df["MACD"] - df["MACD_Signal"]
+
+    df["BB_Width"] = (df["Close"].rolling(20).std() * 4) / df["Close"]
+
+    if "Volume" in df.columns:
+        df["OBV"] = (np.sign(df["Close"].diff()) * df["Volume"]).fillna(0).cumsum()
+    else:
+        df["OBV"] = 0
+
+
+    if "Volume" in df.columns:
+        df["Vol_Ratio"] = df["Volume"] / df["Volume"].rolling(window=10).mean()
+    else:
+        df["Vol_Ratio"] = 1  # Fallback value or skip the feature entirely
+
+
+    df["Price_Momentum_10"] = df["Close"] - df["Close"].shift(10)
+    df["Acceleration"] = df["Price_Momentum_10"] - df["Price_Momentum_10"].shift(5)
+
+    delta = df["Close"].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+    RS = gain / loss
+    df["RSI"] = 100 - (100 / (1 + RS))
+    df["RSI_Delta"] = df["RSI"].diff()
+
+    df["ZMomentum"] = (df["Close"] - df["Close"].rolling(10).mean()) / df["Close"].rolling(10).std()
+
+    df["Return_Lag1"] = df["Close"].pct_change(1)
+    df["Return_Lag3"] = df["Close"].pct_change(3)
+    df["Return_Lag5"] = df["Close"].pct_change(5)
+
+    df["RSI_Lag_1"] = df["RSI"].shift(1)
+    df["RSI_Lag_3"] = df["RSI"].shift(3)
+    df["RSI_Lag_5"] = df["RSI"].shift(5)
+
+    df.dropna(inplace=True)
+    return df
+
+def save_predictions_dataframe(df, path="logs/latest_predictions.csv"):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    df.to_csv(path, index=False)
+    print(f"[💾] Predictions saved to {path}")
 
 
 
