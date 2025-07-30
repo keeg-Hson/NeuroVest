@@ -5,6 +5,10 @@ from datetime import datetime
 import pandas as pd
 import numpy as np
 import os, shutil, datetime
+import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 
@@ -243,7 +247,54 @@ def save_predictions_dataframe(df, path="logs/latest_predictions.csv"):
     df.to_csv(path, index=False)
     print(f"[💾] Predictions saved to {path}")
 
+#notification helper
+def notify_user(prediction, crash_conf, spike_conf):
+    """
+    Triggers alert if crash or spike is highly probable.
+    """
+    should_alert = False
+    label = "NORMAL"
 
+    if prediction == 1 and crash_conf >= 0.7:
+        should_alert = True
+        label = "CRASH"
+    elif prediction == 2 and spike_conf >= 0.7:
+        should_alert = True
+        label = "SPIKE"
+
+    if should_alert:
+        print("\n🚨🚨🚨 MARKET ALERT 🚨🚨🚨")
+        print(f"⚠️  High-confidence {label} detected!")
+        print(f"📉 Crash: {crash_conf:.2f} | 📈 Spike: {spike_conf:.2f}\n")
+
+        # Make a system beep
+        try:
+            os.system('play -nq -t alsa synth 0.3 sine 880')  # Linux
+        except:
+            os.system('printf "\a"')  # Fallback for macOS/Linux beep
+
+#telegram bot
+def send_telegram_alert(message, token=None, chat_id=None):
+    token = token or os.getenv("TELEGRAM_TOKEN")
+    chat_id = chat_id or os.getenv("TELEGRAM_CHAT_ID")
+
+    if not token or not chat_id:
+        print("⚠️ Telegram credentials missing.")
+        return
+
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": message,
+        "parse_mode": "Markdown"
+    }
+
+    try:
+        response = requests.post(url, data=payload)
+        if response.status_code != 200:
+            print(f"⚠️ Telegram error: {response.text}")
+    except Exception as e:
+        print(f"⚠️ Telegram exception: {e}")
 
 
 
