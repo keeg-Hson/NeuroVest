@@ -83,8 +83,8 @@ def train_model(df, features=None, target="Actual_Event"):
     if features is None:
         features = get_feature_list()
 
-    X = df[features]
-    y = df[target]
+    X = df[get_feature_list()]  
+    y = df[target]  #where target="Actual_Event"
 
     # 1) Show raw class counts
     print("\n📊 Overall class distribution before splitting:")
@@ -124,7 +124,7 @@ def train_model(df, features=None, target="Actual_Event"):
     print(classification_report(y_test, y_pred, digits=4))
 
     # 6) Persist the model
-    out_path = "models/market_crash_model.pkl"
+    out_path = "models/rf_trained.pkl"
     joblib.dump(model, out_path)
     print(f"✅ Model trained and saved to '{out_path}'\n")
 
