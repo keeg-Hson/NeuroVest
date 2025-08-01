@@ -38,16 +38,19 @@ def get_feature_list():
     ]
 
 # --- Log prediction to file ---
-def log_prediction_to_file(timestamp, prediction, crash_conf, spike_conf, close_price, log_path=LOG_FILE):
+def log_prediction_to_file(timestamp, prediction, crash_conf, spike_conf, close_price, open_price=None, high=None, low=None, log_path=LOG_FILE):
     print("[DEBUG] Entering log_prediction_to_file")
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     file_exists = os.path.isfile(log_path)
 
-    entry = f"{timestamp},{prediction},{crash_conf:.4f},{spike_conf:.4f},{close_price:.2f}\n"
+    headers = "Date,Timestamp,Prediction,Crash_Conf,Spike_Conf,Close_Price,Open,High,Low\n"
+    date_str = timestamp.date()
+
+    entry = f"{date_str},{timestamp},{prediction},{crash_conf:.4f},{spike_conf:.4f},{close_price:.2f},{open_price},{high},{low}\n"
 
     with open(log_path, "a") as f:
         if not file_exists or os.path.getsize(log_path) == 0:
-            f.write("Timestamp,Prediction,Crash_Conf,Spike_Conf,Close_Price\n")  # ✅ FIXED
+            f.write(headers)
         f.write(entry)
         print(f"[DEBUG] Wrote entry to {log_path}: {entry.strip()}")
 
@@ -181,19 +184,16 @@ import pandas as pd
 import os
 
 def load_SPY_data():
-    """
-    Loads SPY OHLCV data from local CSV.
-    Assumes it's saved in 'data/SPY.csv'.
-    """
     spy_path = "data/SPY.csv"
     if not os.path.exists(spy_path):
         raise FileNotFoundError(f"[❌] Could not find SPY data at {spy_path}")
 
-    df = pd.read_csv(spy_path, parse_dates=["Date"])
-    df.set_index("Date", inplace=True)
+    df = pd.read_csv(spy_path, skiprows=[1], index_col=0, parse_dates=True)
     df.sort_index(inplace=True)
 
     return df
+
+
 
 def add_features(df):
     df = df.copy()
