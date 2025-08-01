@@ -1,80 +1,118 @@
 #trade_simulator.py
-# This file is used to simulate trades based on the backtest results
-
-# trade_simulator.py
-# Simulates trades based on daily_predictions.csv
-
 import pandas as pd
 from utils import summarize_trades
-#from simulate_trades import simulate_trades  # if simulate_trades is in a separate file, adjust import accordingly
+import os
 
-def simulate_trades(predictions_df, initial_balance=10000, hold_days=3):
-    """
-    Simulates trades based on spike/crash predictions.
-    - Buy on spike
-    - Sell on crash or after hold_days
+# === CONFIG ===
+INITIAL_BALANCE = 10000.0
+HOLD_DAYS = 3
+TRADE_LOG_PATH = "logs/trade_log.csv"
 
-    Returns:
-        final_balance (float), trades (list of dicts)
-    """
+# 🔒 New Constraints
+MAX_TRADE_AMOUNT = 2000           # Hard cap per trade
+MAX_SHARES = 1000                 # Cap number of shares bought
+REINVEST_FRACTION = 0.2           # Use only 20% of available cash per trade
+REQUIRE_PROFIT = True             # Only sell if profitable
+
+def simulate_trades(df, initial_balance=INITIAL_BALANCE, hold_days=HOLD_DAYS):
     balance = initial_balance
-    in_position = False
-    entry_price = 0
+    position = 0
+    entry_price = None
     entry_date = None
     trades = []
 
-    for idx, row in predictions_df.iterrows():
+    for i, row in df.iterrows():
         date = pd.to_datetime(row['Timestamp'])
         prediction = row['Prediction']
-        price = row['Close_Price']
+        price = row.get("Close_Price", row.get("Close"))
 
-        # Buy on spike
-        if prediction == 2 and not in_position:
-            in_position = True
-            entry_price = price
-            entry_date = date
+        if price is None or pd.isna(price):
+            continue
 
-        # Sell on crash or hold limit
-        if in_position:
-            if (date - entry_date).days >= hold_days or prediction == 1:
-                roi = (price - entry_price) / entry_price
-                balance *= (1 + roi)
+        # BUY logic
+        if prediction == 2 and position == 0:
+            invest_amount = min(balance * REINVEST_FRACTION, MAX_TRADE_AMOUNT)
+            shares_to_buy = int(min(invest_amount // price, MAX_SHARES))
+            if shares_to_buy > 0:
+                cost = price * shares_to_buy
+                balance -= cost
+                position = shares_to_buy
+                entry_price = price
+                entry_date = date
+
                 trades.append({
-                    'Entry_Timestamp': entry_date,
-                    'Exit_Timestamp': date,
-                    'Entry_Price': entry_price,
-                    'Exit_Price': price,
-                    'ROI': roi
+                    "Date": date,
+                    "Action": "BUY",
+                    "Price": round(price, 2),
+                    "Shares": shares_to_buy,
+                    "Balance": round(balance, 2),
+                    "Position": position
                 })
-                in_position = False
+
+        # SELL logic
+        elif position > 0 and entry_price is not None and (
+            prediction == 1 or (date - entry_date).days >= hold_days
+        ):
+            roi = (price - entry_price) / entry_price
+            if not REQUIRE_PROFIT or roi > 0:
+                proceeds = price * position
+                profit = proceeds - (entry_price * position)
+                balance += proceeds
+
+                trades.append({
+                    "Date": date,
+                    "Action": "SELL",
+                    "Price": round(price, 2),
+                    "Shares": position,
+                    "Balance": round(balance, 2),
+                    "Position": 0,
+                    "Profit": round(profit, 2),
+                    "ROI": round(roi, 4)
+                })
+
+                position = 0
+                entry_price = None
+                entry_date = None
+
+    # Optional: liquidate final position
+    if position > 0:
+        final_price = df.iloc[-1].get("Close_Price", df.iloc[-1].get("Close"))
+        if final_price is not None and (not REQUIRE_PROFIT or final_price > entry_price):
+            proceeds = final_price * position
+            profit = proceeds - (entry_price * position)
+            balance += proceeds
+            trades.append({
+                "Date": df.iloc[-1]['Timestamp'],
+                "Action": "FINAL SELL",
+                "Price": round(final_price, 2),
+                "Shares": position,
+                "Balance": round(balance, 2),
+                "Position": 0,
+                "Profit": round(profit, 2),
+                "ROI": round((final_price - entry_price) / entry_price, 4)
+            })
 
     return balance, trades
 
-
-def save_trade_log(trades, output_path="logs/trade_log.csv"):
+def save_trade_log(trades, path=TRADE_LOG_PATH):
     if trades:
-        df = pd.DataFrame(trades)
-        df.to_csv(output_path, index=False)
-        print(f"✅ Trade log saved to {output_path}")
+        pd.DataFrame(trades).to_csv(path, index=False)
+        print(f"✅ Trade log saved to {path}")
     else:
         print("⚠️ No trades executed.")
 
-# === Main runner ===
+# === MAIN RUNNER ===
 if __name__ == "__main__":
-    initial_balance = 10000
     predictions = pd.read_csv("logs/daily_predictions.csv")
-    
-    # Run trade simulation
-    final_balance, trade_list = simulate_trades(predictions, initial_balance=initial_balance)
+    final_balance, trade_log = simulate_trades(predictions)
 
-    # Save trade log
-    save_trade_log(trade_list)
+    save_trade_log(trade_log)
 
-    # Summarize and plot
-    summary = summarize_trades(trade_list, initial_balance, save_plot_path="logs/equity_drawdown_plot.png")
-
-    # Print summary
+    summary = summarize_trades(
+        trade_log,
+        INITIAL_BALANCE,
+        save_plot_path="logs/equity_drawdown_plot.png"
+    )
     print(f"\n💰 Final Balance: ${summary['final_balance']:.2f}")
     print(f"📈 Total trades: {summary['total_trades']}")
     print(f"✅ Win rate: {summary['win_rate'] * 100:.2f}%")
-    print("📊 Equity curve saved to logs/equity_drawdown_plot.png")
