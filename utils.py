@@ -54,6 +54,23 @@ def log_prediction_to_file(timestamp, prediction, crash_conf, spike_conf, close_
         f.write(entry)
         print(f"[DEBUG] Wrote entry to {log_path}: {entry.strip()}")
 
+    #simplified signal log for simulation
+    signals_row = {
+        "Date": date_str,
+        "Signal": "BUY" if prediction == 2 else "SELL" if prediction == 1 else "HOLD",
+        "Confidence": max(crash_conf, spike_conf),
+        "Price": close_price,
+        "Spike_Conf": spike_conf,
+        "Crash_Conf": crash_conf
+    }
+
+    signals_path = "logs/signals.csv"
+    signals_df = pd.DataFrame([signals_row])
+    if os.path.exists(signals_path):
+        signals_df.to_csv(signals_path, mode="a", header=False, index=False)
+    else:
+        signals_df.to_csv(signals_path, mode="w", header=True, index=False)
+
 # --- Human-readable prediction output ---
 def in_human_speak(prediction, crash_conf, spike_conf):
     if prediction == 1:
