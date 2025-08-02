@@ -9,7 +9,7 @@ os.system("python3 update_spy_data.py")
 
 # === Step 2: Run live predictions ===
 print("🧠 Step 2: Running predictions...")
-os.system("python3 predict.py")
+#os.system("python3 predict.py")
 
 # === Step 3: Log signals (spike/crash as BUY/SELL) ===
 print("📊 Step 3: Logging signals...")
@@ -28,3 +28,10 @@ print("🖼️ Step 6: Visualizing overlays...")
 os.system("python3 viz.py")
 
 print("✅ All pipeline steps complete.")
+
+
+# === Step 7: Automate full daily batch predicitons ===
+from predict import run_predictions
+print("🔄 Step 7: Running daily predictions...")
+run_predictions()
+
