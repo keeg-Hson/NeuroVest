@@ -6,6 +6,8 @@ import pandas as pd
 import numpy as np
 import os, shutil, datetime
 import requests
+import pandas_ta as ta
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -34,8 +36,13 @@ def get_feature_list():
         "BB_Width", "OBV", "Vol_Ratio", "Price_Momentum_10", "Acceleration",
         "RSI", "RSI_Delta", "ZMomentum",
         "Return_Lag1", "Return_Lag3", "Return_Lag5",
-        "RSI_Lag_1", "RSI_Lag_3", "RSI_Lag_5"
+        "RSI_Lag_1", "RSI_Lag_3", "RSI_Lag_5",
+        "Rolling_STD_5", "Daily_Return",
+        "MACD_x_RSI", "Volume_per_ATR",
+        "Stoch_K", "Stoch_D"
     ]
+
+
 
 # --- Log prediction to file ---
 def log_prediction_to_file(timestamp, prediction, crash_conf, spike_conf, close_price, open_price=None, high=None, low=None, log_path=LOG_FILE):
@@ -205,59 +212,82 @@ def load_SPY_data():
     if not os.path.exists(spy_path):
         raise FileNotFoundError(f"[❌] Could not find SPY data at {spy_path}")
 
-    df = pd.read_csv(spy_path, skiprows=[1], index_col=0, parse_dates=True)
+    df = pd.read_csv(spy_path, index_col=0, parse_dates=True) #add back param at some point:  |, skiprows=[1]|
     df.sort_index(inplace=True)
-
     return df
 
 
 
-def add_features(df):
+
+def add_features(df): #calculates technical indicators
     df = df.copy()
+
+    # --- Price-based Indicators ---
     df["MA_20"] = df["Close"].rolling(window=20).mean()
     df["EMA_12"] = df["Close"].ewm(span=12, adjust=False).mean()
     df["EMA_26"] = df["Close"].ewm(span=26, adjust=False).mean()
-    
+
+    # --- MACD Indicators ---
     df["MACD"] = df["EMA_12"] - df["EMA_26"]
     df["MACD_Signal"] = df["MACD"].ewm(span=9, adjust=False).mean()
     df["MACD_Histogram"] = df["MACD"] - df["MACD_Signal"]
 
-    df["BB_Width"] = (df["Close"].rolling(20).std() * 4) / df["Close"]
-
-    if "Volume" in df.columns:
-        df["OBV"] = (np.sign(df["Close"].diff()) * df["Volume"]).fillna(0).cumsum()
-    else:
-        df["OBV"] = 0
-
-
-    if "Volume" in df.columns:
-        df["Vol_Ratio"] = df["Volume"] / df["Volume"].rolling(window=10).mean()
-    else:
-        df["Vol_Ratio"] = 1  # Fallback value or skip the feature entirely
-
-
-    df["Price_Momentum_10"] = df["Close"] - df["Close"].shift(10)
-    df["Acceleration"] = df["Price_Momentum_10"] - df["Price_Momentum_10"].shift(5)
-
+    # --- RSI & Momentum ---
     delta = df["Close"].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(14).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-    RS = gain / loss
+    gain = delta.where(delta > 0, 0).rolling(14).mean()
+    loss = -delta.where(delta < 0, 0).rolling(14).mean()
+    RS = gain / (loss + 1e-9)
     df["RSI"] = 100 - (100 / (1 + RS))
     df["RSI_Delta"] = df["RSI"].diff()
+    df["ZMomentum"] = (df["Close"] - df["Close"].rolling(10).mean()) / (df["Close"].rolling(10).std() + 1e-9)
+    df["Price_Momentum_10"] = df["Close"] - df["Close"].shift(10)
+    df["Acceleration"] = df["Price_Momentum_10"].diff()
 
-    df["ZMomentum"] = (df["Close"] - df["Close"].rolling(10).mean()) / df["Close"].rolling(10).std()
-
+    # --- Lagged Features ---
     df["Return_Lag1"] = df["Close"].pct_change(1)
     df["Return_Lag3"] = df["Close"].pct_change(3)
     df["Return_Lag5"] = df["Close"].pct_change(5)
-
     df["RSI_Lag_1"] = df["RSI"].shift(1)
     df["RSI_Lag_3"] = df["RSI"].shift(3)
     df["RSI_Lag_5"] = df["RSI"].shift(5)
 
-    df.dropna(inplace=True)
+        # --- Bollinger Band Width ---
+    rolling_std = df["Close"].rolling(20).std()
+    upper_band = df["MA_20"] + (2 * rolling_std)
+    lower_band = df["MA_20"] - (2 * rolling_std)
+    df["BB_Width"] = (upper_band - lower_band) / df["MA_20"]
+
+    # --- On-Balance Volume (OBV) ---
+    df["OBV"] = (np.sign(df["Close"].diff()) * df["Volume"]).fillna(0).cumsum()
+
+    # --- Volume Ratio ---
+    df["Vol_Ratio"] = df["Volume"] / df["Volume"].rolling(10).mean()
+
+    # --- Rolling Std Dev ---
+    df["Rolling_STD_5"] = df["Close"].rolling(window=5).std()
+
+    # --- Daily Return ---
+    df["Daily_Return"] = df["Close"].pct_change()
+
+    # --- MACD × RSI Interaction ---
+    df["MACD_x_RSI"] = df["MACD"] * df["RSI"]
+
+    # --- Volume per ATR ---
+    atr = df["High"].rolling(14).max() - df["Low"].rolling(14).min()
+    df["Volume_per_ATR"] = df["Volume"] / (atr + 1e-9)
+
+    # --- Stochastic Oscillator ---
+    low_14 = df["Low"].rolling(14).min()
+    high_14 = df["High"].rolling(14).max()
+    df["Stoch_K"] = 100 * ((df["Close"] - low_14) / (high_14 - low_14 + 1e-9))
+    df["Stoch_D"] = df["Stoch_K"].rolling(3).mean()
+
+
     return df
+
+    # --- Volatility Indicators -
+
+
 
 def save_predictions_dataframe(df, path="logs/latest_predictions.csv"):
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -312,6 +342,25 @@ def send_telegram_alert(message, token=None, chat_id=None):
             print(f"⚠️ Telegram error: {response.text}")
     except Exception as e:
         print(f"⚠️ Telegram exception: {e}")
+
+def label_events_volatility_adjusted(df, window=3, vol_window=5, multiplier=1.5):
+    df = df.copy()
+    
+    daily_return = df["Close"].pct_change()
+    rolling_vol = daily_return.rolling(vol_window).std()
+
+    upper_thresh = rolling_vol * multiplier
+    lower_thresh = -rolling_vol * multiplier
+
+    future_return = df["Close"].pct_change(periods=window).shift(-window)
+
+    df["Event"] = 0  # default: no event
+    df.loc[future_return > upper_thresh, "Event"] = 2  # spike
+    df.loc[future_return < lower_thresh, "Event"] = 1  # crash
+
+    return df 
+
+
 
 
 
