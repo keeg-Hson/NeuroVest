@@ -40,6 +40,9 @@ from train import retrain_model
 from train import retrain_model
 import os
 from data_utils import load_spy_daily_data
+from utils import label_events_future_window
+df = label_events_future_window(df, window=3)
+
 
 spy_df = load_spy_daily_data()
 # now spy_df.index is datetime element that can be sliced, resampled, backtested, etc.
@@ -447,7 +450,7 @@ def daily_job():
 
     # 1) feature-engineer & label
     df = calculate_technical_indicators(df)
-    df = label_events(df)
+    df = label_events_future_window(df, crash_threshold=-0.03, spike_threshold=0.03, window=3)
     df = df.replace([np.inf, -np.inf], np.nan).dropna()
 
     #daily job counter (events)
