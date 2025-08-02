@@ -4,7 +4,9 @@ import os
 import joblib
 import pandas as pd #says "pandas" is not used, but it is used in the function load_SPY_data
 from datetime import datetime
+
 from dotenv import load_dotenv
+import pandas_ta as ta
 from utils import (
     get_feature_list,
     log_prediction_to_file,
@@ -51,8 +53,11 @@ def live_predict(feature_df, raw_df, model_path=MODEL_PATH):
 
         close_price = raw_latest["Close"]
         open_price = raw_latest["Open"]
-        high = raw_latest["High"]
-        low = raw_latest["Low"]
+        #high = raw_latest["High"]
+        #low = raw_latest["Low"]
+        high = raw_latest.get("High", -1) if not pd.isna(raw_latest.get("High")) else -1
+        low = raw_latest.get("Low", -1) if not pd.isna(raw_latest.get("Low")) else -1
+
 
         timestamp = datetime.now()
         log_prediction_to_file(
@@ -102,14 +107,31 @@ def run_predictions(confidence_threshold=0.80):
     raw_df = load_data()
     feature_df = add_features(raw_df)
     model = joblib.load(MODEL_PATH)
-    X = feature_df[model.feature_names_in_]
-    preds = model.predict(X)
 
+    X = feature_df[model.feature_names_in_]
+
+    # Predict class labels and probabilities
+    preds = model.predict(X)
+    probs = model.predict_proba(X)
+
+    # Map classes to columns
+    class_indices = {label: idx for idx, label in enumerate(model.classes_)}
+
+    # Extract confidences for spike (2) and crash (1)
+    crash_conf = probs[:, class_indices.get(1, 0)]  # default to 0 if not found
+    spike_conf = probs[:, class_indices.get(2, 0)]
+
+    # Attach predictions
     feature_df["Prediction"] = preds
+    feature_df["Crash_Conf"] = crash_conf
+    feature_df["Spike_Conf"] = spike_conf
+    feature_df["Confidence"] = probs.max(axis=1)
     feature_df["Timestamp"] = feature_df.index
 
+    # Save and return
     feature_df.to_csv("logs/daily_predictions.csv", index=False)
     return feature_df
+
 
 
 # --- MAIN EXECUTION ---
