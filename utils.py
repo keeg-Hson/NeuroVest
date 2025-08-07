@@ -9,6 +9,7 @@ import requests
 import pandas_ta as ta
 
 from dotenv import load_dotenv
+from external_signals import add_external_signals #EXTERNAL SIGNALS MODULE
 
 load_dotenv()
 
@@ -212,14 +213,20 @@ def load_SPY_data():
     if not os.path.exists(spy_path):
         raise FileNotFoundError(f"[❌] Could not find SPY data at {spy_path}")
 
-    df = pd.read_csv(spy_path, index_col=0, parse_dates=True) #add back param at some point:  |, skiprows=[1]|
+    df = pd.read_csv(spy_path, index_col=0, parse_dates=True)  # , skiprows=[1] if needed later
     df.sort_index(inplace=True)
+
+    # Drop last row if critical columns are missing
+    if df.iloc[-1][["High", "Low", "Volume"]].isna().any():
+        df = df.iloc[:-1]
+
     return df
 
 
 
 
-def add_features(df): #calculates technical indicators
+
+def add_features(df):
     df = df.copy()
 
     # --- Price-based Indicators ---
@@ -251,17 +258,21 @@ def add_features(df): #calculates technical indicators
     df["RSI_Lag_3"] = df["RSI"].shift(3)
     df["RSI_Lag_5"] = df["RSI"].shift(5)
 
-        # --- Bollinger Band Width ---
+    # --- Bollinger Band Width ---
     rolling_std = df["Close"].rolling(20).std()
     upper_band = df["MA_20"] + (2 * rolling_std)
     lower_band = df["MA_20"] - (2 * rolling_std)
-    df["BB_Width"] = (upper_band - lower_band) / df["MA_20"]
+    df["BB_Width"] = (upper_band - lower_band) / (df["MA_20"] + 1e-9)
+
+    # --- Volatility (define vol_window first!) ---
+    vol_window = 20  # Set your default volatility window here
+    #df["Volatility"] = df["Close"].rolling(window=vol_window).std()
 
     # --- On-Balance Volume (OBV) ---
     df["OBV"] = (np.sign(df["Close"].diff()) * df["Volume"]).fillna(0).cumsum()
 
     # --- Volume Ratio ---
-    df["Vol_Ratio"] = df["Volume"] / df["Volume"].rolling(10).mean()
+    df["Vol_Ratio"] = df["Volume"] / (df["Volume"].rolling(10).mean() + 1e-9)
 
     # --- Rolling Std Dev ---
     df["Rolling_STD_5"] = df["Close"].rolling(window=5).std()
@@ -282,10 +293,30 @@ def add_features(df): #calculates technical indicators
     df["Stoch_K"] = 100 * ((df["Close"] - low_14) / (high_14 - low_14 + 1e-9))
     df["Stoch_D"] = df["Stoch_K"].rolling(3).mean()
 
+    # --- External Macro + Sentiment Signals ---
+    df = add_external_signals(df)
 
-    return df
+    # --- Final clean-up: drop NaNs from anywhere ---
+    #df.dropna(inplace=True)
+    # Only return warning here — let train.py handle NaN rows later
+    if df.isna().sum().sum() > 0:
+        print("⚠️ Warning: NaNs remain in feature set — will be handled after labeling.")
 
-    # --- Volatility Indicators -
+
+    # --- Collect feature columns (only numeric & known) ---
+    feature_cols = [
+        "MA_20", "EMA_12", "EMA_26", "MACD", "MACD_Signal", "MACD_Histogram",
+        "RSI", "RSI_Delta", "ZMomentum", "Price_Momentum_10", "Acceleration",
+        "Return_Lag1", "Return_Lag3", "Return_Lag5", "RSI_Lag_1", "RSI_Lag_3", "RSI_Lag_5",
+        "BB_Width", "Volatility", "OBV", "Vol_Ratio", "Rolling_STD_5", "Daily_Return",
+        "MACD_x_RSI", "Volume_per_ATR", "Stoch_K", "Stoch_D",
+        "CPI", "Unemployment", "InterestRate", "YieldCurve",
+        "ConsumerSentiment", "IndustrialProduction", "VIX",
+        "News_Sentiment", "Reddit_Sentiment"
+    ]
+
+    return df, feature_cols
+
 
 
 
@@ -343,22 +374,48 @@ def send_telegram_alert(message, token=None, chat_id=None):
     except Exception as e:
         print(f"⚠️ Telegram exception: {e}")
 
-def label_events_volatility_adjusted(df, window=3, vol_window=5, multiplier=1.5):
+def label_events_volatility_adjusted(df, window=3, vol_window=10, multiplier=0.2):
     df = df.copy()
-    
-    daily_return = df["Close"].pct_change()
-    rolling_vol = daily_return.rolling(vol_window).std()
+    df["Event"] = 0  # Default: no event
 
-    upper_thresh = rolling_vol * multiplier
-    lower_thresh = -rolling_vol * multiplier
+    df["Volatility"] = df["Close"].rolling(window=vol_window).std()
 
-    future_return = df["Close"].pct_change(periods=window).shift(-window)
+    for i in range(window, len(df)):
+        window_slice = df.iloc[i - window:i + 1]
+        current_close = df.iloc[i]["Close"]
+        current_vol = df.iloc[i]["Volatility"]
 
-    df["Event"] = 0  # default: no event
-    df.loc[future_return > upper_thresh, "Event"] = 2  # spike
-    df.loc[future_return < lower_thresh, "Event"] = 1  # crash
+        if pd.isna(current_vol) or current_vol == 0:
+            continue
 
-    return df 
+        spike_threshold = window_slice["Close"].mean() + multiplier * current_vol
+        crash_threshold = window_slice["Close"].mean() - multiplier * current_vol
+
+        if current_close > spike_threshold:
+            df.at[df.index[i], "Event"] = 2
+        elif current_close < crash_threshold:
+            df.at[df.index[i], "Event"] = 1
+
+    return df
+
+
+def label_events_simple(df, window=3, pct_threshold=0.01):
+    """
+    Labels spikes and crashes based on simple forward percentage movement over 'window' days.
+    """
+    df = df.copy()
+    df["Future_Return"] = (df["Close"].shift(-window) - df["Close"]) / df["Close"]
+
+    conditions = [
+        df["Future_Return"] <= -pct_threshold,  # Crash
+        df["Future_Return"] >= pct_threshold    # Spike
+    ]
+
+    choices = [1, 2]  # 1 = crash, 2 = spike
+    df["Event"] = np.select(conditions, choices, default=0)
+
+    return df
+
 
 
 
