@@ -12,7 +12,7 @@ from imblearn.over_sampling import SMOTE
 
 from xgboost import XGBClassifier
 
-from utils import load_SPY_data, add_features, label_events_volatility_adjusted, get_feature_list
+from utils import load_SPY_data, add_features, label_events_volatility_adjusted, get_feature_list, label_events_simple
 
 import warnings
 warnings.filterwarnings("ignore", message=r"\[.*\] WARNING: .*Parameters: { \"use_label_encoder\" } are not used\.")
@@ -24,32 +24,120 @@ os.makedirs("models", exist_ok=True)
 
 def train_best_xgboost_model(df):
     print("\n📊 Generating features...")
+    df, all_feature_cols = add_features(df)
+
+    try:
+        with open("logs/top_signals.txt", "r") as f:
+            top_lines = f.readlines()
+            top_signals = [
+                line.strip().split(",")[0] for line in top_lines
+                if line.strip() and not line.startswith("Top")
+            ]
+
+            print(f"✅ Loaded top signals: {top_signals}")
+            # Ensure top_signals actually exist in dataframe and have minimal missing data
+            MIN_VALID_ROWS = 100  # You can tune this as needed
+            top_signals = [
+                sig for sig in top_signals
+                if sig in df.columns and df[sig].notna().sum() > MIN_VALID_ROWS
+            ]
+            print(f"✅ Filtered top signals with data: {top_signals}")
+
+    except FileNotFoundError:
+        print("⚠️ Warning: logs/top_signals.txt not found. Using all available features instead.")
+        top_signals = all_feature_cols
 
 
-    df = add_features(df)
+    # Limit feature set
+    feature_cols = [col for col in all_feature_cols if col in top_signals]
+    print(f"🧪 Using top correlated signals only: {feature_cols}")
+
+
+    # Recalculate volatility BEFORE dropna and BEFORE labeling
+    vol_window = 20
+    df['Volatility'] = df['Close'].rolling(window=vol_window).std()
+
+    print("\n🧪 Sample volatility values (after rolling std applied):")
+    print(df['Volatility'].dropna().tail(10))
+
+
+
+
     from utils import label_events_volatility_adjusted
-    
     print("✅ Type after add_features:", type(df))
-    df = label_events_volatility_adjusted(df, window=3, vol_window=5, multiplier=1.5)
+
+    df = label_events_volatility_adjusted(df, window=3, vol_window=10, multiplier=0.2)
 
 
-  
+    print(df[["Date", "Close", "Event"]].tail(15))  # see some final rows
 
+
+    print("\n📊 Distribution of Event labels (incl. NaNs):")
+    print(df["Event"].value_counts(dropna=False))
+
+    print("\n📊 Number of unique Events:")
+    print(df["Event"].nunique(dropna=False))
+
+
+    print("✅ Event label distribution:")
+    print(df["Event"].value_counts(dropna=False))
+
+
+    print("\n✅ Unique Event values + counts:")
+    print(df["Event"].value_counts(dropna=False))
+
+
+
+    print(df["Event"].value_counts(dropna=False))
+    print("\n🧪 Columns after labeling:", df.columns)
+
+
+    if df["Event"].nunique() <= 1:
+        print("❌ Not enough class diversity in Event labels — training aborted.")
+        return False
     
+    #print(f"📊 Grid search results saved to logs/gridsearch_xgb_results.csv")
+    #return True #code breaks here, im not too sure why. get this re written at some point. i know its indentation relsatetd
 
-    #clean NaNs before SMOTE
-    before = len(df)
-    df = df.dropna(subset=get_feature_list() + ["Event"])
-    after = len(df)
-    print(f"🧹 Dropped {before - after} rows with NaNs before SMOTE.")
 
-    # Check if we have enough data after cleaning
-    X = df[get_feature_list()]
+
+
+    print("\n🧪 Preview of Event labels:")
+    print(df["Event"].value_counts(dropna=False).head())
+
+    print("\n📉 Sample Close prices with labels:")
+    print(df[["Close", "Event"]].tail(10))
+
+
+
+    # Debug before dropping NaNs
+    print("\n🧪 Event value counts (incl. NaN):")
+    print(df["Event"].value_counts(dropna=False))
+
+    print("\n🧪 Missing values per feature column:")
+    print(df[feature_cols].isna().sum())
+
+    print(f"\n🧪 Total rows before dropna: {len(df)}")
+
+    # Filter feature_cols to only those with valid values
+    valid_feature_cols = [col for col in feature_cols if df[col].notna().sum() > 0]
+    required_cols = ["Event"] + valid_feature_cols
+
+    df = df.dropna(subset=required_cols)
+
+    print(f"\n🧹 Dropped {len(df)} rows with NaNs in Event or key features.")
+    print(f"📏 Rows remaining: {len(df)}")
+
+    # Exit early if no data left
+    if len(df) == 0:
+        print("❌ No data left after dropping NaNs. Check signal columns or event labeling.")
+        return
+
+    X = df[valid_feature_cols]
     y = df["Event"]
 
     print("\n📊 Original class distribution:")
     print(y.value_counts())
-
 
     # Apply SMOTE to balance the dataset
     smote = SMOTE(random_state=42)
@@ -111,12 +199,17 @@ def train_best_xgboost_model(df):
     grid_results.to_csv("logs/gridsearch_xgb_results.csv", index=False)
     print(f"📊 Grid search results saved to logs/gridsearch_xgb_results.csv")
 
+
 if __name__ == "__main__":
     print("📥 Loading SPY data...")
     df = load_SPY_data()
-    train_best_xgboost_model(df)
-    from predict import run_predictions
-    run_predictions() #RUN BATCH PREDICTIONS AFTER TRAINING
+
+    success = train_best_xgboost_model(df)
+
+    if success:
+        from predict import run_predictions
+        run_predictions()
+
 
 
 
