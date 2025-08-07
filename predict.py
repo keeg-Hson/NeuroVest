@@ -105,10 +105,16 @@ def live_predict(feature_df, raw_df, model_path=MODEL_PATH):
 # --- BATCH PREDICTION ---
 def run_predictions(confidence_threshold=0.80):
     raw_df = load_data()
-    feature_df = add_features(raw_df)
+    feature_df, feature_cols = add_features(raw_df)
+
     model = joblib.load(MODEL_PATH)
 
-    X = feature_df[model.feature_names_in_]
+    try:
+        X = feature_df[model.feature_names_in_]
+    except:
+        X = feature_df[feature_cols]
+
+
 
     # Predict class labels and probabilities
     preds = model.predict(X)
@@ -119,6 +125,11 @@ def run_predictions(confidence_threshold=0.80):
 
     # Extract confidences for spike (2) and crash (1)
     crash_conf = probs[:, class_indices.get(1, 0)]  # default to 0 if not found
+
+    #if 2 not in class_indices:
+    #    print("❌ Class 2 (spike) not found in model — aborting prediction.")
+    #    return
+
     spike_conf = probs[:, class_indices.get(2, 0)]
 
     # Attach predictions
