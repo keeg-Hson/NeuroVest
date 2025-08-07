@@ -13,11 +13,11 @@ print("🧠 Step 2: Running predictions...")
 
 # === Step 3: Log signals (spike/crash as BUY/SELL) ===
 print("📊 Step 3: Logging signals...")
-os.system("python3 signal_logger.py")
+os.system("python3 signal_logger.py") #broken
 
 # === Step 4: Simulate trades ===
 print("📈 Step 4: Simulating trades...")
-os.system("python3 trade_simulator.py")
+os.system("python3 trade_simulator.py") #investigate, absurdly big number $$
 
 # === Step 5: Evaluate model performance ===
 print("🧪 Step 5: Evaluating model performance...")
