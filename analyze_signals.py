@@ -45,7 +45,9 @@ def analyze_signals():
             ax1.set_ylabel("Close Price")
             ax2.set_ylabel(f"{signal} Value")
 
-            plt.title(f"📊 {signal} vs Close Price")
+            title = f"Close vs {signal}"  # no emoji
+            plt.title(title)
+
             ax1.legend(loc='upper left')
             ax2.legend(loc='upper right')
             plt.grid(True)
