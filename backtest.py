@@ -26,6 +26,12 @@ CAPITAL_BASE  = 100_000  #initial capital base for dollar-return tracking
 def run_backtest(crash_thresh=2.0, spike_thresh=2.0, confidence_thresh=0.5, simulate_mode=False): #comment out threshholds if running simulated trades
     # 1) load signals and history
     preds  = pd.read_csv("logs/daily_predictions.csv", parse_dates=["Timestamp"])
+
+    
+    preds  = pd.read_csv("logs/daily_predictions.csv", parse_dates=False)
+    preds["Timestamp"] = pd.to_datetime(preds["Timestamp"], errors="coerce")
+    preds = preds.dropna(subset=["Timestamp"])
+
     spy_df = load_spy_daily_data()
 
     print("\n🔎 Confidence Range Stats:")
