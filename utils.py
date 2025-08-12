@@ -416,6 +416,44 @@ def label_events_simple(df, window=3, pct_threshold=0.01):
 
     return df
 
+def finalize_features(df, feature_cols):
+    """
+    Make feature matrix model-safe:
+    - Intersect with existing columns
+    - Ensure numeric dtype
+    - Interpolate time-wise if a DatetimeIndex is present; otherwise fallback to ffill/bfill
+    - Return df with original columns preserved
+    """
+    df = df.copy()
+
+    # Keep only features that exist now
+    cols = [c for c in feature_cols if c in df.columns and pd.api.types.is_numeric_dtype(df[c]) or c in df.columns]
+    # Force numeric where possible
+    for c in cols:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+
+    # If there's a Date column but no DatetimeIndex, temporarily set it
+    had_datetime_index = isinstance(df.index, pd.DatetimeIndex)
+    reset_back = False
+    if not had_datetime_index:
+        if "Date" in df.columns:
+            df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+            df = df.set_index("Date")
+            reset_back = True
+
+    # Interpolate if time index; else skip to ffill/bfill
+    if isinstance(df.index, pd.DatetimeIndex):
+        df[cols] = df[cols].interpolate(method="time", limit_direction="both")
+
+    # Always do safety fills
+    df[cols] = df[cols].ffill().bfill()
+
+    # Restore original index/Date column if changed
+    if reset_back:
+        df = df.reset_index().rename(columns={"index": "Date"})
+
+    return df
+
 
 
 
