@@ -14,7 +14,8 @@ from utils import (
     load_SPY_data as load_data,
     add_features,
     send_telegram_alert,
-    notify_user
+    notify_user,
+    finalize_features
 )
 
 # Load .env variables
@@ -107,6 +108,10 @@ def run_predictions(confidence_threshold=0.80):
     raw_df = load_data()
     feature_df, feature_cols = add_features(raw_df)
 
+    # ✅ Clean feature matrix for inference
+    feature_df = finalize_features(feature_df, feature_cols)
+
+
     model = joblib.load(MODEL_PATH)
 
     try:
@@ -148,8 +153,13 @@ def run_predictions(confidence_threshold=0.80):
 # --- MAIN EXECUTION ---
 if __name__ == "__main__":
     print("📥 Loading SPY data...")
-    spy_df = load_data() #line 118
-    feature_df = add_features(spy_df)
+    spy_df = load_data()
+
+    # 👇 add_features returns (df, feature_cols)
+    feature_df, feature_cols = add_features(spy_df)
+
+    # Clean feature matrix before live prediction
+    feature_df = finalize_features(feature_df, feature_cols)
 
     print("🔮 Running prediction on latest row...")
     live_predict(feature_df, spy_df)
