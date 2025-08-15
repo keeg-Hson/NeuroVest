@@ -41,37 +41,53 @@ def sweep_thresholds(crash_thresh_list, spike_thresh_list, confidence_thresh_lis
     return pd.DataFrame(results)
 
 if __name__ == "__main__":
-    # Threshold Ranges (adjustable)
-    crash_range = [1.5, 2.0, 2.5]
-    spike_range = [1.5, 2.0, 2.5]
-    confidence_range = [0.5, 0.6, 0.7, 0.8]  # 🔧 NEW sweep dimension
+    # Ranges (probabilities)
+    crash_range = [0.6, 0.7, 0.8, 0.9]
+    spike_range = [0.6, 0.7, 0.8, 0.9]
+    confidence_range = [0.6, 0.7, 0.8]
 
-    # Run sweep
     df_sweep = sweep_thresholds(crash_range, spike_range, confidence_range)
 
     # Save to CSV
     df_sweep.to_csv("logs/threshold_sweep_results.csv", index=False)
     print("\n✅ Saved sweep results to logs/threshold_sweep_results.csv")
 
+    # Ensure needed columns exist (older backtest runs might omit some)
+    for col in ["sharpe", "win_rate", "total_return", "profit_factor", "trades"]:
+        if col not in df_sweep.columns:
+            df_sweep[col] = 0.0
+
     # 🧠 Composite scoring: prioritize good Sharpe + win rate
     df_sweep["composite_score"] = df_sweep["sharpe"].fillna(0) * df_sweep["win_rate"].fillna(0)
+
+    # Pick best
     best = df_sweep.sort_values("composite_score", ascending=False).head(1).iloc[0]
 
-    # Save best config
-    best_config = {
-        "crash_thresh": best["crash_thresh"],
-        "spike_thresh": best["spike_thresh"],
-        "confidence_thresh": best["confidence_thresh"]
-    }
 
+    # canonical file
+    df_sweep["score"] = df_sweep.get("avg_return", 0.0)  # or compute avg_dollar like in runner
+    df_sweep.to_csv("logs/threshold_search.csv", index=False)
+    print("\n✅ Saved sweep to logs/threshold_search.csv")
+
+    # best json
+    best = df_sweep.sort_values("score", ascending=False).head(1).iloc[0]
+    best_config = {
+        "crash_thresh": float(best["crash_thresh"]),
+        "spike_thresh": float(best["spike_thresh"]),
+        "confidence_thresh": float(best["confidence_thresh"])
+    }
     with open("configs/best_thresholds.json", "w") as f:
         json.dump(best_config, f, indent=4)
     print("\n💾 Best thresholds saved to configs/best_thresholds.json:")
     print(best_config)
 
     # Print Top 5
-    print("\n🏆 Top Composite Thresholds:")
-    print(df_sweep.sort_values("composite_score", ascending=False).head(5))
+    try:
+        print("\n🏆 Top Composite Thresholds:")
+        print(df_sweep.sort_values("composite_score", ascending=False).head(5))
+    except KeyError:
+        print("\nℹ️ 'composite_score' missing — likely no valid rows. Check logs/threshold_sweep_results.csv")
+
 
     # Optional: Heatmap Visuals (aggregated over confidence threshold)
     df_avg = df_sweep.groupby(["crash_thresh", "spike_thresh"]).agg({
