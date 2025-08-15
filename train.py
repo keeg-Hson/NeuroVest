@@ -9,8 +9,12 @@ from datetime import datetime
 from sklearn.model_selection import TimeSeriesSplit, GridSearchCV
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from imblearn.over_sampling import SMOTE
+from sklearn.feature_selection import SelectKBest, f_classif
+import xgboost as xgb
+
 
 from xgboost import XGBClassifier
+from imblearn.pipeline import Pipeline  
 
 from utils import (
     load_SPY_data, 
@@ -21,8 +25,12 @@ from utils import (
     label_events_simple
 )
 
+from sklearn.model_selection import TimeSeriesSplit
+tscv = TimeSeriesSplit(n_splits=5, gap=5)   # gap=5 bars between train/test
+
 import warnings
 warnings.filterwarnings("ignore", message=r"\[.*\] WARNING: .*Parameters: { \"use_label_encoder\" } are not used\.")
+xgb.set_config(verbosity=0)
 
 
 # Create output folders
@@ -103,33 +111,53 @@ def train_best_xgboost_model(df):
     print("\n📊 Original class distribution:")
     print(y.value_counts())
 
-    # ── Balance classes ────────────────────────────────────────────────────────
-    smote = SMOTE(random_state=42)
-    X_resampled, y_resampled = smote.fit_resample(X, y)
-    print("\n⚖️ After SMOTE:")
-    print(pd.Series(y_resampled).value_counts())
+    # ── Model + Grid (SMOTE inside CV folds to avoid leakage) ─────────────────
 
-    # ── Model + Grid ──────────────────────────────────────────────────────────
-    tscv = TimeSeriesSplit(n_splits=5)
+
+    pipe = Pipeline(steps=[
+        ("smote", SMOTE(random_state=42)),
+        ("kbest", SelectKBest(score_func=f_classif, k=10)),  # choose k you want
+        
+        ("clf", XGBClassifier(
+        objective="multi:softprob",
+        eval_metric="mlogloss",
+        use_label_encoder=False,
+        random_state=42,
+        n_jobs=-1,
+        verbosity=0,          
+        tree_method="hist"    
+    ))
+
+    ])
+
+    # Make k choices safe given the current number of features
+    max_k = len(valid_feature_cols)
+    k_choices = [8, 10, 12]
+    k_choices = [k for k in k_choices if k <= max_k]
+    if not k_choices:  # fallback if feature count is very small
+        k_choices = [max(1, min(5, max_k))]
+
+
     param_grid = {
-        "n_estimators": [100, 200],
-        "max_depth": [3, 5, 7],
-        "learning_rate": [0.01, 0.05, 0.1],
-        "subsample": [0.8, 1.0],
-        "colsample_bytree": [0.8, 1.0],
+        "kbest__k": k_choices,
+        "clf__n_estimators": [100, 200],
+        "clf__max_depth": [3, 5, 7],
+        "clf__learning_rate": [0.01, 0.05, 0.1],
+        "clf__subsample": [0.8, 1.0],
+        "clf__colsample_bytree": [0.8, 1.0],
     }
-    model = XGBClassifier(objective="multi:softprob", eval_metric="mlogloss", use_label_encoder=False)
 
-    print("\n🔍 Starting Grid Search...")
+    print("\n🔍 Starting Grid Search (Pipeline with in-fold SMOTE)...")
     grid_search = GridSearchCV(
-        estimator=model,
+        estimator=pipe,
         param_grid=param_grid,
         scoring="f1_weighted",
         cv=tscv,
         n_jobs=-1,
         verbose=1,
     )
-    grid_search.fit(X_resampled, y_resampled)
+    grid_search.fit(X, y)  # IMPORTANT: fit on original X,y (no pre-resampling)
+
 
     print(f"\n✅ Best Params: {grid_search.best_params_}")
     print(f"🎯 Best Score (F1 Weighted): {grid_search.best_score_:.4f}")
@@ -151,6 +179,8 @@ def train_best_xgboost_model(df):
     grid_results = pd.DataFrame(grid_search.cv_results_)
     grid_results.to_csv("logs/gridsearch_xgb_results.csv", index=False)
     print("📊 Grid search results saved to logs/gridsearch_xgb_results.csv")
+
+
 
     return True
 
