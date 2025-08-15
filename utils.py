@@ -34,7 +34,7 @@ def init_labeled_log_file():
 def get_feature_list():
     return [
         "MA_20", "EMA_12", "EMA_26", "MACD", "MACD_Signal", "MACD_Histogram",
-        "BB_Width", "OBV", "Vol_Ratio", "Price_Momentum_10", "Acceleration",
+        "BB_Width", "Volatility", "OBV", "Vol_Ratio", "Price_Momentum_10", "Acceleration",
         "RSI", "RSI_Delta", "ZMomentum",
         "Return_Lag1", "Return_Lag3", "Return_Lag5",
         "RSI_Lag_1", "RSI_Lag_3", "RSI_Lag_5",
@@ -266,6 +266,7 @@ def add_features(df):
 
     # --- Volatility (define vol_window first!) ---
     vol_window = 20  # Set your default volatility window here
+    df["Volatility"] = df["Close"].rolling(window=vol_window).std(ddof=0)
     #df["Volatility"] = df["Close"].rolling(window=vol_window).std()
 
     # --- On-Balance Volume (OBV) ---
