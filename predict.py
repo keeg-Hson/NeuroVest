@@ -108,8 +108,13 @@ def run_predictions(confidence_threshold=0.80):
     raw_df = load_data()
     feature_df, feature_cols = add_features(raw_df)
 
-    # ✅ Clean feature matrix for inference
+    # Clean feature matrix for inference
     feature_df = finalize_features(feature_df, feature_cols)
+
+    required = [c for c in feature_cols if c in feature_df.columns]
+    feature_df.dropna(subset=required, inplace=True)
+
+
 
 
     model = joblib.load(MODEL_PATH)
@@ -138,14 +143,33 @@ def run_predictions(confidence_threshold=0.80):
     spike_conf = probs[:, class_indices.get(2, 0)]
 
     # Attach predictions
+    
     feature_df["Prediction"] = preds
     feature_df["Crash_Conf"] = crash_conf
     feature_df["Spike_Conf"] = spike_conf
     feature_df["Confidence"] = probs.max(axis=1)
-    feature_df["Timestamp"] = feature_df.index
+
+    # --- Robust Timestamp construction (works for Index or a 'Date' column) ---
+    if isinstance(feature_df.index, pd.DatetimeIndex):
+        ts = feature_df.index
+    elif "Date" in feature_df.columns:
+        ts = pd.to_datetime(feature_df["Date"], errors="coerce")
+    else:
+        ts = pd.to_datetime(feature_df.index, errors="coerce")
+
+    ts = pd.to_datetime(ts, errors="coerce")
+    # If ts is a Series, use .dt.tz_localize; if it's a DatetimeIndex, use .tz_localize
+    if isinstance(ts, pd.Series):
+        ts = ts.dt.tz_localize(None)
+    else:
+        ts = ts.tz_localize(None)
+
+    feature_df["Timestamp"] = ts
 
     # Save and return
     feature_df.to_csv("logs/daily_predictions.csv", index=False)
+
+
     return feature_df
 
 
@@ -160,6 +184,24 @@ if __name__ == "__main__":
 
     # Clean feature matrix before live prediction
     feature_df = finalize_features(feature_df, feature_cols)
+
+    required = [c for c in feature_cols if c in feature_df.columns]
+    feature_df.dropna(subset=required, inplace=True)
+
+    # Ensure Timestamp exists and is timezone-naive datetime
+    if isinstance(feature_df.index, pd.DatetimeIndex):
+        ts = feature_df.index
+    elif "Date" in feature_df.columns:
+        ts = pd.to_datetime(feature_df["Date"], errors="coerce")
+    else:
+        ts = pd.to_datetime(feature_df.index, errors="coerce")
+
+    ts = pd.to_datetime(ts, errors="coerce")
+    if isinstance(ts, pd.Series):
+        ts = ts.dt.tz_localize(None)
+    else:
+        ts = ts.tz_localize(None)
+    feature_df["Timestamp"] = ts
 
     print("🔮 Running prediction on latest row...")
     live_predict(feature_df, spy_df)
