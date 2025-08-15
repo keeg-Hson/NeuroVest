@@ -260,28 +260,48 @@ def step_predict(use_subprocess: bool = False) -> StepResult:
         return StepResult(name, ok=False, seconds=time.time() - start, error=str(e))
 
 
-def step_backtest(window_days: Optional[int], use_subprocess: bool = False) -> StepResult:
+def step_backtest(window_days: Optional[int], use_subprocess: bool = False,
+                  auto_thresholds: bool = False, min_trades: int = 20, objective: str = "avg_dollar_return") -> StepResult:
     start = time.time()
     name = "Backtest"
     try:
         mod = _import_module("backtest")
         if mod and not use_subprocess:
+            if auto_thresholds and hasattr(mod, "optimize_thresholds"):
+                LOGGER.info("Auto-tuning thresholds via backtest.optimize_thresholds(...)")
+                conf, crash, spike, best_metrics = mod.optimize_thresholds(
+                    window_days=window_days,
+                    min_trades=min_trades,
+                    objective=objective,
+                )
+                LOGGER.info("Best thresholds: confidence=%s crash=%s spike=%s", conf, crash, spike)
+                fn = _find_callable(mod, ["run_backtest", "main", "run"])
+                result = fn(window_days=window_days,
+                            confidence_thresh=conf,
+                            crash_thresh=crash,
+                            spike_thresh=spike)
+                return StepResult(name, ok=True, seconds=time.time() - start,
+                                  extra={"result": str(result)[:300],
+                                         "confidence_thresh": conf,
+                                         "crash_thresh": crash,
+                                         "spike_thresh": spike,
+                                         "best_metrics": best_metrics})
+            # No auto-tune: fall back to normal call
             fn = _find_callable(mod, ["run_backtest", "main", "run"])
             if fn:
-                LOGGER.info("Backtesting via backtest.%s(window_days=%s)", fn.__name__, window_days)
-                sig = inspect.signature(fn)
-                if "window_days" in sig.parameters and window_days is not None:
-                    result = fn(window_days=window_days)
-                else:
-                    result = fn()  # no kwargs if not supported
+                result = fn(window_days=window_days)
                 return StepResult(name, ok=True, seconds=time.time() - start, extra={"result": str(result)[:300]})
-        # Fallback
-        args = ["--window-days", str(window_days)] if window_days else []
+        # Fallback to subprocess if import path fails
+        args = []
+        if window_days:
+            args += ["--window-days", str(window_days)]
         ok, out = _call_subprocess("backtest", args)
         return StepResult(name, ok=ok, seconds=time.time() - start, extra={"stdout": out, "window_days": window_days})
     except Exception as e:
         LOGGER.exception("%s failed", name)
         return StepResult(name, ok=False, seconds=time.time() - start, error=str(e))
+
+
 
 
 # --------------------------------------------------------------------------------------
@@ -304,6 +324,20 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     p.add_argument("--fast", action="store_true", help="Faster runs (e.g., fewer CV folds, smaller grids).")
     p.add_argument("--use-subprocess", action="store_true", help="Invoke submodules via subprocess instead of import.")
     p.add_argument("--backtest-window", type=int, default=None, help="Limit backtest to N most recent days.")
+
+    p.add_argument("--confidence-thresh", type=float, default=None, help="Pre-filter: min of Crash_Conf or Spike_Conf (None disables)")
+    p.add_argument("--crash-thresh", type=float, default=None, help="Explicit threshold for crash class (1)")
+    p.add_argument("--spike-thresh", type=float, default=None, help="Explicit threshold for spike class (2)")
+
+    p.add_argument("--auto-thresholds", action="store_true",
+               help="Sweep thresholds and use the best by avg dollar profit.")
+    p.add_argument("--min-trades", type=int, default=20,
+                help="Min trades required during threshold tuning.")
+    p.add_argument("--objective", type=str, default="avg_dollar_return",
+                choices=["avg_dollar_return", "total_profit", "win_rate", "profit_factor"],
+                help="Objective to maximize during threshold tuning.")
+
+
 
     args = p.parse_args(argv)
     if not (args.all or args.predict_only):
@@ -338,7 +372,13 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # 6) Backtest
     if (args.all and not args.skip_backtest) and not args.predict_only:
-        results.append(step_backtest(window_days=args.backtest_window, use_subprocess=args.use_subprocess))
+        results.append(step_backtest(window_days=args.backtest_window,
+                                    use_subprocess=args.use_subprocess,
+                                    auto_thresholds=args.auto_thresholds,
+                                    min_trades=args.min_trades,
+                                    objective=args.objective))
+
+
 
     # Summary
     LOGGER.info("\n==== PIPELINE SUMMARY ====")
