@@ -1,44 +1,79 @@
-from datetime import date, timedelta
+# update_spy_data.py
+from datetime import date, datetime, timedelta
+from pandas.tseries.offsets import BDay
 import pandas as pd
 import yfinance as yf
+import os
 
-def _today() -> date:
-    # Keep it simple,  could use NYSE trading-day logic later on
-    return date.today()
+DATA_DIR = "data"
+CSV_PATH = f"{DATA_DIR}/SPY.csv"
 
-# update_spy_data.py
-import pandas as pd, yfinance as yf
-from datetime import date
+def _ensure_dirs():
+    os.makedirs(DATA_DIR, exist_ok=True)
 
-# update_spy_data.py
-import pandas as pd, yfinance as yf
-from datetime import date
+def _today_iso() -> str:
+    return date.today().isoformat()
+
+def _exclusive_end_today() -> str:
+    # yfinance end is exclusive; add +1 day to include today's bar when available
+    return (date.today() + timedelta(days=1)).isoformat()
+
+def _bootstrap():
+    base = "2010-01-01"
+    end  = _exclusive_end_today()
+    df = yf.download("SPY", start=base, end=end, interval="1d", auto_adjust=False, progress=False)
+    if df is None or df.empty:
+        print("❌ Could not download initial SPY history.")
+        return False
+    df = df.reset_index()
+    df["Date"] = pd.to_datetime(df["Date"])
+    df = df[["Date", "Open", "High", "Low", "Close", "Adj Close", "Volume"]]
+    df.to_csv(CSV_PATH, index=False)
+    print(f"✅ Created {CSV_PATH} with {len(df)} rows ({base} → {end}).")
+    return True
+
+def _append_new_rows():
+    df = pd.read_csv(CSV_PATH, parse_dates=["Date"])
+    if df.empty:
+        return _bootstrap()
+
+    last_date = df["Date"].max().date()
+    # Start next business day after last_date
+    start = (pd.Timestamp(last_date) + BDay(1)).date()
+    end = date.today() + timedelta(days=1)  # exclusive end
+
+    if start >= end:
+        print("ℹ️ SPY.csv is already up to date — no new days to fetch.")
+        return True
+
+    newdf = yf.download("SPY",
+                        start=start.isoformat(),
+                        end=end.isoformat(),
+                        interval="1d",
+                        auto_adjust=False,
+                        progress=False)
+    if newdf is None or newdf.empty:
+        print("ℹ️ No new SPY data returned by yfinance.")
+        return True
+
+    newdf = newdf.reset_index()
+    newdf["Date"] = pd.to_datetime(newdf["Date"])
+    newdf = newdf[["Date", "Open", "High", "Low", "Close", "Adj Close", "Volume"]]
+
+    merged = pd.concat([df, newdf], ignore_index=True)
+    merged.drop_duplicates(subset=["Date"], keep="last", inplace=True)
+    merged.sort_values("Date", inplace=True)
+    merged.to_csv(CSV_PATH, index=False)
+
+    print(f"✅ Appended {len(newdf)} new rows to {CSV_PATH} ({start} → {end}).")
+    return True
 
 def main():
-    try:
-        df = pd.read_csv("SPY.csv", parse_dates=["Date"])
-        have_file = True
-    except FileNotFoundError:
-        have_file = False
-
-    today = date.today().isoformat()
-
-    if not have_file:
-        # First run bootstrap
-        base = "2010-01-01"
-        spy = yf.download("SPY", start=base, end=today, interval="1d", auto_adjust=False)
-        if spy is None or spy.empty:
-            print("❌ Could not download initial SPY history.")
-            return
-        spy = spy.reset_index()
-        spy["Date"] = pd.to_datetime(spy["Date"])
-        spy = spy[["Date","Open","High","Low","Close","Adj Close","Volume"]]
-        spy.to_csv("SPY.csv", index=False)
-        print(f"✅ Created SPY.csv with {len(spy)} rows from {base} to {today}.")
-        return
-
-    
-
+    _ensure_dirs()
+    if not os.path.exists(CSV_PATH):
+        _bootstrap()
+    else:
+        _append_new_rows()
 
 if __name__ == "__main__":
     main()
