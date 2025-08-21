@@ -7,6 +7,8 @@ import numpy as np
 import os, shutil, datetime
 import requests
 import pandas_ta as ta
+import platform
+import warnings
 
 from dotenv import load_dotenv
 from external_signals import add_external_signals #EXTERNAL SIGNALS MODULE
@@ -205,22 +207,102 @@ def summarize_trades(trades, initial_balance=10000, save_plot_path=None):
         'equity_curve': equity
     }
 
-import pandas as pd
-import os
 
 def load_SPY_data():
+    """
+    Loads data/SPY.csv robustly and returns a clean OHLCV dataframe:
+    - Quietly coerces index to datetime (no parse_dates warnings)
+    - Flattens accidental MultiIndex columns
+    - Normalizes column names to canonical OHLCV
+    - Forces numeric dtype
+    - Drops duplicate/NaT index entries; sorts by date
+    - Trims trailing incomplete rows (e.g., NaN High/Low/Volume)
+    - Ensures both a DatetimeIndex (named 'Date') and a 'Date' column exist
+    """
     spy_path = "data/SPY.csv"
     if not os.path.exists(spy_path):
         raise FileNotFoundError(f"[❌] Could not find SPY data at {spy_path}")
 
-    df = pd.read_csv(spy_path, index_col=0, parse_dates=True)  # , skiprows=[1] if needed later
-    df.sort_index(inplace=True)
+    # Read without global parse_dates to avoid noisy inference warnings
+    df = pd.read_csv(spy_path, index_col=0, low_memory=False)
 
-    # Drop last row if critical columns are missing
-    if df.iloc[-1][["High", "Low", "Volume"]].isna().any():
+    # Coerce index → datetime, quietly
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=UserWarning)
+        # If your CSV index is always YYYY-MM-DD, you can use format="%Y-%m-%d"
+        df.index = pd.to_datetime(df.index, errors="coerce")
+
+    # Drop rows where the index couldn't be parsed; de-dup & sort
+    df = df[~df.index.isna()]
+    df = df[~df.index.duplicated(keep="last")]
+    df = df.sort_index()
+
+    # Flatten accidental MultiIndex columns
+    if isinstance(df.columns, pd.MultiIndex):
+        df.columns = ["_".join([str(x) for x in tup if str(x) != ""]).strip("_") for tup in df.columns]
+
+    # Normalize names → keep canonical OHLCV
+    rename_map = {
+        # common “ticker suffixed” names
+        "Open_SPY": "Open", "High_SPY": "High", "Low_SPY": "Low", "Close_SPY": "Close",
+        "Adj Close_SPY": "Adj Close", "Volume_SPY": "Volume",
+        "SPY_Open": "Open", "SPY_High": "High", "SPY_Low": "Low", "SPY_Close": "Close",
+        "SPY_Adj Close": "Adj Close", "SPY_Volume": "Volume",
+        # minor variants
+        "AdjClose": "Adj Close", "Adj_Close": "Adj Close",
+    }
+    df = df.rename(columns={c: rename_map.get(c, c) for c in df.columns})
+
+    # Keep canonical columns if present
+    keep = [c for c in ["Open", "High", "Low", "Close", "Adj Close", "Volume"] if c in df.columns]
+    if keep:
+        df = df[keep]
+
+    # Force numeric dtypes
+    for c in df.columns:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+
+    # Repeatedly drop the last row while critical fields are NaN (incomplete latest bar)
+    crit = [c for c in ["High", "Low", "Volume"] if c in df.columns]
+    while len(df) and crit and df.iloc[-1][crit].isna().any():
         df = df.iloc[:-1]
 
+    # Also drop any rows missing Open/Close entirely
+    base_crit = [c for c in ["Open", "Close"] if c in df.columns]
+    if base_crit:
+        df = df.dropna(subset=base_crit)
+
+    # Ensure DatetimeIndex and a 'Date' column for downstream merges
+    df.index.name = "Date"
+    df["Date"] = df.index
+
     return df
+
+def safe_read_csv(path, prefer_index=True):
+    """Robust CSV reader that tolerates missing 'Date' column."""
+    import pandas as pd, os
+    if not os.path.exists(path):
+        raise FileNotFoundError(path)
+    df = pd.read_csv(path)
+    # Normalize time
+    if "Date" in df.columns:
+        df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    elif "Timestamp" in df.columns:
+        df["Date"] = pd.to_datetime(df["Timestamp"], errors="coerce")
+    else:
+        # try index
+        try:
+            df.index = pd.to_datetime(df.index, errors="coerce")
+            df["Date"] = df.index
+        except Exception:
+            pass
+    # Optionally set as index
+    if prefer_index and "Date" in df.columns:
+        df = df.set_index("Date")
+    return df
+
+
+
 
 
 
@@ -264,10 +346,9 @@ def add_features(df):
     lower_band = df["MA_20"] - (2 * rolling_std)
     df["BB_Width"] = (upper_band - lower_band) / (df["MA_20"] + 1e-9)
 
-    # --- Volatility (define vol_window first!) ---
-    vol_window = 20  # Set your default volatility window here
+    # --- Volatility ---
+    vol_window = 20
     df["Volatility"] = df["Close"].rolling(window=vol_window).std(ddof=0)
-    #df["Volatility"] = df["Close"].rolling(window=vol_window).std()
 
     # --- On-Balance Volume (OBV) ---
     df["OBV"] = (np.sign(df["Close"].diff()) * df["Volume"]).fillna(0).cumsum()
@@ -284,39 +365,94 @@ def add_features(df):
     # --- MACD × RSI Interaction ---
     df["MACD_x_RSI"] = df["MACD"] * df["RSI"]
 
-    # --- Volume per ATR ---
-    atr = df["High"].rolling(14).max() - df["Low"].rolling(14).min()
-    df["Volume_per_ATR"] = df["Volume"] / (atr + 1e-9)
+    # --- Volume per ATR (proxy) ---
+    atr_proxy = df["High"].rolling(14).max() - df["Low"].rolling(14).min()
+    df["Volume_per_ATR"] = df["Volume"] / (atr_proxy + 1e-9)
 
     # --- Stochastic Oscillator ---
-    low_14 = df["Low"].rolling(14).min()
+    low_14  = df["Low"].rolling(14).min()
     high_14 = df["High"].rolling(14).max()
     df["Stoch_K"] = 100 * ((df["Close"] - low_14) / (high_14 - low_14 + 1e-9))
     df["Stoch_D"] = df["Stoch_K"].rolling(3).mean()
 
+    # --- VOLATILITY / RANGE ---
+    tr = pd.concat([
+        (df["High"] - df["Low"]),
+        (df["High"] - df["Close"].shift()).abs(),
+        (df["Low"]  - df["Close"].shift()).abs()
+    ], axis=1).max(axis=1)
+    df["ATR_14"]   = tr.ewm(alpha=1/14, adjust=False).mean()
+    df["Range_Exp"] = (df["High"] - df["Low"]) / df["ATR_14"]
+    df["ATR_Trend"] = df["ATR_14"] / (df["ATR_14"].rolling(100).mean() + 1e-9)
+
+    # --- GAPS ---
+    df["Gap_Pct"] = (df["Open"] - df["Close"].shift()) / (df["Close"].shift() + 1e-9)
+    df["Gap_ATR"] = (df["Open"] - df["Close"].shift()).abs() / (df["ATR_14"] + 1e-9)
+    df["Gap_Dir"] = np.sign(df["Gap_Pct"]).fillna(0)
+
+    # --- LEVEL DISTANCES / MA POSTURE ---
+    df["MA50"]  = df["Close"].rolling(50).mean()
+    df["MA200"] = df["Close"].rolling(200).mean()
+    df["MA_Stack_Bull"] = ((df["Close"] > df["MA50"]) & (df["MA50"] > df["MA200"])).astype(int)
+    df["Dist_High20_ATR"] = (df["Close"] - df["High"].rolling(20).max()) / (df["ATR_14"] + 1e-9)
+    df["Dist_Low20_ATR"]  = (df["Close"] - df["Low"].rolling(20).min())  / (df["ATR_14"] + 1e-9)
+
+    # --- SIMPLE CANDLE FLAGS ---
+    real_body = (df["Close"] - df["Open"]).abs()
+    wick_up   = df["High"] - df[["Close","Open"]].max(axis=1)
+    wick_dn   = df[["Close","Open"]].min(axis=1) - df["Low"]
+    rng = (df["High"] - df["Low"]).replace(0, np.nan)
+
+    df["Doji"] = (real_body / rng < 0.1).fillna(0).astype(int)
+    df["Engulf_Bull"] = (
+        (df["Close"] > df["Open"]) &
+        (df["Open"]  < df["Close"].shift()) &
+        (df["Close"] > df["Open"].shift())
+    ).fillna(0).astype(int)
+    df["NR7"] = (rng == rng.rolling(7).min()).astype(int)
+
     # --- External Macro + Sentiment Signals ---
     df = add_external_signals(df)
 
-    # --- Final clean-up: drop NaNs from anywhere ---
-    #df.dropna(inplace=True)
-    # Only return warning here — let train.py handle NaN rows later
-    if df.isna().sum().sum() > 0:
-        print("⚠️ Warning: NaNs remain in feature set — will be handled after labeling.")
+    # (Optional) chatty warning — safe to comment out if noisy
+    # if df.isna().sum().sum() > 0:
+    #     print("⚠️ Warning: NaNs remain in feature set — will be handled after labeling.")
 
-
-    # --- Collect feature columns (only numeric & known) ---
-    feature_cols = [
-        "MA_20", "EMA_12", "EMA_26", "MACD", "MACD_Signal", "MACD_Histogram",
-        "RSI", "RSI_Delta", "ZMomentum", "Price_Momentum_10", "Acceleration",
-        "Return_Lag1", "Return_Lag3", "Return_Lag5", "RSI_Lag_1", "RSI_Lag_3", "RSI_Lag_5",
-        "BB_Width", "Volatility", "OBV", "Vol_Ratio", "Rolling_STD_5", "Daily_Return",
-        "MACD_x_RSI", "Volume_per_ATR", "Stoch_K", "Stoch_D",
-        "CPI", "Unemployment", "InterestRate", "YieldCurve",
-        "ConsumerSentiment", "IndustrialProduction", "VIX",
-        "News_Sentiment", "Reddit_Sentiment"
+    # --- Collect feature columns (only those that exist) ---
+    base_cols = [
+        "MA_20","EMA_12","EMA_26","MACD","MACD_Signal","MACD_Histogram",
+        "RSI","RSI_Delta","ZMomentum","Price_Momentum_10","Acceleration",
+        "Return_Lag1","Return_Lag3","Return_Lag5","RSI_Lag_1","RSI_Lag_3","RSI_Lag_5",
+        "BB_Width","Volatility","OBV","Vol_Ratio","Rolling_STD_5","Daily_Return",
+        "MACD_x_RSI","Volume_per_ATR","Stoch_K","Stoch_D",
+        # price/structure extras
+        "ATR_14","Range_Exp","ATR_Trend",
+        "Gap_Pct","Gap_ATR","Gap_Dir",
+        "MA50","MA200","MA_Stack_Bull",
+        "Dist_High20_ATR","Dist_Low20_ATR",
+        "Doji","Engulf_Bull","NR7",
     ]
 
+    macro_sentiment = [
+        "CPI","Unemployment","InterestRate","YieldCurve",
+        "ConsumerSentiment","IndustrialProduction","VIX",
+        "News_Sentiment","Reddit_Sentiment",
+        # structured sentiment
+        "News_Sent_Z20","News_Sent_ROC3","News_Sent_Concord",
+        "Reddit_Sent_Z20","Reddit_Sent_ROC3","Reddit_Sent_Concord",
+        # cross-asset
+        "Sector_MedianRet_5","Sector_MedianRet_20","Sector_Dispersion_5","Sector_Dispersion_20",
+        "HYG_Ret_5","HYG_Ret_20","LQD_Ret_5","LQD_Ret_20","Credit_Spread_20",
+        "TNX_Change_5","TNX_Change_20","DXY_Change_5","DXY_Change_20",
+    ]
+
+    # Keep only columns that actually exist now
+    feature_cols = [c for c in (base_cols + macro_sentiment) if c in df.columns]
+    # De-dup while preserving order (defensive)
+    feature_cols = list(dict.fromkeys(feature_cols))
+
     return df, feature_cols
+
 
 
 
@@ -346,11 +482,15 @@ def notify_user(prediction, crash_conf, spike_conf):
         print(f"⚠️  High-confidence {label} detected!")
         print(f"📉 Crash: {crash_conf:.2f} | 📈 Spike: {spike_conf:.2f}\n")
 
-        # Make a system beep
+        # Cross-platform alert sound (no 'play' dependency)
         try:
-            os.system('play -nq -t alsa synth 0.3 sine 880')  # Linux
-        except:
-            os.system('printf "\a"')  # Fallback for macOS/Linux beep
+            if platform.system() == "Darwin":
+                os.system('afplay /System/Library/Sounds/Glass.aiff')
+            else:
+                # basic terminal bell
+                os.system('printf "\\a"')
+        except Exception:
+            pass
 
 #telegram bot
 def send_telegram_alert(message, token=None, chat_id=None):
@@ -444,6 +584,15 @@ def finalize_features(df, feature_cols):
 
     # Interpolate if time index; else skip to ffill/bfill
     if isinstance(df.index, pd.DatetimeIndex):
+        if not isinstance(df.index, pd.DatetimeIndex):
+            if "Date" in df.columns:
+                df = df.set_index(pd.to_datetime(df["Date"], errors="coerce"))
+            elif "Timestamp" in df.columns:
+                df = df.set_index(pd.to_datetime(df["Timestamp"], errors="coerce"))
+            else:
+                df.index = pd.to_datetime(df.index, errors="coerce")
+        df = df[df.index.notna()]
+
         df[cols] = df[cols].interpolate(method="time", limit_direction="both")
 
     # Always do safety fills
