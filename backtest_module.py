@@ -3,10 +3,19 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.metrics import classification_report, confusion_matrix
 import os
+from utils import load_SPY_data, safe_read_csv
 
 def load_data():
-    spy = pd.read_csv("data/SPY.csv", names=["Date", "Close", "High", "Low", "Open", "Volume"], header=0, parse_dates=["Date"])
-    preds = pd.read_csv("logs/labeled_predictions.csv", parse_dates=["Date"])
+
+    # SPY: use loader (gives DatetimeIndex + 'Date' col)
+    spy = load_SPY_data().reset_index()  # has 'Date' column
+
+    # Predictions: labeled_predictions.csv has Timestamp (not Date) → make Date
+    preds = safe_read_csv("logs/labeled_predictions.csv", prefer_index=False)
+    if "Date" not in preds.columns and "Timestamp" in preds.columns:
+        preds["Date"] = pd.to_datetime(preds["Timestamp"], errors="coerce")
+    preds = preds.set_index("Date").sort_index()
+
 
     #clean up the label and prediction fields for clarity
     label_map = {0: "none", 1: "crash", 2: "spike"}

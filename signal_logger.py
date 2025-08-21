@@ -1,13 +1,15 @@
 # signal_logger.py
 import pandas as pd
 import os
+from utils import safe_read_csv
 
 # === CONFIGURABLE THRESHOLDS ===
 SPIKE_THRESHOLD = 0.7  # Confidence required to trigger SELL
 CRASH_THRESHOLD = 0.7  # Confidence required to trigger BUY
 
 def load_predictions(path="logs/daily_predictions.csv"):
-    df = pd.read_csv(path, parse_dates=["Date"])
+    df = safe_read_csv(path, prefer_index=False)  # keep columns; ensures df["Date"]
+
     return df
 
 def determine_signal(row):

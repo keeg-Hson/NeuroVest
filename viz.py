@@ -3,13 +3,16 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
+from utils import safe_read_csv
 
 def plot_model_performance(csv_path="logs/model_performance.csv"):
     if not os.path.exists(csv_path):
         print(f"[⚠️] No model performance file found at {csv_path}")
         return
 
-    df = pd.read_csv(csv_path, parse_dates=["Date"])
+    
+    df = safe_read_csv(csv_path, prefer_index=False)  # keep columns; df["Date"] available
+
 
     if df.empty or "Accuracy" not in df.columns:
         print("[⚠️] Performance file is empty or malformed.")

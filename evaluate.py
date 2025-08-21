@@ -5,6 +5,7 @@
 import pandas as pd
 from sklearn.metrics import classification_report, accuracy_score
 import json
+from utils import safe_read_csv
 
 LABELED_LOG = "logs/labeled_predictions.csv"
 METRIC_OUTPUT_CSV = "logs/model_performance.csv"
@@ -14,7 +15,8 @@ def label_prediction_outcomes():
 
     try:
         pred = pd.read_csv("logs/daily_predictions.csv", parse_dates=["Timestamp"])
-        spy = pd.read_csv("data/spy_daily.csv", parse_dates=["Date"])
+        spy = safe_read_csv("data/spy_daily.csv")  # index = Date
+
         spy["Date"] = pd.to_datetime(spy["Date"])
 
         #align formats

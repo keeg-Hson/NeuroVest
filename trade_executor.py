@@ -2,6 +2,7 @@
 
 import pandas as pd
 import os
+from utils import safe_read_csv
 
 # Configurable starting balance
 START_BALANCE = 10000.0
@@ -84,7 +85,8 @@ def simulate_trade_execution(signal_log_path="logs/daily_predictions.csv",
                              min_crash_conf=0.6,
                              use_momentum=True):
     
-    df = pd.read_csv(signal_log_path, parse_dates=["Date"], on_bad_lines='skip')
+
+    df = safe_read_csv(signal_log_path, prefer_index=False)
 
     
     balance = START_BALANCE

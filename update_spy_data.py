@@ -4,6 +4,7 @@ from pandas.tseries.offsets import BDay
 import pandas as pd
 import yfinance as yf
 import os
+from utils import safe_read_csv
 
 DATA_DIR = "data"
 CSV_PATH = f"{DATA_DIR}/SPY.csv"
@@ -33,7 +34,8 @@ def _bootstrap():
     return True
 
 def _append_new_rows():
-    df = pd.read_csv(CSV_PATH, parse_dates=["Date"])
+    df = safe_read_csv(CSV_PATH, prefer_index=False)
+
     if df.empty:
         return _bootstrap()
 
