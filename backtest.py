@@ -3,7 +3,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from data_utils import load_spy_daily_data, log_rolling_accuracy
+from data_utils import load_spy_daily_data
 from datetime import timedelta, datetime
 import subprocess
 
@@ -11,6 +11,63 @@ import subprocess
 subprocess.run(["python3", "update_spy_data.py"])
 
 import os, json
+
+# ─── Trade exit resolution ────────────────────────────────────────────────
+def _resolve_bar_exit_long(bar, tp_px, sl_px):
+    hi = bar.get("High"); lo = bar.get("Low")
+    hit_tp = pd.notna(hi) and hi >= tp_px
+    hit_sl = pd.notna(lo) and lo <= sl_px
+    if hit_tp and hit_sl:         # don't decide here
+        return "AMBIG", None, True
+    if hit_tp: return "TP", tp_px, False
+    if hit_sl: return "SL", sl_px, False
+    return None, None, False
+
+# ─── Trade exit resolution for shorts ─────────────────────────────────────
+def _resolve_bar_exit_short(bar, tp_px, sl_px):
+    hi = bar.get("High"); lo = bar.get("Low")
+    hit_tp = pd.notna(lo) and lo <= tp_px    # profit down
+    hit_sl = pd.notna(hi) and hi >= sl_px    # stop up
+    if hit_tp and hit_sl:
+        return "AMBIG", None, True
+    if hit_tp: return "TP", tp_px, False
+    if hit_sl: return "SL", sl_px, False
+    return None, None, False
+
+
+
+
+def _load_predictions(prefer_full: bool = True) -> pd.DataFrame:
+    """
+    Load predictions, preferring the full dump if available.
+    Returns a dataframe with Timestamp (naive) and a normalized Date column.
+    De-duplicates by Date keeping the last row (most recent signal of the day).
+    """
+    full_path  = "logs/predictions_full.csv"
+    daily_path = "logs/daily_predictions.csv"
+
+    path = full_path if (prefer_full and os.path.exists(full_path)) else daily_path
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"No predictions file found at {path}")
+
+    preds = pd.read_csv(path)
+    # Timestamp → datetime (naive), then a daily Date key
+    if "Timestamp" in preds.columns:
+        preds["Timestamp"] = pd.to_datetime(preds["Timestamp"], errors="coerce").dt.tz_localize(None)
+    else:
+        # fall back to any Date column present
+        preds["Timestamp"] = pd.to_datetime(preds.get("Date", pd.NaT), errors="coerce").dt.tz_localize(None)
+
+    preds = preds.dropna(subset=["Timestamp"]).copy()
+    preds["Date"] = preds["Timestamp"].dt.normalize()
+
+    # If there are multiple rows per Date, keep the last one (often the most recent append)
+    preds = preds.sort_values(["Date", "Timestamp"]).drop_duplicates(subset=["Date"], keep="last")
+
+    # Avoid collisions later
+    preds = preds.loc[:, ~preds.columns.duplicated(keep="first")]
+    return preds
+
 
 def _load_best_thresholds(
     csv_path="logs/threshold_search.csv",
@@ -53,7 +110,7 @@ def _load_best_thresholds(
 
 # ─── Trade rules ────────────────────────────────────────────────────────────────
 ENTRY_SHIFT   = 1    # enter at next bar’s open
-EXIT_SHIFT    = 2    # exit at the following bar’s close
+#EXIT_SHIFT    = 1+3    # exit at day+3 close  <-- match label window
 POSITION_SIZE = 1.0  # 1x notional per trade
 CAPITAL_BASE  = 100_000  #initial capital base for dollar-return tracking
 
@@ -61,7 +118,19 @@ def run_backtest(window_days: int | None = None,
                  crash_thresh: float | None = None,
                  spike_thresh: float | None = None,
                  confidence_thresh: float | None = None,
-                 simulate_mode: bool = False):
+                 simulate_mode: bool = False,
+                 lookahead: int = 3,
+                 tp_atr: float = 0.5,
+                 sl_atr: float = 0.5,
+                 allow_overlap: bool = True,
+                 ambig_policy: str = "sl_first",   # 'sl_first' | 'tp_first' | 'skip' | 'close_dir' | 'random'
+                 rng_seed: int = 7,
+                 fee_bps: float = 0.5,   # 0.005% per fill
+                 slip_bps: float = 1.0,  # 0.01% per fill
+                 atr_len: int = 14,         
+                 trend_len: int = 50  
+
+                 ):
     """
     End-to-end backtest:
       - loads predictions (logs/daily_predictions.csv)
@@ -72,11 +141,8 @@ def run_backtest(window_days: int | None = None,
       - returns (trades_df, metrics_dict, simulate_mode)
     """
     # ── 1) Load predictions ─────────────────────────────────────────────────────
-    preds = pd.read_csv("logs/daily_predictions.csv", parse_dates=False)
-    # Ensure Timestamp is real datetime (naive) then make Date key
-    preds["Timestamp"] = pd.to_datetime(preds.get("Timestamp"), errors="coerce")
-    preds = preds.dropna(subset=["Timestamp"])
-    preds["Date"] = preds["Timestamp"].dt.tz_localize(None).dt.floor("D")
+    preds = _load_predictions(prefer_full=True)
+
 
     # ── 2) Load & normalize SPY ─────────────────────────────────────────────────
     spy_df = load_spy_daily_data()
@@ -123,6 +189,10 @@ def run_backtest(window_days: int | None = None,
         spy_df.index = pd.to_datetime(spy_df.index, errors="coerce")
     spy_df.index = spy_df.index.floor("D")
 
+  
+
+    
+
     # ── 3) Align predictions to available SPY dates + optional window ──────────
     preds = preds.dropna(subset=["Date"])
     preds = preds[preds["Date"].isin(spy_df.index)].copy()
@@ -134,19 +204,13 @@ def run_backtest(window_days: int | None = None,
 
     # ── 4) Remove any stray price columns from preds to avoid join collisions ──
     preds = preds.loc[:, ~preds.columns.duplicated(keep="first")]
-    preds = preds[[c for c in preds.columns if c not in ("Open", "Close")]]
+    price_cols = {"Open", "High", "Low", "Close", "Adj Close", "Volume"}
+    drop_cols = [c for c in preds.columns if c in price_cols]
+    if drop_cols:
+        print(f"ℹ️ Dropping price cols from preds to avoid join collision: {drop_cols}")
+    preds = preds.drop(columns=drop_cols, errors="ignore")
 
-    # Auto-load thresholds only if user didn’t pass any
-    if confidence_thresh is None and crash_thresh is None and spike_thresh is None:
-        b_conf, b_crash, b_spike = _load_best_thresholds()
-        if any(v is not None for v in (b_conf, b_crash, b_spike)):
-            print(f"🎯 Auto thresholds: conf={b_conf} crash={b_crash} spike={b_spike}")
-            confidence_thresh, crash_thresh, spike_thresh = b_conf, b_crash, b_spike
 
-    if any(v is not None for v in (confidence_thresh, crash_thresh, spike_thresh)):
-        print(f"🎯 Thresholds in effect → conf={confidence_thresh}  crash={crash_thresh}  spike={spike_thresh}")
-    else:
-        print("ℹ️ Thresholds in effect → model labels only (no explicit or confidence filter).")
 
 
     # ── 5) Optional pre-filter by probability confidence ───────────────────────
@@ -183,7 +247,7 @@ def run_backtest(window_days: int | None = None,
     df = (
         preds
         .set_index("Date")
-        .join(spy_df[["Open", "Close"]], how="inner")
+        .join(spy_df[["Open", "High", "Low", "Close"]], how="inner")  #08/21: addition of High/Low
         .sort_index()
         .reset_index()
     )
@@ -196,6 +260,10 @@ def run_backtest(window_days: int | None = None,
     if bad.any():
         print(f"⚠️ Dropping {int(bad.sum())} rows with NaN/invalid Open/Close after join.")
         df = df[~bad]
+    # Also coerce the rest so comparisons don’t silently fail
+    for c in ("High", "Low", "Crash_Conf", "Spike_Conf", "Confidence"):
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
 
     # after join + numeric cleanup
     # ---- Single canonical filter + explicit thresholds (AFTER JOIN) ----
@@ -247,10 +315,38 @@ def run_backtest(window_days: int | None = None,
             mask &= (df["Prediction"] != 2) | (df["Spike_Conf"] >= spike_thresh)
 
         before = len(df)
-        df = df[mask]
-        removed = before - len(df)
-        if removed > 0:
-            print(f"🧹 Filter removed {removed} weak signals.")
+        df = df[mask].copy()
+        after_mask = len(df)
+
+        # Per-class minimum confidence for the final label
+        gate_crash = (df["Prediction"] != 1) | (df["Crash_Conf"] >= (crash_thresh if crash_thresh is not None else 0.6))
+        gate_spike = (df["Prediction"] != 2) | (df["Spike_Conf"] >= (spike_thresh if spike_thresh is not None else 0.9))
+        df = df[gate_crash & gate_spike].copy()
+        after_gate = len(df)
+
+        # Regime filter: longs only in up-trend, shorts only in down-trend
+        trend_ma = spy_df["Close"].rolling(trend_len).mean()
+        df["Trend_MA50"] = trend_ma.reindex(df["Date"]).to_numpy()  
+
+        df = df[df["Trend_MA50"].notna()]  # ignore early bars with no MA
+
+        df = df[
+            ((df["Prediction"] == 2) & (df["Close"] >= df["Trend_MA50"])) |  # long in up-trend
+            ((df["Prediction"] == 1) & (df["Close"] <  df["Trend_MA50"])) |  # short in down-trend
+            (df["Prediction"] == 0)                                          # keep neutrals for alignment
+        ].sort_values("Date").reset_index(drop=True)
+
+        print(
+            f"🧹 Removed {before - after_mask} via mask, "
+            f"{after_mask - after_gate} via class gate, "
+            f"{after_gate - len(df)} via regime."
+        )
+    # ---- End single canonical filter ----
+    n_trades = int((df["Prediction"].isin([1,2])).sum())
+    print(f"✅ After filters: {len(df)} rows kept, {n_trades} trade signals in window.")
+
+
+
 
 
 
@@ -277,31 +373,135 @@ def run_backtest(window_days: int | None = None,
     if not df.empty and all(df["Prediction"] == 0):
         print("⚠️  All predictions are '0' — consider lowering thresholds.")
 
-    # ── 10) Build trades ───────────────────────────────────────────────────────
+    # ── 10) Build trades (label-aligned exits, conservative TP/SL) ────────────────
+
+    # --- exit config derived from function args ---
+    LOOKAHEAD = max(1, int(lookahead))
+    TP_ATR    = float(tp_atr)
+    SL_ATR    = float(sl_atr)
+
+    # Wilder-style ATR in DOLLARS with configurable length
+    hl = (spy_df["High"] - spy_df["Low"]).abs()
+    hc = (spy_df["High"] - spy_df["Close"].shift(1)).abs()
+    lc = (spy_df["Low"]  - spy_df["Close"].shift(1)).abs()
+    tr = pd.concat([hl, hc, lc], axis=1).max(axis=1)
+    atr = tr.ewm(alpha=1/atr_len, adjust=False).mean()
+
+    # align to joined df dates
+    df["ATR_dol"] = atr.reindex(df["Date"]).to_numpy()
+    df["ATR_dol"] = pd.to_numeric(df["ATR_dol"], errors="coerce").replace([np.inf,-np.inf], np.nan)
+    # optional: trim ultra-low ATR tails to avoid microscopic bands
+    df["ATR_dol"] = df["ATR_dol"].fillna(np.nanmedian(df["ATR_dol"]))
+    df["ATR_dol"] = df["ATR_dol"].clip(lower=np.nanpercentile(df["ATR_dol"], 5))
+
+
+
+
     trades_list = []
-    for i, row in df.iterrows():
-        sig = row["Prediction"]
-        if sig not in (1, 2):  # 1=crash(short), 2=spike(long)
-            continue
-        try:
-            entry = df.iloc[i + ENTRY_SHIFT]
-            exit_  = df.iloc[i + EXIT_SHIFT]
-        except IndexError:
+    ambig_bars = 0
+    #rng = np.random.default_rng(rng_seed)
+
+    i = 0
+    N = len(df)
+    rng = np.random.default_rng(rng_seed)
+    while i < N:
+        row = df.iloc[i]
+        raw_sig = row.get("Prediction", 0)
+        sig = int(raw_sig) if pd.notna(raw_sig) else 0
+
+        if sig not in (1, 2):
+            i += 1
             continue
 
-        entry_price = entry["Open"]
-        exit_price  = exit_["Close"]
-        ret = (exit_price / entry_price - 1) if sig == 2 else (entry_price / exit_price - 1)
+        entry_idx = i + ENTRY_SHIFT
+        if entry_idx >= N:
+            break
+
+        entry = df.iloc[entry_idx]
+        look_end = min(entry_idx + LOOKAHEAD, N)
+        if look_end <= entry_idx:
+            i += 1
+            continue
+        look = df.iloc[entry_idx:look_end]
+
+        entry_px = float(entry["Open"])
+        atr_dol  = float(entry.get("ATR_dol", 0.0)) if pd.notna(entry.get("ATR_dol")) else 0.0
+
+        if sig == 2:   # long
+            tp_px = entry_px + TP_ATR * atr_dol
+            sl_px = entry_px - SL_ATR * atr_dol
+        else:          # short
+            tp_px = entry_px - TP_ATR * atr_dol
+            sl_px = entry_px + SL_ATR * atr_dol
+
+        exit_px, exit_ts = None, None
+
+
+        for _, bar in look.iterrows():
+            if sig == 2:
+                tag, px, ambig = _resolve_bar_exit_long(bar, tp_px, sl_px)
+            else:
+                tag, px, ambig = _resolve_bar_exit_short(bar, tp_px, sl_px)
+
+            if ambig:
+                ambig_bars += 1
+                if ambig_policy == "sl_first":
+                    tag, px = "SL", sl_px
+                elif ambig_policy == "tp_first":
+                    tag, px = "TP", tp_px
+                elif ambig_policy == "close_dir":
+                    # use bar direction as a cheap proxy for path
+                    op = bar.get("Open", np.nan); cl = bar.get("Close", np.nan)
+                    if pd.notna(op) and pd.notna(cl) and cl >= op:
+                        tag, px = ("TP", tp_px) if sig == 2 else ("SL", sl_px)  # long up bar favors TP; short up bar favors SL
+                    else:
+                        tag, px = ("SL", sl_px) if sig == 2 else ("TP", tp_px)
+                elif ambig_policy == "random":
+                    tag, px = ("TP", tp_px) if rng.random() < 0.5 else ("SL", sl_px)
+                elif ambig_policy == "skip":
+                    # ignore this bar; keep scanning later bars in look window
+                    continue
+
+            if tag in ("TP", "SL") and pd.notna(px):
+                exit_px, exit_ts = float(px), bar.get("Timestamp", pd.NaT)
+                break
+
+            if ambig_bars:
+                print(f"ℹ️ Ambiguous TP/SL bars encountered: {ambig_bars} (policy={ambig_policy})")
+
+
+        if exit_px is None:
+            last = look.iloc[-1]
+            exit_px = float(last["Close"])
+            exit_ts = last.get("Timestamp", pd.NaT)
+
+        # round-trip cost multiplier (applies to both entry & exit prices)
+        c = (fee_bps + slip_bps) / 1e4
+        cost_mult = (1 - c) / (1 + c)
+
+        if sig == 2:  # long
+            # gross = (exit_px / entry_px) - 1.0   # keep if you want diagnostics
+            ret = (exit_px / entry_px) * cost_mult - 1.0
+        else:         # short
+            # gross = (entry_px / exit_px) - 1.0
+            ret = (entry_px / exit_px) * cost_mult - 1.0
+
 
         trades_list.append({
             "signal_time": row.get("Timestamp", pd.NaT),
             "sig":         sig,
             "entry_time":  entry.get("Timestamp", pd.NaT),
-            "exit_time":   exit_.get("Timestamp", pd.NaT),
-            "entry_price": entry_price,
-            "exit_price":  exit_price,
+            "exit_time":   exit_ts,
+            "entry_price": entry_px,
+            "exit_price":  exit_px,
             "return_pct":  ret * POSITION_SIZE
         })
+
+        # jump past the window if overlapping trades are disabled
+        i = (look_end if not allow_overlap else i + 1)
+
+    if ambig_bars:
+        print(f"ℹ️ Ambiguous TP/SL bars resolved conservatively: {ambig_bars}")
 
     if not trades_list:
         print("⚠️  No trades generated in this backtest.")
@@ -312,26 +512,23 @@ def run_backtest(window_days: int | None = None,
         }
         return pd.DataFrame(), zero, simulate_mode
 
+
+
+
     # ── 11) Compute metrics ────────────────────────────────────────────────────
     trades = pd.DataFrame(trades_list).set_index("signal_time")
 
     # equity assumes full notional each trade (compounded)
     trades["equity_curve"] = (1.0 + trades["return_pct"]).cumprod()
-
-    # keep cash in sync with equity (no additive drift)
-    trades["cash_curve"] = CAPITAL_BASE * trades["equity_curve"]
-
-    # dollar P&L per trade is still helpful for summaries
+    trades["cash_curve"]   = CAPITAL_BASE * trades["equity_curve"]
     trades["dollar_return"] = trades["return_pct"] * CAPITAL_BASE
 
     total_return = trades["equity_curve"].iloc[-1] - 1.0
 
     # annualize by elapsed trading days between first signal and last exit
     if len(trades) > 1:
-        # prefer timestamps if present; fallback to index order
         start = pd.to_datetime(trades.index.min(), errors="coerce")
         end   = pd.to_datetime(trades["exit_time"].max(), errors="coerce")
-        # if any NaT leaks, fall back to 252 * (len(trades)/len(trades)) no-op
         if pd.notna(start) and pd.notna(end) and end > start:
             elapsed_days = max(1, (end - start).days)
             annualized_return = (1.0 + total_return) ** (252.0 / elapsed_days) - 1.0
@@ -340,9 +537,22 @@ def run_backtest(window_days: int | None = None,
     else:
         annualized_return = np.nan
 
+    # Calculate Sharpe ratio using average holding period
     returns = trades["return_pct"]
-    sharpe = np.nan if returns.std(ddof=0) == 0 else (returns.mean() / returns.std(ddof=0)) * np.sqrt(252)
+    hold_days = (
+        pd.to_datetime(trades["exit_time"]) - pd.to_datetime(trades["entry_time"])
+    ).dt.days.clip(lower=1)
+    avg_hold = hold_days.mean() if not hold_days.empty else 1.0
+    print(f"🕒 Avg hold (days): {avg_hold:.2f}")
 
+
+    sigma = returns.std(ddof=0)
+    if sigma == 0 or np.isnan(sigma):
+        sharpe = np.nan
+    else:
+        sharpe = (returns.mean() / sigma) * np.sqrt(252.0 / avg_hold)
+    
+    # Warn if too few trades
     if len(trades) < 5:
         print("⚠️  Very few trades — annualized return and Sharpe ratio may be misleading.")
 
@@ -356,6 +566,7 @@ def run_backtest(window_days: int | None = None,
     trades["peak"] = trades["equity_curve"].cummax()
     trades["drawdown"] = trades["equity_curve"] / trades["peak"] - 1.0
     max_drawdown = trades["drawdown"].min()
+
 
     # Save log
     cols = ["sig","entry_time","exit_time","entry_price","exit_price",
@@ -458,6 +669,31 @@ def optimize_thresholds(
 
     return (*best_combo, best_metrics)
 
+def sweep_params_big():
+    from itertools import product
+    import pandas as pd
+    grids = {
+        "confidence_thresh": [0.80, 0.85],
+        "crash_thresh":      [0.60, 0.70, 0.75],
+        "spike_thresh":      [0.90, 0.95, 0.975],
+        "lookahead":         [3, 5],
+        "tp_atr":            [1.25, 1.5],
+        "sl_atr":            [0.75, 1.0],
+        "allow_overlap":     [False],
+        "ambig_policy":      ["close_dir"],
+    }
+    keys = list(grids.keys())
+    rows = []
+    for vals in product(*[grids[k] for k in keys]):
+        kw = dict(zip(keys, vals))
+        _, m, _ = run_backtest(window_days=365*12, fee_bps=2.0, slip_bps=3.0, **kw)
+        rows.append({**kw, **m})
+    df = pd.DataFrame(rows)
+    out = "logs/param_sweep.csv"
+    df.sort_values(["sharpe","max_drawdown"], ascending=[False,True]).to_csv(out, index=False)
+    print("Wrote", out)
+
+
 
 
 
@@ -471,7 +707,18 @@ def optimize_thresholds(
 
 
 if __name__ == "__main__":
-    trades, m, simulate_mode = run_backtest()
+    trades, m, simulate_mode = run_backtest(
+        lookahead=5,
+        tp_atr=1.25,      # or 1.5 for lower DD
+        sl_atr=0.75,      # or 1.0 if TP=1.5
+        allow_overlap=False,
+        ambig_policy="close_dir",
+        confidence_thresh=0.80,
+        crash_thresh=0.70,
+        spike_thresh=0.95,
+        fee_bps=2.0,      # round-trip fees (bps)
+        slip_bps=3.0      # round-trip slippage (bps)
+    )
 
     print("\n📈 Backtest Report")
     print(f"  Trades taken:       {m['trades']}")
@@ -479,6 +726,10 @@ if __name__ == "__main__":
     print(f"  Annualized return:  {m['annualized_return']:.2%}")
     print(f"  Sharpe ratio (252d):{m['sharpe']:.2f}\n")
     print(f"  Max drawdown:        {m['max_drawdown']:.2%}")
+
+    print(f"  Avg long:           {m['avg_long']:.5f}")
+    print(f"  Avg short:          {m['avg_short']:.5f}")
+
 
 
     if not trades.empty:
