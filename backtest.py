@@ -11,6 +11,87 @@ import subprocess
 subprocess.run(["python3", "update_spy_data.py"])
 
 import os, json
+from pathlib import Path
+
+def _ensure_logs_dir(path: str = "logs") -> None:
+    Path(path).mkdir(parents=True, exist_ok=True)
+
+def _git_sha() -> str:
+    try:
+        return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"]).decode().strip()
+    except Exception:
+        return "NA"
+
+def _to_jsonable(x):
+    # make numpy/pandas types JSON-friendly
+    if isinstance(x, (np.floating, np.float32, np.float64)):
+        return float(x)
+    if isinstance(x, (np.integer, np.int32, np.int64)):
+        return int(x)
+    if pd.isna(x):
+        return None
+    return x
+
+def save_run_record(config: dict,
+                    metrics: dict,
+                    simulate_mode: bool,
+                    trades_df: pd.DataFrame | None = None,
+                    out_dir: str = "logs") -> str:
+    """
+    Saves a per-run JSON, appends to a JSONL history, and updates latest.json.
+    Returns the path of the per-run JSON.
+    """
+    _ensure_logs_dir(out_dir)
+    ts = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    rec = {
+        "timestamp_utc": ts,
+        "git_sha": _git_sha(),
+        "simulate_mode": bool(simulate_mode),
+        "config": {k: _to_jsonable(v) for k, v in (config or {}).items()},
+        "metrics": {k: _to_jsonable(v) for k, v in (metrics or {}).items()},
+        "n_trades": int(metrics.get("trades", 0)) if metrics else 0,
+    }
+
+    if trades_df is not None and not trades_df.empty:
+        rec["first_signal"] = str(pd.to_datetime(trades_df.index.min(), errors="coerce"))
+        rec["last_exit"]    = str(pd.to_datetime(trades_df["exit_time"]).max())
+
+    stamp = ts.replace(":", "").replace("-", "").replace("T", "_").replace("Z", "")
+    run_file = Path(out_dir) / f"run_{stamp}__{rec['git_sha']}.json"
+    with open(run_file, "w") as f: json.dump(rec, f, indent=2)
+    with open(Path(out_dir) / "run_history.jsonl", "a") as f: f.write(json.dumps(rec) + "\n")
+    with open(Path(out_dir) / "latest.json", "w") as f: json.dump(rec, f, indent=2)
+
+    print(f"📝 Saved run record → {run_file}")
+    return str(run_file)
+
+def print_run_summary(metrics: dict, config: dict) -> None:
+    safe = {k: _to_jsonable(v) for k, v in (metrics or {}).items()}
+    try:
+        line = (
+            f"trades={safe.get('trades', 0)} | "
+            f"total={safe.get('total_return', 0.0):.2%} | "
+            f"ann={safe.get('annualized_return', float('nan')):.2%} | "
+            f"sharpe={safe.get('sharpe', float('nan')):.2f} | "
+            f"maxDD={safe.get('max_drawdown', 0.0):.2%} | "
+            f"PF={safe.get('profit_factor', float('inf')):.2f}"
+        )
+    except Exception:
+        line = str(safe)
+
+    key_cfg = {k: config.get(k) for k in [
+        "lookahead","tp_atr","sl_atr","allow_overlap","ambig_policy",
+        "confidence_thresh","crash_thresh","spike_thresh",
+        "fee_bps","slip_bps","atr_len","trend_len",
+        "cooldown_long_days","cooldown_short_days",
+        "use_opposite_exit","use_conf_size","use_weekly_trend",
+        "target_ann_vol","vol_lookback","size_cap","conf_size_bounds"
+    ] if k in config}
+
+    print("\n🧾 Run config:", key_cfg)
+    print("🔐 Git SHA: ", _git_sha())
+    print("📊 Summary: ", line)
+
 
 # ─── Trade exit resolution ────────────────────────────────────────────────
 def _resolve_bar_exit_long(bar, tp_px, sl_px):
@@ -835,7 +916,41 @@ if __name__ == "__main__":
         target_ann_vol=None,       
     )
 
-    print(m)
+    # --- reproducibility: record config + metrics ---
+    cfg = dict(
+        window_days=None,
+        lookahead=5,
+        tp_atr=1.25,
+        sl_atr=0.75,
+        allow_overlap=False,
+        ambig_policy="close_dir",
+        confidence_thresh=0.80,
+        crash_thresh=0.70,
+        spike_thresh=0.95,
+        fee_bps=2.0,
+        slip_bps=3.0,
+        atr_len=14,
+        trend_len=50,
+        target_ann_vol=None,
+        vol_lookback=20,
+        size_cap=2.0,
+        conf_size_bounds=(0.7, 1.3),
+        trail_trigger=0.5,
+        trail_k=0.5,
+        cooldown_days=0,
+        cooldown_long_days=1,
+        cooldown_short_days=2,
+        use_conf_size=True,
+        use_opposite_exit=True,
+        use_weekly_trend=False,
+        simulate_mode=simulate_mode,
+    )
+
+    print_run_summary(m, cfg)
+    save_run_record(cfg, m, simulate_mode, trades)
+
+
+    #print(m)
 
     print("\n📈 Backtest Report")
     print(f"  Trades taken:       {m['trades']}")
