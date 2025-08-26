@@ -899,25 +899,11 @@ def sweep_params_big():
 
 
 if __name__ == "__main__":
-    trades, m, simulate_mode = run_backtest(
-        lookahead=5,
-        tp_atr=1.25,      # or 1.5 for lower DD
-        sl_atr=0.75,      # or 1.0 if TP=1.5
-        allow_overlap=False,
-        ambig_policy="close_dir",
-        confidence_thresh=0.80,
-        crash_thresh=0.70,
-        spike_thresh=0.95,
-        fee_bps=2.0,      # round-trip fees (bps)
-        slip_bps=3.0,      # round-trip slippage (bps)
+    import argparse, json, inspect
+    from copy import deepcopy
 
-        use_weekly_trend=False,   
-        use_atr_band=False,       
-        target_ann_vol=None,       
-    )
-
-    # --- reproducibility: record config + metrics ---
-    cfg = dict(
+    # ---- defaults mirroring your current hard-coded run ----
+    base_cfg = dict(
         window_days=None,
         lookahead=5,
         tp_atr=1.25,
@@ -943,33 +929,212 @@ if __name__ == "__main__":
         use_conf_size=True,
         use_opposite_exit=True,
         use_weekly_trend=False,
-        simulate_mode=simulate_mode,
     )
 
-    print_run_summary(m, cfg)
-    save_run_record(cfg, m, simulate_mode, trades)
+    def _load_json(path: str) -> dict:
+        with open(path, "r") as f:
+            return json.load(f)
+        
+    def _parse_grid_list(s: str):
+        # e.g. "None,0.7,0.8,0.9" -> [None, 0.7, 0.8, 0.9]
+        return [None if t.strip().lower()=="none" else float(t.strip())
+                for t in s.split(",") if t.strip() != ""]
+
+    def _save_best_thresholds(path, conf, crash, spike, meta=None):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        payload = {
+            "confidence_thresh": conf,
+            "crash_thresh": crash,
+            "spike_thresh": spike,
+            "meta": (meta or {})
+        }
+        with open(path, "w") as f:
+            json.dump(payload, f, indent=2)
+        print(f"💾 Saved best thresholds → {path}")
+
+        
+    
+
+    parser = argparse.ArgumentParser(description="Backtest runner")
+    parser.add_argument("--config", help="JSON file to seed/override params")
+    parser.add_argument("--save-config", help="Save the final merged config to this JSON")
+
+    # numerics
+    parser.add_argument("--window-days", type=int)
+    parser.add_argument("--lookahead", type=int)
+    parser.add_argument("--tp-atr", type=float)
+    parser.add_argument("--sl-atr", type=float)
+    parser.add_argument("--fee-bps", type=float)
+    parser.add_argument("--slip-bps", type=float)
+    parser.add_argument("--atr-len", type=int)
+    parser.add_argument("--trend-len", type=int)
+    parser.add_argument("--confidence-thresh", type=float)
+    parser.add_argument("--crash-thresh", type=float)
+    parser.add_argument("--spike-thresh", type=float)
+    parser.add_argument("--ambig-policy", choices=["sl_first","tp_first","skip","close_dir","random"])
+    parser.add_argument("--cooldown-days", type=int)
+    parser.add_argument("--cooldown-long-days", type=int)
+    parser.add_argument("--cooldown-short-days", type=int)
+    parser.add_argument("--target-ann-vol", type=float)
+    parser.add_argument("--vol-lookback", type=int)
+    parser.add_argument("--size-cap", type=float)
+    parser.add_argument("--trail-trigger", type=float)
+    parser.add_argument("--trail-k", type=float)
+    parser.add_argument("--conf-size-bounds", type=str, help="lo,hi  e.g. 0.7,1.3")
+
+    # booleans (tri-state so JSON/flags can override either way)
+    parser.add_argument("--allow-overlap", dest="allow_overlap", action="store_true")
+    parser.add_argument("--no-allow-overlap", dest="allow_overlap", action="store_false")
+    parser.set_defaults(allow_overlap=None)
+
+    parser.add_argument("--use-opposite-exit", dest="use_opposite_exit", action="store_true")
+    parser.add_argument("--no-use-opposite-exit", dest="use_opposite_exit", action="store_false")
+    parser.set_defaults(use_opposite_exit=None)
+
+    parser.add_argument("--use-conf-size", dest="use_conf_size", action="store_true")
+    parser.add_argument("--no-use-conf-size", dest="use_conf_size", action="store_false")
+    parser.set_defaults(use_conf_size=None)
+
+    parser.add_argument("--use-weekly-trend", dest="use_weekly_trend", action="store_true")
+    parser.add_argument("--no-use-weekly-trend", dest="use_weekly_trend", action="store_false")
+    parser.set_defaults(use_weekly_trend=None)
+
+    # ---- optimizer switches ----
+    parser.add_argument("--optimize", action="store_true",
+                        help="Run threshold grid search instead of a plain backtest.")
+    parser.add_argument("--opt-window-days", type=int,
+                        help="Window (days) to use during optimization; defaults to --window-days.")
+    parser.add_argument("--opt-min-trades", type=int, default=20,
+                        help="Minimum trades required for a combo to be considered.")
+    parser.add_argument("--opt-objective", default="avg_dollar_return",
+                        choices=["avg_dollar_return","total_profit","win_rate","profit_factor"],
+                        help="Metric to maximize during optimization.")
+    parser.add_argument("--grid-confidence", type=str,
+                        help='Comma list for confidence grid, e.g. "None,0.6,0.7,0.8,0.9"')
+    parser.add_argument("--grid-crash", type=str,
+                        help='Comma list for crash grid, e.g. "None,0.6,0.7,0.8,0.9"')
+    parser.add_argument("--grid-spike", type=str,
+                        help='Comma list for spike grid, e.g. "None,0.9,0.95,0.975"')
+    parser.add_argument("--save-best", type=str, default="configs/best_thresholds.json",
+                        help="Path to save best thresholds JSON.")
+    parser.add_argument("--apply-best", action="store_true",
+                        help="After optimizing, run a backtest using the best thresholds.")
 
 
-    #print(m)
+    args = parser.parse_args()
 
+    # ---- merge order: defaults → config file → CLI flags ----
+    cfg = deepcopy(base_cfg)
+    if args.config:
+        cfg.update(_load_json(args.config))
+
+    # numeric/str updates
+    for k in [
+        "window_days","lookahead","tp_atr","sl_atr","fee_bps","slip_bps",
+        "atr_len","trend_len","confidence_thresh","crash_thresh","spike_thresh",
+        "ambig_policy","cooldown_days","cooldown_long_days","cooldown_short_days",
+        "target_ann_vol","vol_lookback","size_cap","trail_trigger","trail_k"
+    ]:
+        v = getattr(args, k, None)
+        if v is not None: cfg[k] = v
+
+    # booleans
+    for k in ["allow_overlap","use_conf_size","use_opposite_exit","use_weekly_trend"]:
+        v = getattr(args, k, None)
+        if v is not None: cfg[k] = bool(v)
+
+    # conf_size_bounds "lo,hi"
+    if args.conf_size_bounds:
+        lo, hi = (float(x) for x in args.conf_size_bounds.split(","))
+        cfg["conf_size_bounds"] = (lo, hi)
+
+    # keep only kwargs that run_backtest actually accepts
+    allowed = set(inspect.signature(run_backtest).parameters)
+    kwargs = {k: v for k, v in cfg.items() if k in allowed}
+
+    if args.optimize:
+        # Build grid from flags or use defaults inside optimize_thresholds
+        grid = None
+        if any([args.grid_confidence, args.grid_crash, args.grid_spike]):
+            grid = {
+                "confidence_thresh": _parse_grid_list(args.grid_confidence) if args.grid_confidence else [None, 0.6, 0.7, 0.8, 0.9],
+                "crash_thresh":      _parse_grid_list(args.grid_crash)      if args.grid_crash      else [None, 0.6, 0.7, 0.8, 0.9],
+                "spike_thresh":      _parse_grid_list(args.grid_spike)      if args.grid_spike      else [None, 0.9, 0.95, 0.975],
+            }
+
+        # Use opt-window-days if provided, else fall back to cfg["window_days"]
+        opt_window = args.opt_window_days if args.opt_window_days is not None else cfg.get("window_days", None)
+
+        best_conf, best_crash, best_spike, best_metrics = optimize_thresholds(
+            window_days=opt_window,
+            grid=grid,
+            min_trades=args.opt_min_trades,
+            objective=args.opt_objective,
+            # carry through core backtest mechanics that affect PnL
+            lookahead=cfg["lookahead"],
+            tp_atr=cfg["tp_atr"],
+            sl_atr=cfg["sl_atr"],
+            allow_overlap=cfg["allow_overlap"],
+            ambig_policy=cfg["ambig_policy"],
+            fee_bps=cfg["fee_bps"],
+            slip_bps=cfg["slip_bps"],
+            atr_len=cfg["atr_len"],
+            trend_len=cfg["trend_len"],
+        )
+
+        print("\n🏁 Optimization result")
+        print(f"  Best thresholds: confidence={best_conf}, crash={best_crash}, spike={best_spike}")
+        for k,v in best_metrics.items():
+            if isinstance(v, float):
+                if "return" in k or "rate" in k or "drawdown" in k:
+                    print(f"  {k:>20}: {v:.4f}")
+                else:
+                    print(f"  {k:>20}: {v:.6f}")
+            else:
+                print(f"  {k:>20}: {v}")
+
+        # Save for future runs
+        _save_best_thresholds(args.save_best, best_conf, best_crash, best_spike, meta={
+            "objective": args.opt_objective,
+            "min_trades": args.opt_min_trades,
+            "window_days": opt_window,
+            "timestamp": datetime.now().isoformat(timespec="seconds")
+        })
+
+        # Optionally apply and continue into a real backtest with the best thresholds
+        if args.apply_best:
+            cfg["confidence_thresh"] = best_conf
+            cfg["crash_thresh"] = best_crash
+            cfg["spike_thresh"] = best_spike
+            print("\n▶️  Applying best thresholds and running a backtest...")
+        else:
+            # Exit early: do not run a backtest unless asked
+            exit(0)
+
+
+    trades, m, simulate_mode = run_backtest(**kwargs)
+
+    # --- print your existing backtest report (unchanged) ---
     print("\n📈 Backtest Report")
     print(f"  Trades taken:       {m['trades']}")
     print(f"  Total return:       {m['total_return']:.2%}")
     print(f"  Annualized return:  {m['annualized_return']:.2%}")
     print(f"  Sharpe ratio (252d):{m['sharpe']:.2f}\n")
     print(f"  Max drawdown:        {m['max_drawdown']:.2%}")
-
     print(f"  Avg long:           {m['avg_long']:.5f}")
     print(f"  Avg short:          {m['avg_short']:.5f}")
 
-
+    # optional summary/record (if you pasted the helpers earlier)
+    try:
+        print_run_summary(m, cfg)
+        save_run_record(cfg, m, simulate_mode, trades)
+    except NameError:
+        pass
 
     if not trades.empty:
-        # print final balance + profit
         final_balance = trades["cash_curve"].iloc[-1]
         print(f"  Final capital:      ${final_balance:,.2f}")
         print(f"  Net profit:         ${final_balance - CAPITAL_BASE:,.2f}")
-
 
     print("\nSample trades:")
     if trades.empty:
@@ -977,39 +1142,17 @@ if __name__ == "__main__":
     else:
         print(trades.head())
 
-        # Rename equity column for consistency
         trades = trades.rename(columns={"equity_curve": "Equity"})
-        trades["Drawdown %"] = trades["drawdown"] * 100  # in percent terms
+        trades["Drawdown %"] = trades["drawdown"] * 100
 
-        # Ensure expected plot columns are present
-        if "equity_curve" in trades.columns:
-            trades["Equity"] = trades["equity_curve"]  # manually copy
-        if "drawdown" in trades.columns:
-            trades["Drawdown %"] = trades["drawdown"] * 100  # convert to percent
-
-        # Combine both plots in one window using subplots
+        import matplotlib.pyplot as plt
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
-
-        # Equity Curve
-        trades["Equity"].plot(ax=ax1, title="Equity Curve")
-        ax1.set_ylabel("Cumulative Return")
-        ax1.grid(True)
-
-        # Drawdown Plot
+        trades["Equity"].plot(ax=ax1, title="Equity Curve"); ax1.set_ylabel("Cumulative Return"); ax1.grid(True)
         trades["Drawdown %"].plot(ax=ax2, title="Drawdown (%)", color='red', linestyle='--')
-        ax2.set_ylabel("Drawdown")
-        ax2.axhline(0, color="black", linewidth=0.5)
-        ax2.grid(True)
-
-        plt.xlabel("Signal Time")
-        plt.tight_layout()
-        plt.show()
-
-        # Save the equity + drawdown plot to file
+        ax2.set_ylabel("Drawdown"); ax2.axhline(0, color="black", linewidth=0.5); ax2.grid(True)
+        plt.xlabel("Signal Time"); plt.tight_layout(); plt.show()
         fig.savefig("logs/equity_drawdown_plot.png", dpi=300)
         print("📸 Saved equity and drawdown chart to logs/equity_drawdown_plot.png")
 
-
-
-    if simulate_mode:  #callout
+    if simulate_mode:
         print("\n⚠️ NOTE: This was a simulated run with injected predictions.")
