@@ -125,10 +125,33 @@ def run_backtest(window_days: int | None = None,
                  allow_overlap: bool = True,
                  ambig_policy: str = "sl_first",   # 'sl_first' | 'tp_first' | 'skip' | 'close_dir' | 'random'
                  rng_seed: int = 7,
-                 fee_bps: float = 0.5,   # 0.005% per fill
-                 slip_bps: float = 1.0,  # 0.01% per fill
-                 atr_len: int = 14,         
-                 trend_len: int = 50  
+                 fee_bps: float = 0.0,   # 0.005% per fill
+                 slip_bps: float = 0.0,  # 0.01% per fill
+                 atr_len: int = 14,
+                 trend_len: int = 50, 
+
+                 target_ann_vol: float | None = None,  # e.g., 0.12 for 12%
+                 vol_lookback: int = 20,
+                 size_cap: float = 2.0,
+
+                 conf_size_bounds: tuple[float,float] | None = (0.7, 1.3),
+
+                 trail_trigger: float | None = 0.5,  # trigger at 0.5×TP_ATR move
+                 trail_k: float = 0.5,  
+
+                 cooldown_days: int = 0,
+
+                 cooldown_long_days: int = 1,
+                 cooldown_short_days: int = 2,
+
+                 use_conf_size: bool = True,
+                 use_opposite_exit: bool = True,
+
+                 use_weekly_trend: bool = False,
+                 use_atr_band: bool = False
+
+            
+
 
                  ):
     """
@@ -326,15 +349,28 @@ def run_backtest(window_days: int | None = None,
 
         # Regime filter: longs only in up-trend, shorts only in down-trend
         trend_ma = spy_df["Close"].rolling(trend_len).mean()
-        df["Trend_MA50"] = trend_ma.reindex(df["Date"]).to_numpy()  
-
-        df = df[df["Trend_MA50"].notna()]  # ignore early bars with no MA
-
+        df["Trend_MA"] = trend_ma.reindex(df["Date"]).to_numpy()
+        df = df[df["Trend_MA"].notna()]
         df = df[
-            ((df["Prediction"] == 2) & (df["Close"] >= df["Trend_MA50"])) |  # long in up-trend
-            ((df["Prediction"] == 1) & (df["Close"] <  df["Trend_MA50"])) |  # short in down-trend
-            (df["Prediction"] == 0)                                          # keep neutrals for alignment
+            ((df["Prediction"] == 2) & (df["Close"] >= df["Trend_MA"])) |
+            ((df["Prediction"] == 1) & (df["Close"] <  df["Trend_MA"])) |
+            (df["Prediction"] == 0)
         ].sort_values("Date").reset_index(drop=True)
+
+        if use_weekly_trend:
+            weekly_close = spy_df["Close"].resample("W-FRI").last()
+            weekly_trend = weekly_close.rolling(26).mean().reindex(spy_df.index, method="ffill")
+            df["WeeklyTrend"] = weekly_trend.reindex(df["Date"]).to_numpy()
+
+            df = df[
+                ((df["Prediction"] == 2) & (df["Close"] >= df["Trend_MA"]) & (df["Close"] >= df["WeeklyTrend"])) |
+                ((df["Prediction"] == 1) & (df["Close"] <  df["Trend_MA"]) & (df["Close"] <= df["WeeklyTrend"])) |
+                (df["Prediction"] == 0)
+            ].sort_values("Date").reset_index(drop=True)
+
+
+
+
 
         print(
             f"🧹 Removed {before - after_mask} via mask, "
@@ -386,6 +422,7 @@ def run_backtest(window_days: int | None = None,
     lc = (spy_df["Low"]  - spy_df["Close"].shift(1)).abs()
     tr = pd.concat([hl, hc, lc], axis=1).max(axis=1)
     atr = tr.ewm(alpha=1/atr_len, adjust=False).mean()
+   
 
     # align to joined df dates
     df["ATR_dol"] = atr.reindex(df["Date"]).to_numpy()
@@ -393,6 +430,18 @@ def run_backtest(window_days: int | None = None,
     # optional: trim ultra-low ATR tails to avoid microscopic bands
     df["ATR_dol"] = df["ATR_dol"].fillna(np.nanmedian(df["ATR_dol"]))
     df["ATR_dol"] = df["ATR_dol"].clip(lower=np.nanpercentile(df["ATR_dol"], 5))
+
+    # ATR band filter (off by default)
+    if use_atr_band:
+        p = np.nanpercentile(df["ATR_dol"], [20, 80])
+        df = df[((df["ATR_dol"] >= p[0]) & (df["ATR_dol"] <= p[1])) | (df["Prediction"] == 0)]
+
+
+
+    # --- realized ann. volatility per date (for vol targeting) ---
+    ret_d = spy_df["Close"].pct_change()
+    vol = (ret_d.rolling(vol_lookback).std() * np.sqrt(252.0)).reindex(df["Date"]).to_numpy()
+    df["ann_vol"] = pd.to_numeric(vol, errors="coerce")
 
 
 
@@ -404,19 +453,18 @@ def run_backtest(window_days: int | None = None,
     i = 0
     N = len(df)
     rng = np.random.default_rng(rng_seed)
+
     while i < N:
         row = df.iloc[i]
-        raw_sig = row.get("Prediction", 0)
-        sig = int(raw_sig) if pd.notna(raw_sig) else 0
-
+        sig = int(row.get("Prediction", 0)) if pd.notna(row.get("Prediction", np.nan)) else 0
         if sig not in (1, 2):
             i += 1
             continue
 
+        # indices & window
         entry_idx = i + ENTRY_SHIFT
         if entry_idx >= N:
             break
-
         entry = df.iloc[entry_idx]
         look_end = min(entry_idx + LOOKAHEAD, N)
         if look_end <= entry_idx:
@@ -424,68 +472,105 @@ def run_backtest(window_days: int | None = None,
             continue
         look = df.iloc[entry_idx:look_end]
 
+        # --- sizing pieces ---
+        # (1) confidence sizing (linear: threshold → 0.5x, certainty → 1.5x)
+        pos_conf = 1.0
+        if use_conf_size:
+            if sig == 2 and "Spike_Conf" in df.columns:
+                th = spike_thresh if spike_thresh is not None else 0.90
+                pos_conf = np.clip(0.5 + (row["Spike_Conf"] - th) / max(1e-9, 1 - th), 0.5, 1.5)
+            elif sig == 1 and "Crash_Conf" in df.columns:
+                th = crash_thresh if crash_thresh is not None else 0.60
+                pos_conf = np.clip(0.5 + (row["Crash_Conf"] - th) / max(1e-9, 1 - th), 0.5, 1.5)
+
+        # (2) volatility targeting
+        size_vol = 1.0
+        if target_ann_vol is not None and pd.notna(entry.get("ann_vol", np.nan)) and entry["ann_vol"] > 0:
+            size_vol = np.clip(target_ann_vol / float(entry["ann_vol"]), 0.1, size_cap)
+
+        # (3) optional confidence bounds map
+        size_conf = 1.0
+        if conf_size_bounds is not None:
+            lo, hi = conf_size_bounds
+            if sig == 2:
+                conf = float(row.get("Spike_Conf", np.nan))
+                thr  = float(spike_thresh if spike_thresh is not None else 0.90)
+            else:
+                conf = float(row.get("Crash_Conf", np.nan))
+                thr  = float(crash_thresh if crash_thresh is not None else 0.60)
+            if not np.isnan(conf):
+                t = max(0.0, min(1.0, (conf - thr) / max(1e-6, 1.0 - thr)))
+                size_conf = lo + t * (hi - lo)
+
+        pos_mult_final = pos_conf * size_vol * size_conf  # <— single, final multiplier
+
+        # prices/targets
         entry_px = float(entry["Open"])
         atr_dol  = float(entry.get("ATR_dol", 0.0)) if pd.notna(entry.get("ATR_dol")) else 0.0
 
-        if sig == 2:   # long
+        if sig == 2:
             tp_px = entry_px + TP_ATR * atr_dol
             sl_px = entry_px - SL_ATR * atr_dol
-        else:          # short
+        else:
             tp_px = entry_px - TP_ATR * atr_dol
             sl_px = entry_px + SL_ATR * atr_dol
 
         exit_px, exit_ts = None, None
 
-
+        # scan lookahead
         for _, bar in look.iterrows():
-            if sig == 2:
-                tag, px, ambig = _resolve_bar_exit_long(bar, tp_px, sl_px)
-            else:
-                tag, px, ambig = _resolve_bar_exit_short(bar, tp_px, sl_px)
+            tag = px = None
 
+            # 1) primary: TP/SL
+            if sig == 2:
+                _tag, _px, ambig = _resolve_bar_exit_long(bar, tp_px, sl_px)
+            else:
+                _tag, _px, ambig = _resolve_bar_exit_short(bar, tp_px, sl_px)
+
+            # 2) resolve ambiguity
             if ambig:
                 ambig_bars += 1
-                if ambig_policy == "sl_first":
-                    tag, px = "SL", sl_px
-                elif ambig_policy == "tp_first":
-                    tag, px = "TP", tp_px
+                if   ambig_policy == "sl_first": tag, px = "SL", sl_px
+                elif ambig_policy == "tp_first": tag, px = "TP", tp_px
                 elif ambig_policy == "close_dir":
-                    # use bar direction as a cheap proxy for path
-                    op = bar.get("Open", np.nan); cl = bar.get("Close", np.nan)
-                    if pd.notna(op) and pd.notna(cl) and cl >= op:
-                        tag, px = ("TP", tp_px) if sig == 2 else ("SL", sl_px)  # long up bar favors TP; short up bar favors SL
-                    else:
-                        tag, px = ("SL", sl_px) if sig == 2 else ("TP", tp_px)
+                    op, cl = bar.get("Open"), bar.get("Close")
+                    upbar = pd.notna(op) and pd.notna(cl) and cl >= op
+                    tag, px = (("TP", tp_px) if sig == 2 else ("SL", sl_px)) if upbar else (("SL", sl_px) if sig == 2 else ("TP", tp_px))
                 elif ambig_policy == "random":
-                    tag, px = ("TP", tp_px) if rng.random() < 0.5 else ("SL", sl_px)
-                elif ambig_policy == "skip":
-                    # ignore this bar; keep scanning later bars in look window
-                    continue
+                    tag, px = (("TP", tp_px) if rng.random() < 0.5 else ("SL", sl_px))
+            else:
+                tag, px = _tag, _px
 
-            if tag in ("TP", "SL") and pd.notna(px):
+            # 3) opposite signal exit
+            if tag is None and use_opposite_exit:
+                opp = ((sig == 2 and bar.get("Prediction", 2) == 1) or
+                    (sig == 1 and bar.get("Prediction", 1) == 2))
+                if opp:
+                    tag = "OPP"
+                    px = float(bar["Open"]) if pd.notna(bar.get("Open")) else float(bar["Close"])
+
+            # 4) dynamic trail after progress
+            if tag is None and trail_trigger is not None and atr_dol > 0:
+                prog_long  = (sig == 2) and pd.notna(bar.get("High")) and (bar["High"] >= entry_px + trail_trigger * TP_ATR * atr_dol)
+                prog_short = (sig == 1) and pd.notna(bar.get("Low"))  and (bar["Low"]  <= entry_px - trail_trigger * TP_ATR * atr_dol)
+                if   prog_long:  sl_px = max(sl_px, entry_px + trail_k * atr_dol)
+                elif prog_short: sl_px = min(sl_px, entry_px - trail_k * atr_dol)
+
+            # commit exit
+            if tag in ("TP", "SL", "OPP") and pd.notna(px):
                 exit_px, exit_ts = float(px), bar.get("Timestamp", pd.NaT)
                 break
-
-            if ambig_bars:
-                print(f"ℹ️ Ambiguous TP/SL bars encountered: {ambig_bars} (policy={ambig_policy})")
-
 
         if exit_px is None:
             last = look.iloc[-1]
             exit_px = float(last["Close"])
             exit_ts = last.get("Timestamp", pd.NaT)
 
-        # round-trip cost multiplier (applies to both entry & exit prices)
+        # P&L with costs
         c = (fee_bps + slip_bps) / 1e4
         cost_mult = (1 - c) / (1 + c)
-
-        if sig == 2:  # long
-            # gross = (exit_px / entry_px) - 1.0   # keep if you want diagnostics
-            ret = (exit_px / entry_px) * cost_mult - 1.0
-        else:         # short
-            # gross = (entry_px / exit_px) - 1.0
-            ret = (entry_px / exit_px) * cost_mult - 1.0
-
+        net = (exit_px / entry_px) * cost_mult - 1.0 if sig == 2 else (entry_px / exit_px) * cost_mult - 1.0
+        ret = net
 
         trades_list.append({
             "signal_time": row.get("Timestamp", pd.NaT),
@@ -494,11 +579,25 @@ def run_backtest(window_days: int | None = None,
             "exit_time":   exit_ts,
             "entry_price": entry_px,
             "exit_price":  exit_px,
-            "return_pct":  ret * POSITION_SIZE
+            "return_pct":  ret * POSITION_SIZE * pos_mult_final,
         })
 
-        # jump past the window if overlapping trades are disabled
-        i = (look_end if not allow_overlap else i + 1)
+        # non-overlap jump + per-direction cooldown
+        if not allow_overlap:
+            next_date = df.iloc[look_end - 1]["Date"] if look_end > 0 else row["Date"]
+            cool = cooldown_long_days if sig == 2 else cooldown_short_days
+            if cool > 0:
+                cut = next_date + pd.Timedelta(days=cool)
+                j = df.index[df["Date"] >= cut]
+                i = int(j[0]) if len(j) else N
+            else:
+                i = look_end
+        else:
+            i += 1
+
+
+
+
 
     if ambig_bars:
         print(f"ℹ️ Ambiguous TP/SL bars resolved conservatively: {ambig_bars}")
@@ -596,10 +695,15 @@ import itertools
 import math
 
 def optimize_thresholds(
+        
     window_days: int | None = None,
     grid: dict | None = None,
     min_trades: int = 20,
     objective: str = "avg_dollar_return",
+    lookahead=5, tp_atr=1.25, sl_atr=1.0,
+    allow_overlap=False, ambig_policy="close_dir",
+    fee_bps=2.0, slip_bps=3.0, atr_len=14, trend_len=50
+
 ) -> tuple[float | None, float | None, float | None, dict]:
     """
     Grid-search thresholds to maximize chosen objective.
@@ -624,11 +728,18 @@ def optimize_thresholds(
     for conf, crash, spike in combos:
         trades, metrics, _ = run_backtest(
             window_days=window_days,
-            crash_thresh=crash,
-            spike_thresh=spike,
+            crash_thresh=crash, 
+            spike_thresh=spike, 
             confidence_thresh=conf,
-            simulate_mode=False,
-        )
+            lookahead=lookahead, 
+            tp_atr=tp_atr, 
+            sl_atr=sl_atr,
+            allow_overlap=allow_overlap, 
+            ambig_policy=ambig_policy,
+            fee_bps=fee_bps, 
+            slip_bps=slip_bps, 
+            atr_len=atr_len, 
+            trend_len=trend_len)
 
         n = metrics.get("trades", 0)
         if n < min_trades:
@@ -717,8 +828,14 @@ if __name__ == "__main__":
         crash_thresh=0.70,
         spike_thresh=0.95,
         fee_bps=2.0,      # round-trip fees (bps)
-        slip_bps=3.0      # round-trip slippage (bps)
+        slip_bps=3.0,      # round-trip slippage (bps)
+
+        use_weekly_trend=False,   
+        use_atr_band=False,       
+        target_ann_vol=None,       
     )
+
+    print(m)
 
     print("\n📈 Backtest Report")
     print(f"  Trades taken:       {m['trades']}")
