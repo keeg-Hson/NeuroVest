@@ -85,7 +85,7 @@ def print_run_summary(metrics: dict, config: dict) -> None:
         "fee_bps","slip_bps","atr_len","trend_len",
         "cooldown_long_days","cooldown_short_days",
         "use_opposite_exit","use_conf_size","use_weekly_trend",
-        "target_ann_vol","vol_lookback","size_cap","conf_size_bounds"
+        "target_ann_vol","vol_lookback","size_cap","conf_size_bounds" 
     ] if k in config}
 
     print("\n🧾 Run config:", key_cfg)
@@ -229,7 +229,11 @@ def run_backtest(window_days: int | None = None,
                  use_opposite_exit: bool = True,
 
                  use_weekly_trend: bool = False,
-                 use_atr_band: bool = False
+                 use_atr_band: bool = False,
+                 use_regime_filter: bool = False,
+
+                 dyn_t: float | None = None,      
+                 margin: float = 0.05 
 
             
 
@@ -325,17 +329,27 @@ def run_backtest(window_days: int | None = None,
     #     ]
 
     # ── 6) Optional explicit thresholds (else use model labels already in file)
-    # if (crash_thresh is not None) or (spike_thresh is not None):
-    #     print(f"📊 Applying explicit thresholds — "
-    #           f"Crash ≥ {crash_thresh if crash_thresh is not None else '—'}, "
-    #           f"Spike ≥ {spike_thresh if spike_thresh is not None else '—'}")
-    #     preds["Prediction"] = 0
-    #     if crash_thresh is not None:
-    #         preds.loc[preds["Crash_Conf"] >= crash_thresh, "Prediction"] = 1
-    #     if spike_thresh is not None:
-    #         preds.loc[preds["Spike_Conf"] >= spike_thresh, "Prediction"] = 2
-    # else:
-    #     print("ℹ️ Using model-provided class labels (no explicit crash/spike thresholds).")
+    if (crash_thresh is not None) or (spike_thresh is not None) or (confidence_thresh is not None):
+        print(f"📊 Applying explicit thresholds — "
+            f"Confidence ≥ {confidence_thresh if confidence_thresh is not None else '—'}, "
+            f"Crash ≥ {crash_thresh if crash_thresh is not None else '—'}, "
+            f"Spike ≥ {spike_thresh if spike_thresh is not None else '—'}")
+        preds["Prediction"] = 0
+        # optional overall confidence gate
+        if confidence_thresh is not None:
+            ok_conf = (preds["Crash_Conf"].fillna(0).clip(0,1).ge(confidence_thresh)) | \
+                    (preds["Spike_Conf"].fillna(0).clip(0,1).ge(confidence_thresh))
+        else:
+            ok_conf = pd.Series(True, index=preds.index)
+
+        # apply class thresholds
+        if crash_thresh is not None:
+            preds.loc[ok_conf & preds["Crash_Conf"].ge(crash_thresh), "Prediction"] = 1
+        if spike_thresh is not None:
+            preds.loc[ok_conf & preds["Spike_Conf"].ge(spike_thresh), "Prediction"] = 2
+    else:
+        print("ℹ️ Using model-provided class labels (no explicit crash/spike thresholds).")
+
 
 
     # ── 7) (Optional) Simulate mode: inject some spikes for plumbing tests ─────
@@ -369,96 +383,41 @@ def run_backtest(window_days: int | None = None,
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
-    # after join + numeric cleanup
-    # ---- Single canonical filter + explicit thresholds (AFTER JOIN) ----
-    if {"Crash_Conf","Spike_Conf"}.issubset(df.columns):
-        # Start with everything kept
-        mask = pd.Series(True, index=df.index)
-
-        # a) Pre-filter by overall confidence (too-many-signals guard)
-        if confidence_thresh is not None:
-            mask &= (df["Crash_Conf"] >= confidence_thresh) | (df["Spike_Conf"] >= confidence_thresh)
-
-        # b) If explicit thresholds are provided, rewrite Prediction deterministically
-        #    Otherwise, we use model-provided labels already present in df['Prediction'].
-        if (crash_thresh is not None) or (spike_thresh is not None):
-            print(
-                f"📊 Applying explicit thresholds — "
-                f"Crash ≥ {crash_thresh if crash_thresh is not None else '—'}, "
-                f"Spike ≥ {spike_thresh if spike_thresh is not None else '—'}"
-            )
-
-            # Start neutral
-            df["Prediction"] = 0
-
-            # Convenience handles
-            c = df["Crash_Conf"] if "Crash_Conf" in df.columns else pd.Series(0.0, index=df.index)
-            s = df["Spike_Conf"] if "Spike_Conf" in df.columns else pd.Series(0.0, index=df.index)
-
-            # Apply one-sided thresholds
-            if crash_thresh is not None:
-                df.loc[c >= crash_thresh, "Prediction"] = 1
-            if spike_thresh is not None:
-                df.loc[s >= spike_thresh, "Prediction"] = 2
-
-            # Tie: both exceed their respective thresholds → pick higher confidence
-            # (If one threshold is None, we use 1.1 so that condition is False for that side.)
-            ct = crash_thresh if crash_thresh is not None else 1.1
-            st = spike_thresh if spike_thresh is not None else 1.1
-            both = (c >= ct) & (s >= st)
-            df.loc[both, "Prediction"] = np.where(s[both] >= c[both], 2, 1)
-        else:
-            print("ℹ️ Using model-provided class labels (no explicit crash/spike thresholds).")
+    # ---- Canonical filter: trust model labels; add simple margin winner check ----
+    lead = (df["Spike_Conf"] - df["Crash_Conf"]).abs()
+    min_margin = float(margin)
+    base = len(df)
+    df = df[(df["Prediction"].isin([1, 2])) & (lead >= min_margin)].copy()
+    print(f"🧪 Margin gate kept {len(df)} rows of {base} (margin ≥ {min_margin:.2f}).")
 
 
-        # c) If you want to *also* enforce per-class minimums on the resulting labels:
 
-        if crash_thresh is not None:
-            mask &= (df["Prediction"] != 1) | (df["Crash_Conf"] >= crash_thresh)
-        if spike_thresh is not None:
-            mask &= (df["Prediction"] != 2) | (df["Spike_Conf"] >= spike_thresh)
 
-        before = len(df)
-        df = df[mask].copy()
-        after_mask = len(df)
-
-        # Per-class minimum confidence for the final label
-        gate_crash = (df["Prediction"] != 1) | (df["Crash_Conf"] >= (crash_thresh if crash_thresh is not None else 0.6))
-        gate_spike = (df["Prediction"] != 2) | (df["Spike_Conf"] >= (spike_thresh if spike_thresh is not None else 0.9))
-        df = df[gate_crash & gate_spike].copy()
-        after_gate = len(df)
-
-        # Regime filter: longs only in up-trend, shorts only in down-trend
+    # Regime filter: longs only in up-trend, shorts only in down-trend
+    if use_regime_filter:
         trend_ma = spy_df["Close"].rolling(trend_len).mean()
         df["Trend_MA"] = trend_ma.reindex(df["Date"]).to_numpy()
         df = df[df["Trend_MA"].notna()]
         df = df[
             ((df["Prediction"] == 2) & (df["Close"] >= df["Trend_MA"])) |
-            ((df["Prediction"] == 1) & (df["Close"] <  df["Trend_MA"])) |
-            (df["Prediction"] == 0)
+            ((df["Prediction"] == 1) & (df["Close"] <  df["Trend_MA"]))
         ].sort_values("Date").reset_index(drop=True)
 
         if use_weekly_trend:
             weekly_close = spy_df["Close"].resample("W-FRI").last()
             weekly_trend = weekly_close.rolling(26).mean().reindex(spy_df.index, method="ffill")
             df["WeeklyTrend"] = weekly_trend.reindex(df["Date"]).to_numpy()
-
             df = df[
-                ((df["Prediction"] == 2) & (df["Close"] >= df["Trend_MA"]) & (df["Close"] >= df["WeeklyTrend"])) |
-                ((df["Prediction"] == 1) & (df["Close"] <  df["Trend_MA"]) & (df["Close"] <= df["WeeklyTrend"])) |
-                (df["Prediction"] == 0)
+                ((df["Prediction"] == 2) & (df["Close"] >= df["WeeklyTrend"])) |
+                ((df["Prediction"] == 1) & (df["Close"] <= df["WeeklyTrend"]))
             ].sort_values("Date").reset_index(drop=True)
 
 
 
-
-
-        print(
-            f"🧹 Removed {before - after_mask} via mask, "
-            f"{after_mask - after_gate} via class gate, "
-            f"{after_gate - len(df)} via regime."
-        )
+    before, after = len(preds), len(df)
+    print(f"🧹 Filtered rows: kept {after} of {before}.")
     # ---- End single canonical filter ----
+
     n_trades = int((df["Prediction"].isin([1,2])).sum())
     print(f"✅ After filters: {len(df)} rows kept, {n_trades} trade signals in window.")
 
@@ -524,13 +483,34 @@ def run_backtest(window_days: int | None = None,
     vol = (ret_d.rolling(vol_lookback).std() * np.sqrt(252.0)).reindex(df["Date"]).to_numpy()
     df["ann_vol"] = pd.to_numeric(vol, errors="coerce")
 
+    # --- learned decision threshold for sizing (loaded once) ---
+    try:
+        with open("models/thresholds.json", "r") as _f:
+            _thr = json.load(_f)
+        learned_t = float(_thr.get("threshold", 0.5))
+    except Exception:
+        learned_t = 0.5
+    if dyn_t is not None:
+        learned_t = float(dyn_t)
+
+    # --- Build opposite-signal map on the full trading calendar (raw preds) ---
+    pred_map = (
+        preds.set_index("Date")["Prediction"]
+            .reindex(spy_df.index)
+            .fillna(0)
+            .astype(int)
+            .to_dict()
+    )
+
+
+
+
+
 
 
 
     trades_list = []
     ambig_bars = 0
-    #rng = np.random.default_rng(rng_seed)
-
     i = 0
     N = len(df)
     rng = np.random.default_rng(rng_seed)
@@ -542,34 +522,33 @@ def run_backtest(window_days: int | None = None,
             i += 1
             continue
 
-        # indices & window
-        entry_idx = i + ENTRY_SHIFT
-        if entry_idx >= N:
-            break
-        entry = df.iloc[entry_idx]
-        look_end = min(entry_idx + LOOKAHEAD, N)
-        if look_end <= entry_idx:
+        # === CALENDAR-BASED ENTRY: next trading day in SPY (not next signal row) ===
+        signal_date = pd.to_datetime(row["Date"])
+        idx = spy_df.index.searchsorted(signal_date, side="right")
+        if idx >= len(spy_df):
             i += 1
             continue
-        look = df.iloc[entry_idx:look_end]
+        entry_date = spy_df.index[idx]
+        entry_bar  = spy_df.iloc[idx]
 
-        # --- sizing pieces ---
-        # (1) confidence sizing (linear: threshold → 0.5x, certainty → 1.5x)
+        # --- sizing pieces (use SIGNAL-day info) ---
+        # (1) confidence sizing (vs learned threshold; clamp to bounds)
         pos_conf = 1.0
         if use_conf_size:
-            if sig == 2 and "Spike_Conf" in df.columns:
-                th = spike_thresh if spike_thresh is not None else 0.90
-                pos_conf = np.clip(0.5 + (row["Spike_Conf"] - th) / max(1e-9, 1 - th), 0.5, 1.5)
-            elif sig == 1 and "Crash_Conf" in df.columns:
-                th = crash_thresh if crash_thresh is not None else 0.60
-                pos_conf = np.clip(0.5 + (row["Crash_Conf"] - th) / max(1e-9, 1 - th), 0.5, 1.5)
+            lo, hi = conf_size_bounds if conf_size_bounds else (0.7, 1.3)
+            winner_prob = float(row["Spike_Conf"] if sig == 2 else row["Crash_Conf"])
+            if np.isnan(winner_prob):
+                pos_conf = 1.0
+            else:
+                u = max(0.0, min(1.0, (winner_prob - learned_t) / max(1e-6, 1.0 - learned_t)))
+                pos_conf = lo + u * (hi - lo)
 
-        # (2) volatility targeting
+        # (2) volatility targeting (from signal day’s ann_vol)
         size_vol = 1.0
-        if target_ann_vol is not None and pd.notna(entry.get("ann_vol", np.nan)) and entry["ann_vol"] > 0:
-            size_vol = np.clip(target_ann_vol / float(entry["ann_vol"]), 0.1, size_cap)
+        if target_ann_vol is not None and pd.notna(row.get("ann_vol", np.nan)) and row["ann_vol"] > 0:
+            size_vol = np.clip(target_ann_vol / float(row["ann_vol"]), 0.1, size_cap)
 
-        # (3) optional confidence bounds map
+        # (3) optional confidence-bounds map
         size_conf = 1.0
         if conf_size_bounds is not None:
             lo, hi = conf_size_bounds
@@ -583,80 +562,104 @@ def run_backtest(window_days: int | None = None,
                 t = max(0.0, min(1.0, (conf - thr) / max(1e-6, 1.0 - thr)))
                 size_conf = lo + t * (hi - lo)
 
-        pos_mult_final = pos_conf * size_vol * size_conf  # <— single, final multiplier
+        # Edge-aware (Kelly-lite) from SIGNAL confidences
+        sp = float(row.get("Spike_Conf", np.nan))
+        cr = float(row.get("Crash_Conf", np.nan))
+        if not np.isnan(sp) and not np.isnan(cr):
+            edge = sp - cr                          # [-1, 1]
+            kelly = np.clip(edge / 0.5, 0.0, 0.5)   # conservative; cap 50%
+        else:
+            kelly = 0.0
 
-        # prices/targets
-        entry_px = float(entry["Open"])
-        atr_dol  = float(entry.get("ATR_dol", 0.0)) if pd.notna(entry.get("ATR_dol")) else 0.0
+        pos_mult_final = pos_conf * size_vol * size_conf * (1.0 + kelly)
 
-        if sig == 2:
+        # --- prices/targets on the actual entry trading day ---
+        entry_px = float(entry_bar["Open"])
+        _atr_on_entry = atr.reindex([entry_date]).iloc[0] if entry_date in atr.index else np.nan
+        atr_dol = float(_atr_on_entry) if pd.notna(_atr_on_entry) else 0.0
+
+        if sig == 2:  # Spike/long
             tp_px = entry_px + TP_ATR * atr_dol
             sl_px = entry_px - SL_ATR * atr_dol
-        else:
+        else:         # Crash/short
             tp_px = entry_px - TP_ATR * atr_dol
             sl_px = entry_px + SL_ATR * atr_dol
 
+        # === calendar look window AFTER entry ===
+        end_date  = entry_date + pd.Timedelta(days=LOOKAHEAD)
+        look_bars = spy_df.loc[(spy_df.index > entry_date) & (spy_df.index <= end_date)].copy()
+
         exit_px, exit_ts = None, None
 
-        # scan lookahead
-        for _, bar in look.iterrows():
-            tag = px = None
+        for bar_date, bar in look_bars.iterrows():
+            tag, px = None, None
 
-            # 1) primary: TP/SL
-            if sig == 2:
-                _tag, _px, ambig = _resolve_bar_exit_long(bar, tp_px, sl_px)
-            else:
-                _tag, _px, ambig = _resolve_bar_exit_short(bar, tp_px, sl_px)
+            # 1) TP/SL on daily highs/lows
+            if sig == 2:  # long
+                hit_tp = pd.notna(bar.get("High")) and bar["High"] >= tp_px
+                hit_sl = pd.notna(bar.get("Low"))  and bar["Low"]  <= sl_px
+                if hit_tp and hit_sl:
+                    if   ambig_policy == "sl_first": tag, px = "SL", sl_px
+                    elif ambig_policy == "tp_first": tag, px = "TP", tp_px
+                    elif ambig_policy == "close_dir":
+                        upbar = pd.notna(bar.get("Open")) and pd.notna(bar.get("Close")) and bar["Close"] >= bar["Open"]
+                        tag, px = ("TP", tp_px) if upbar else ("SL", sl_px)
+                    elif ambig_policy == "random":
+                        tag, px = (("TP", tp_px) if rng.random() < 0.5 else ("SL", sl_px))
+                elif hit_tp: tag, px = "TP", tp_px
+                elif hit_sl: tag, px = "SL", sl_px
+            else:         # short
+                hit_tp = pd.notna(bar.get("Low"))  and bar["Low"]  <= tp_px
+                hit_sl = pd.notna(bar.get("High")) and bar["High"] >= sl_px
+                if hit_tp and hit_sl:
+                    if   ambig_policy == "sl_first": tag, px = "SL", sl_px
+                    elif ambig_policy == "tp_first": tag, px = "TP", tp_px
+                    elif ambig_policy == "close_dir":
+                        upbar = pd.notna(bar.get("Open")) and pd.notna(bar.get("Close")) and bar["Close"] >= bar["Open"]
+                        tag, px = ("SL", sl_px) if upbar else ("TP", tp_px)
+                    elif ambig_policy == "random":
+                        tag, px = (("TP", tp_px) if rng.random() < 0.5 else ("SL", sl_px))
+                elif hit_tp: tag, px = "TP", tp_px
+                elif hit_sl: tag, px = "SL", sl_px
 
-            # 2) resolve ambiguity
-            if ambig:
-                ambig_bars += 1
-                if   ambig_policy == "sl_first": tag, px = "SL", sl_px
-                elif ambig_policy == "tp_first": tag, px = "TP", tp_px
-                elif ambig_policy == "close_dir":
-                    op, cl = bar.get("Open"), bar.get("Close")
-                    upbar = pd.notna(op) and pd.notna(cl) and cl >= op
-                    tag, px = (("TP", tp_px) if sig == 2 else ("SL", sl_px)) if upbar else (("SL", sl_px) if sig == 2 else ("TP", tp_px))
-                elif ambig_policy == "random":
-                    tag, px = (("TP", tp_px) if rng.random() < 0.5 else ("SL", sl_px))
-            else:
-                tag, px = _tag, _px
-
-            # 3) opposite signal exit
+            # 2) opposite-signal exit (if a signal actually fires on that calendar day)
             if tag is None and use_opposite_exit:
-                opp = ((sig == 2 and bar.get("Prediction", 2) == 1) or
-                    (sig == 1 and bar.get("Prediction", 1) == 2))
+                opp = ((sig == 2 and pred_map.get(bar_date, 0) == 1) or
+                    (sig == 1 and pred_map.get(bar_date, 0) == 2))
                 if opp:
-                    tag = "OPP"
-                    px = float(bar["Open"]) if pd.notna(bar.get("Open")) else float(bar["Close"])
+                    tag, px = "OPP", (float(bar["Open"]) if pd.notna(bar.get("Open")) else float(bar["Close"]))
 
-            # 4) dynamic trail after progress
+            # 3) dynamic trail after progress
             if tag is None and trail_trigger is not None and atr_dol > 0:
                 prog_long  = (sig == 2) and pd.notna(bar.get("High")) and (bar["High"] >= entry_px + trail_trigger * TP_ATR * atr_dol)
                 prog_short = (sig == 1) and pd.notna(bar.get("Low"))  and (bar["Low"]  <= entry_px - trail_trigger * TP_ATR * atr_dol)
                 if   prog_long:  sl_px = max(sl_px, entry_px + trail_k * atr_dol)
                 elif prog_short: sl_px = min(sl_px, entry_px - trail_k * atr_dol)
 
-            # commit exit
             if tag in ("TP", "SL", "OPP") and pd.notna(px):
-                exit_px, exit_ts = float(px), bar.get("Timestamp", pd.NaT)
+                exit_px, exit_ts = float(px), bar_date
                 break
 
+        # No exit hit inside window → exit at window end (or last available)
         if exit_px is None:
-            last = look.iloc[-1]
-            exit_px = float(last["Close"])
-            exit_ts = last.get("Timestamp", pd.NaT)
+            tail = spy_df.loc[spy_df.index <= end_date]
+            last_bar = tail.iloc[-1]
+            exit_px, exit_ts = float(last_bar["Close"]), last_bar.name
 
         # P&L with costs
         c = (fee_bps + slip_bps) / 1e4
         cost_mult = (1 - c) / (1 + c)
-        net = (exit_px / entry_px) * cost_mult - 1.0 if sig == 2 else (entry_px / exit_px) * cost_mult - 1.0
+        if sig == 2:
+            net = (exit_px / entry_px) * cost_mult - 1.0
+        else:
+            net = (entry_px / exit_px) * cost_mult - 1.0
         ret = net
 
+        # === record the trade (entry_time = entry_date) ===
         trades_list.append({
             "signal_time": row.get("Timestamp", pd.NaT),
             "sig":         sig,
-            "entry_time":  entry.get("Timestamp", pd.NaT),
+            "entry_time":  entry_date,            # calendar entry time
             "exit_time":   exit_ts,
             "entry_price": entry_px,
             "exit_price":  exit_px,
@@ -665,16 +668,14 @@ def run_backtest(window_days: int | None = None,
 
         # non-overlap jump + per-direction cooldown
         if not allow_overlap:
-            next_date = df.iloc[look_end - 1]["Date"] if look_end > 0 else row["Date"]
             cool = cooldown_long_days if sig == 2 else cooldown_short_days
-            if cool > 0:
-                cut = next_date + pd.Timedelta(days=cool)
-                j = df.index[df["Date"] >= cut]
-                i = int(j[0]) if len(j) else N
-            else:
-                i = look_end
+            cut  = end_date + pd.Timedelta(days=cool)
+            j = df.index[df["Date"] >= cut]
+            i = int(j[0]) if len(j) else N
         else:
             i += 1
+
+
 
 
 
@@ -910,9 +911,10 @@ if __name__ == "__main__":
         sl_atr=0.75,
         allow_overlap=False,
         ambig_policy="close_dir",
-        confidence_thresh=0.80,
-        crash_thresh=0.70,
-        spike_thresh=0.95,
+        confidence_thresh=None,
+        crash_thresh=None,
+        spike_thresh=None,
+        margin = 0.0,
         fee_bps=2.0,
         slip_bps=3.0,
         atr_len=14,
@@ -929,6 +931,8 @@ if __name__ == "__main__":
         use_conf_size=True,
         use_opposite_exit=True,
         use_weekly_trend=False,
+        use_regime_filter=False,
+        use_atr_band=False,
     )
 
     def _load_json(path: str) -> dict:
@@ -982,6 +986,10 @@ if __name__ == "__main__":
     parser.add_argument("--trail-k", type=float)
     parser.add_argument("--conf-size-bounds", type=str, help="lo,hi  e.g. 0.7,1.3")
 
+    # IMPORTANT: do NOT set a default for margin here; let base_cfg control it
+    parser.add_argument("--margin", type=float,
+        help="Min |Spike_Conf - Crash_Conf| to accept (separation margin)")
+
     # booleans (tri-state so JSON/flags can override either way)
     parser.add_argument("--allow-overlap", dest="allow_overlap", action="store_true")
     parser.add_argument("--no-allow-overlap", dest="allow_overlap", action="store_false")
@@ -1020,26 +1028,51 @@ if __name__ == "__main__":
     parser.add_argument("--apply-best", action="store_true",
                         help="After optimizing, run a backtest using the best thresholds.")
 
+    parser.add_argument("--dyn-t", type=float,
+        help="Override learned threshold t for dynamic gating (0..1)")
 
+    parser.add_argument("--use-regime-filter", dest="use_regime_filter", action="store_true")
+    parser.add_argument("--no-use-regime-filter", dest="use_regime_filter", action="store_false")
+    parser.set_defaults(use_regime_filter=None)
+
+    parser.add_argument("--use-atr-band",    dest="use_atr_band", action="store_true")
+    parser.add_argument("--no-use-atr-band", dest="use_atr_band", action="store_false")
+    parser.set_defaults(use_atr_band=None)
+
+    # ✅ ADD THIS BEFORE PARSING:
+    parser.add_argument("--use-model-labels", action="store_true",
+        help="Ignore explicit thresholds and use model-provided labels.")
+
+    # ---- finally parse
     args = parser.parse_args()
 
-    # ---- merge order: defaults → config file → CLI flags ----
+    # ---- merge order: defaults → config file → CLI flags
     cfg = deepcopy(base_cfg)
     if args.config:
         cfg.update(_load_json(args.config))
+
+    # If flag is set, clear thresholds so the model’s labels are used
+    if args.use_model_labels:
+        cfg["confidence_thresh"] = None
+        cfg["crash_thresh"] = None
+        cfg["spike_thresh"] = None
+
+
+
+     
 
     # numeric/str updates
     for k in [
         "window_days","lookahead","tp_atr","sl_atr","fee_bps","slip_bps",
         "atr_len","trend_len","confidence_thresh","crash_thresh","spike_thresh",
         "ambig_policy","cooldown_days","cooldown_long_days","cooldown_short_days",
-        "target_ann_vol","vol_lookback","size_cap","trail_trigger","trail_k"
+        "target_ann_vol","vol_lookback","size_cap","trail_trigger","trail_k", "dyn_t","margin"
     ]:
         v = getattr(args, k, None)
         if v is not None: cfg[k] = v
 
     # booleans
-    for k in ["allow_overlap","use_conf_size","use_opposite_exit","use_weekly_trend"]:
+    for k in ["allow_overlap","use_conf_size","use_opposite_exit","use_weekly_trend","use_regime_filter","use_atr_band"]:
         v = getattr(args, k, None)
         if v is not None: cfg[k] = bool(v)
 
