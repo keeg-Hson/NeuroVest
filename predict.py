@@ -6,6 +6,8 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 from dotenv import load_dotenv
+import json
+
 
 from utils import (
     log_prediction_to_file,
@@ -146,13 +148,32 @@ def live_predict(feature_df: pd.DataFrame, raw_df: pd.DataFrame, model_path: str
         high = float(raw_latest.get("High", float("nan")))
         low = float(raw_latest.get("Low", float("nan")))
 
-        # Predict
-        prediction = int(model.predict(latest_features)[0])
+        
+        # Predict with learned threshold
         class_probs = model.predict_proba(latest_features)[0]
-        cmap = _class_index_map(model.classes_)
+        classes_enc = list(getattr(model, "classes_", [0, 1]))
 
-        crash_confidence = float(class_probs[cmap.get(1, 0)]) if len(class_probs) else 0.0
-        spike_confidence = float(class_probs[cmap.get(2, 0)]) if len(class_probs) else 0.0
+        # Load maps/threshold
+        maps = json.load(open("models/label_map.json"))
+        inv_label_map = {int(k): int(v) for k, v in maps["inv_label_map"].items()}
+        thr = json.load(open("models/thresholds.json"))
+        col_idx = int(thr["proba_col_index"])
+        t = float(thr["threshold"])
+        pos_enc = int(thr["pos_enc"])
+
+        # Decide encoded label by threshold on ORIGINAL class 1 (Crash)
+        y_hat_enc = pos_enc if class_probs[col_idx] >= t else (1 - pos_enc)
+        prediction = int(inv_label_map.get(y_hat_enc, y_hat_enc))  # ORIGINAL {1,2}
+
+        # Map probs to ORIGINAL label space for reporting
+        proba_by_orig = {}
+        for j, enc_lab in enumerate(classes_enc):
+            orig = inv_label_map.get(enc_lab, enc_lab)  # 0/1 -> 1/2
+            proba_by_orig[int(orig)] = float(class_probs[j])
+
+        # IMPORTANT: 1=Crash, 2=Spike in your code
+        crash_confidence = proba_by_orig.get(1, float(class_probs[0]))
+        spike_confidence = proba_by_orig.get(2, float(class_probs[1] if len(class_probs) > 1 else 0.0))
 
         if max(class_probs) < 0.6:
             print("⚠️ Low-confidence prediction — consider ignoring this signal.")
@@ -171,20 +192,21 @@ def live_predict(feature_df: pd.DataFrame, raw_df: pd.DataFrame, model_path: str
         )
 
         print(f"🔮 Prediction: {prediction}")
-        print(f"📊 Class Probabilities: {class_probs}")
-        print(f"Normal: {class_probs[cmap.get(0, 0)]*100:.2f}%"
-              if 0 in cmap else "Normal: n/a")
+        print(f"📊 Class Probabilities (orig labels): Crash={crash_confidence:.4f}, Spike={spike_confidence:.4f}")
         print(f"Crash: {crash_confidence*100:.2f}%")
         print(f"Spike: {spike_confidence*100:.2f}%")
         print(f"Prediction Forecast: {in_human_speak(prediction, crash_confidence, spike_confidence)}")
 
         notify_user(prediction, crash_confidence, spike_confidence)
 
-        label = "NORMAL"
-        if prediction == 1 and crash_confidence >= 0.7:
-            label = "CRASH"
-        elif prediction == 2 and spike_confidence >= 0.7:
-            label = "SPIKE"
+        # Use the learned threshold for alert gating too — winner must exceed t
+        winner_is_crash = crash_confidence >= spike_confidence
+        passed = (crash_confidence >= t) if winner_is_crash else (spike_confidence >= t)
+
+        label = "CRASH" if (winner_is_crash and passed) else \
+                "SPIKE" if ((not winner_is_crash) and passed) else \
+                "NORMAL"
+
 
         if label != "NORMAL":
             msg = (
@@ -196,6 +218,7 @@ def live_predict(feature_df: pd.DataFrame, raw_df: pd.DataFrame, model_path: str
             send_telegram_alert(msg, token=TELEGRAM_TOKEN, chat_id=TELEGRAM_CHAT_ID)
 
         return prediction, crash_confidence, spike_confidence
+
 
     except Exception as e:
         print(f"⚠️ Prediction error: {e}")
@@ -236,19 +259,44 @@ def run_predictions(confidence_threshold: float = 0.80) -> pd.DataFrame | None:
         print("⚠️ No usable feature columns for prediction — check training/pipeline alignment.")
         return feature_df
 
-    # Predict
-    preds = model.predict(X)
+
+    # Predict (use learned threshold from training)
+
     probs = model.predict_proba(X)
-    cmap = _class_index_map(model.classes_)
+    classes_enc = list(getattr(model, "classes_", [0, 1]))
 
-    crash_conf = probs[:, cmap.get(1, 0)] if probs.size else np.zeros(len(X))
-    spike_conf = probs[:, cmap.get(2, 0)] if probs.size else np.zeros(len(X))
+    # Load label maps + threshold
+    with open("models/label_map.json", "r") as f:
+        maps = json.load(f)
+    inv_label_map = {int(k): int(v) for k, v in maps["inv_label_map"].items()}
 
-    # Attach outputs
-    feature_df["Prediction"] = preds
-    feature_df["Crash_Conf"] = crash_conf
-    feature_df["Spike_Conf"] = spike_conf
+    with open("models/thresholds.json", "r") as f:
+        thr = json.load(f)
+
+    col_idx = int(thr["proba_col_index"])  # which proba column corresponds to ORIGINAL class 1 (Crash)
+    t = float(thr["threshold"])
+    pos_enc = int(thr["pos_enc"])          # encoded id for original class 1
+
+    # Thresholded predictions in ENCODED label space → ORIGINAL labels
+    p_pos = probs[:, col_idx]
+    y_hat_enc = np.where(p_pos >= t, pos_enc, 1 - pos_enc)
+    y_hat_orig = np.vectorize(inv_label_map.get)(y_hat_enc).astype(int)  # {1,2}
+
+    # Map probability columns to ORIGINAL labels
+    proba_by_orig = {}
+    for j, enc_lab in enumerate(classes_enc):
+        orig = inv_label_map.get(enc_lab, enc_lab)  # 0/1 -> 1/2
+        proba_by_orig[int(orig)] = probs[:, j]
+
+    # Attach outputs (IMPORTANT: 1=Crash, 2=Spike in your code)
+    feature_df["Prediction"] = y_hat_orig
+    feature_df["Crash_Conf"] = proba_by_orig.get(1, probs[:, 0])  # orig=1
+    feature_df["Spike_Conf"] = proba_by_orig.get(2, probs[:, 1])  # orig=2
     feature_df["Confidence"] = probs.max(axis=1) if probs.size else np.zeros(len(X))
+
+    print(f"🔧 Using learned threshold t={t:.3f} on class=1 (Crash) [proba col={col_idx}]")
+    print("Pred counts with learned threshold:\n", feature_df["Prediction"].value_counts())
+
 
     # Timestamp column (tz-naive)
     ts = feature_df.index
