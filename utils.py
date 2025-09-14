@@ -48,64 +48,57 @@ def get_feature_list():
 
 
 # --- Log prediction to file ---
-def log_prediction_to_file(timestamp, prediction, crash_conf, spike_conf, close_price, open_price=None, high=None, low=None, log_path=LOG_FILE):
-    print("[DEBUG] Entering log_prediction_to_file")
+# --- Log prediction to file ---
+def log_prediction_to_file(timestamp, prediction, crash_conf, spike_conf,
+                           close_price, open_price=None, high=None, low=None,
+                           log_path="logs/daily_predictions.csv"):
+    import csv, os
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     file_exists = os.path.isfile(log_path)
 
-    headers = "Date,Timestamp,Prediction,Crash_Conf,Spike_Conf,Close_Price,Open,High,Low\n"
-    date_str = timestamp.date()
+    headers = [
+        "Date","Timestamp","Prediction","Crash_Conf","Spike_Conf",
+        "Close","Open","High","Low","Confidence"
+    ]
+    date_str = str(getattr(timestamp, "date", lambda: timestamp)())
 
-    entry = f"{date_str},{timestamp},{prediction},{crash_conf:.4f},{spike_conf:.4f},{close_price:.2f},{open_price},{high},{low}\n"
-
-    with open(log_path, "a") as f:
-        if not file_exists or os.path.getsize(log_path) == 0:
-            f.write(headers)
-        f.write(entry)
-        print(f"[DEBUG] Wrote entry to {log_path}: {entry.strip()}")
-
-    #simplified signal log for simulation
-    signals_row = {
-        "Date": date_str,
-        "Signal": "BUY" if prediction == 2 else "SELL" if prediction == 1 else "HOLD",
-        "Confidence": max(crash_conf, spike_conf),
-        "Price": close_price,
-        "Spike_Conf": spike_conf,
-        "Crash_Conf": crash_conf
+    row = {
+        "Date":        date_str,
+        "Timestamp":   str(timestamp),
+        "Prediction":  int(prediction) if prediction is not None else 0,
+        "Crash_Conf":  float(crash_conf) if crash_conf is not None else 0.0,
+        "Spike_Conf":  float(spike_conf) if spike_conf is not None else 0.0,
+        "Close":       float(close_price) if close_price is not None else "",
+        "Open":        float(open_price) if open_price is not None else "",
+        "High":        float(high) if high is not None else "",
+        "Low":         float(low) if low is not None else "",
+        "Confidence":  float(max(crash_conf or 0.0, spike_conf or 0.0))
     }
 
-    signals_path = "logs/signals.csv"
-    signals_df = pd.DataFrame([signals_row])
-    if os.path.exists(signals_path):
-        signals_df.to_csv(signals_path, mode="a", header=False, index=False)
-    else:
-        signals_df.to_csv(signals_path, mode="w", header=True, index=False)
+    with open(log_path, "a", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=headers)
+        if not file_exists or os.path.getsize(log_path) == 0:
+            w.writeheader()
+        w.writerow(row)
 
-# --- Human-readable prediction output ---
-def in_human_speak(prediction, crash_conf, spike_conf):
-    if prediction == 1:
-        if crash_conf < 0.2:
-            return f"✅ MARKET APPEARS STABLE! Very low crash confidence ({crash_conf*100:.1f}%)"
-        elif crash_conf < 0.5:
-            return f"⚠️ CAUTION: Moderate crash risk detected ({crash_conf*100:.1f}%)"
-        else:
-            return f"🚨 HIGH CRASH RISK! Confidence: {crash_conf*100:.1f}%"
-    
-    elif prediction == 2:
-        if spike_conf > 0.8:
-            return f"📈 STRONG BUY SIGNAL! Spike confidence: {spike_conf*100:.1f}%"
-        elif spike_conf > 0.5:
-            return f"✅ POSSIBLE RALLY: Spike confidence at {spike_conf*100:.1f}%"
-        else:
-            return f"🔍 Mild spike likelihood ({spike_conf*100:.1f}%)"
-    
-    else:
-        if crash_conf > 0.4:
-            return f"⚠️ NEUTRAL TREND, but some crash signals ({crash_conf*100:.1f}%)"
-        elif spike_conf > 0.4:
-            return f"⚠️ NEUTRAL TREND, with possible upward signals ({spike_conf*100:.1f}%)"
-        else:
-            return f"✅ MARKET APPEARS STABLE: no significant crash/spike behaviour detected! ({crash_conf*100:.1f}% crash confidence)"
+    # Optional: append a lightweight signals csv for eyeballing
+    sig = "BUY" if row["Prediction"] == 2 else ("SELL" if row["Prediction"] == 1 else "HOLD")
+    signals_path = "logs/signals.csv"
+    signals_headers = ["Date","Signal","Confidence","Price","Spike_Conf","Crash_Conf"]
+    sig_row = {
+        "Date": date_str,
+        "Signal": sig,
+        "Confidence": row["Confidence"],
+        "Price": row["Close"],
+        "Spike_Conf": row["Spike_Conf"],
+        "Crash_Conf": row["Crash_Conf"],
+    }
+    file_exists2 = os.path.isfile(signals_path)
+    with open(signals_path, "a", newline="") as f2:
+        w2 = csv.DictWriter(f2, fieldnames=signals_headers)
+        if not file_exists2 or os.path.getsize(signals_path) == 0:
+            w2.writeheader()
+        w2.writerow(sig_row)
 
 # --- Label real outcomes using future close data ---
 def label_real_outcomes_from_log(crash_thresh=-0.005, spike_thresh=0.005):
@@ -283,7 +276,7 @@ def safe_read_csv(path, prefer_index=True):
     import pandas as pd, os
     if not os.path.exists(path):
         raise FileNotFoundError(path)
-    df = pd.read_csv(path)
+    df = pd.read_csv(path, low_memory=False)
     # Normalize time
     if "Date" in df.columns:
         df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
@@ -410,6 +403,26 @@ def add_features(df):
         (df["Close"] > df["Open"].shift())
     ).fillna(0).astype(int)
     df["NR7"] = (rng == rng.rolling(7).min()).astype(int)
+
+    # Overnight gap
+    df["Gap_Pct"] = (df["Open"] - df["Close"].shift(1)) / df["Close"].shift(1)
+
+    # Realized vol (Parkinson)
+    df["Parkinson_RV"] = (np.log(df["High"]/df["Low"])**2).rolling(20).mean()
+
+    # RSI(2) for short-term mean reversion
+    chg = df["Close"].diff()
+    gain2 = chg.clip(lower=0).rolling(2).sum()
+    loss2 = -chg.clip(upper=0).rolling(2).sum()
+    df["RSI_2"] = 100 - (100/(1 + (gain2/(loss2+1e-9))))
+
+    # Rolling autocorrelation (trendiness proxy)
+    df["Ret1"] = df["Close"].pct_change()
+    df["AutoCorr_5"] = df["Ret1"].rolling(10).apply(lambda x: pd.Series(x).autocorr(lag=5), raw=False)
+
+    # Day-of-week seasonal
+    df["DOW"] = df["Date"].dt.weekday if "Date" in df.columns else df.index.weekday
+
 
     # --- External Macro + Sentiment Signals ---
     df = add_external_signals(df)
@@ -603,6 +616,36 @@ def finalize_features(df, feature_cols):
         df = df.reset_index().rename(columns={"index": "Date"})
 
     return df
+
+def label_events_triple_barrier(df, vol_col="ATR_14", pt_mult=2.0, sl_mult=2.0, t_max=5):
+    """
+    0/1/2 label using triple-barrier on Close path after each day:
+      - profit-take at +pt_mult*vol
+      - stop-loss  at -sl_mult*vol
+      - time-out at t_max bars then sign of return
+    Requires a volatility proxy column (e.g., ATR_14).
+    """
+    out = df.copy()
+    out["Event"] = 0
+    close = out["Close"].values
+    vol   = out[vol_col].values
+    N = len(out)
+    for i in range(N-1):
+        pt = close[i] * (1 + pt_mult * (vol[i]/max(close[i],1e-9)))
+        sl = close[i] * (1 - sl_mult * (vol[i]/max(close[i],1e-9)))
+        end = min(N-1, i + t_max)
+        label = 0
+        for j in range(i+1, end+1):
+            if close[j] >= pt:  label = 2; break
+            if close[j] <= sl:  label = 1; break
+        if label == 0:
+            ret = (close[end]-close[i]) / close[i]
+            label = 2 if ret > 0 else 1 if ret < 0 else 0
+        out.iat[i, out.columns.get_loc("Event")] = label
+    return out
+
+
+
 
 
 
