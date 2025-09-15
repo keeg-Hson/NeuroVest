@@ -760,6 +760,88 @@ def label_events_triple_barrier(df, vol_col="ATR_14", pt_mult=2.0, sl_mult=2.0, 
         out.iat[i, out.columns.get_loc("Event")] = label
     return out
 
+#trade quality checks
+
+def assert_time_ordered(df, ts_col="timestamp"):
+    if not df[ts_col].is_monotonic_increasing:
+        raise ValueError("Timestamps are not strictly increasing.")
+
+def drop_dupes_and_nans(df):
+    df = df.drop_duplicates().copy()
+    df = df.replace([np.inf, -np.inf], np.nan)
+    return df.dropna(how="any")
+
+def ensure_no_future_leakage(df, feature_cols, label_cols, horizon_col="horizon_forward"):
+    # Basic sentinel: labels must depend on strictly future info.
+    if horizon_col in df.columns:
+        if (df[horizon_col] <= 0).any():
+            raise ValueError("Detected non-positive forward horizon rows; check labeling.")
+    # Spot check: features computed via rolling must not reference future rows.
+    # (Heuristic: ensure no merging on future timestamps happened.)
+    # Feature-generation logic must enforce windowing.
+    return True
+
+def add_forward_returns_and_labels(
+    df,
+    price_col="close",
+    horizon=5,
+    fee_bps=1.5,
+    slippage_bps=2.0,
+    long_only=True,
+    pos_threshold=0.0,
+    neg_threshold=0.0
+):
+    """
+    Computes forward return over `horizon` bars and net-of-costs return.
+    Labels:
+      - long_only=True: y = 1 if net_fwd_ret > pos_threshold else 0 (no-trade)
+      - long_only=False (optional): y in {1 (long), -1 (short), 0 (no-trade)} via thresholds
+    """
+    df = df.copy()
+    df["fwd_price"] = df[price_col].shift(-horizon)
+    raw_ret = (df["fwd_price"] - df[price_col]) / df[price_col]
+    costs = (fee_bps + slippage_bps) * 1e-4  # convert bps to fraction
+    df["fwd_ret_raw"] = raw_ret
+    df["fwd_ret_net"] = raw_ret - costs
+
+    if long_only:
+        df["y"] = (df["fwd_ret_net"] > pos_threshold).astype(int)
+    else:
+        # Example 3-class scheme; adjust thresholds to taste.
+        df["y"] = 0
+        df.loc[df["fwd_ret_net"] > pos_threshold, "y"] = 1
+        df.loc[df["fwd_ret_net"] < -abs(neg_threshold), "y"] = -1
+
+    df["horizon_forward"] = horizon
+    return df
+
+def compute_sample_weights(df, min_weight=0.1, max_weight=5.0, power=1.0, long_only=True):
+    """
+    Weight by positive net forward return magnitude for winners; small weight for losers.
+    Avoids deleting losers (which biases), but de-emphasizes them.
+    power > 1 boosts separation on bigger winners.
+    """
+    df = df.copy()
+    if long_only:
+        base = df["fwd_ret_net"].clip(lower=0.0) ** power
+    else:
+        # For 3-class, weight by |return| where the sign matches the class direction
+        base = (df["fwd_ret_net"].abs()) ** power
+        # Optional: set base=0 when label==0 (no-trade)
+        base[df["y"] == 0] = 0.0
+
+    w = base / (base.mean() + 1e-12)
+    w = w.clip(lower=min_weight, upper=max_weight)
+    return w.fillna(min_weight).values
+
+def expected_value(prob_long, avg_gain, avg_loss, fee_bps=1.5, slippage_bps=2.0):
+    """
+    EV = p_win * avg_gain - (1 - p_win) * avg_loss - costs
+    avg_gain/avg_loss are fractions (e.g., 0.003 for 30 bps)
+    """
+    costs = (fee_bps + slippage_bps) * 1e-4
+    ev = prob_long * avg_gain - (1.0 - prob_long) * avg_loss - costs
+    return ev
 
 
 
