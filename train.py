@@ -5,7 +5,6 @@ import warnings
 from datetime import datetime
 
 import joblib
-import numpy as np
 import pandas as pd
 
 import xgboost as xgb
@@ -22,6 +21,9 @@ from sklearn.metrics import (
     classification_report, confusion_matrix, average_precision_score
 )
 
+from sklearn.impute import SimpleImputer
+
+
 
 
 from utils import (
@@ -35,6 +37,35 @@ from utils import (
 
 from sklearn.model_selection import BaseCrossValidator
 import numpy as np
+
+# === Public entry points expected by run_all.py ======================================
+def train_model(models=None, fast=False):
+    """
+    Thin wrapper so run_all.py can call train.train_model(models=..., fast=...).
+    We ignore 'models' (you only train XGB here) and 'fast' (unused).
+    Returns True/False.
+    """
+    from utils import load_SPY_data
+    df = load_SPY_data()
+    return train_best_xgboost_model(df)
+
+
+# Optional aliases — run_all.py will try these names too
+def run(models=None, fast=False):
+    return train_model(models=models, fast=fast)
+
+def main(models=None, fast=False):
+    ok = train_model(models=models, fast=fast)
+    # match typical CLI convention
+    return 0 if ok else 1
+# =====================================================================================
+
+
+# --- tolerate unknown CLI args when invoked like: python -m train --models xgb
+import sys
+if len(sys.argv) > 1:
+    # Keep only the module name so argparse/unknown flags can't crash us
+    sys.argv = sys.argv[:1]
 
 
 class PurgedWalkForwardSplit(BaseCrossValidator):
@@ -98,6 +129,16 @@ class PurgedWalkForwardSplit(BaseCrossValidator):
             return self._count_possible_splits(len(X))
         return self.n_splits
 
+
+
+from sklearn.model_selection import BaseCrossValidator
+import numpy as np
+
+# --- tolerate unknown CLI args when invoked like: python -m train --models xgb
+import sys
+if len(sys.argv) > 1:
+    # Make it behave like `python -m train` even if the runner passes flags
+    sys.argv = sys.argv[:1]
 
 
 
@@ -276,14 +317,48 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     df = df[df["Event"] != 0].copy()
 
     # Features and ORIGINAL labels
-    X = df[valid_feature_cols]
+    # ---- Align to train-time schema (pre-KBest) ----
+    try:
+        with open("models/input_features.txt", "r") as f:
+            input_cols = [line.strip() for line in f if line.strip()]
+    except Exception as e:
+        print(f"⚠️ models/input_features.txt missing or unreadable ({e}); using available columns as-is.")
+        # Fall back to whatever you have (not ideal; KBest may still complain)
+        input_cols = [c for c in df.columns if c not in ("Event",)]
+
+    # Add any missing columns as zeros (the safest neutral fill for tree models)
+    for c in input_cols:
+        if c not in df.columns:
+            df[c] = 0.0
+
+    # Strict column order + dtype
+    X = df[input_cols].astype(float)
+    # Replace inf/-inf (can arise in ratios) so the imputer can handle them
+    X = X.replace([np.inf, -np.inf], np.nan)
+
+
     y_orig = df["Event"]                       # values now in {1, 2}
+
+    # Persist the full pre-KBest input feature set (for predict-time alignment)
+    os.makedirs("models", exist_ok=True)
+    pd.Series(list(X.columns), dtype=str).to_csv(
+        "models/input_features.txt", index=False, header=False
+    )
+    print("💾 Input feature columns saved to models/input_features.txt")
+
 
     # Encode labels to 0..K-1 for XGBoost
     label_values = sorted(y_orig.unique())     # e.g., [1, 2]
     label_map = {lab: i for i, lab in enumerate(label_values)}    # {1:0, 2:1}
     inv_label_map = {v: k for k, v in label_map.items()}          # {0:1, 1:2}
     y = y_orig.map(label_map).astype(int)      # use `y` (0/1) for all training below
+
+    # Class weight hint for XGBoost (helps minority class without SMOTE artifacts)
+    pos = int((y == 1).sum()) if 1 in y.unique() else 1
+    neg = int((y == 0).sum()) if 0 in y.unique() else 1
+    spw = max(1.0, neg / max(1, pos))  # e.g., if crash is rarer, this > 1
+    print(f"🔧 scale_pos_weight for XGB: {spw:.2f}")
+
 
     print(f"🔤 Label encoding map: {label_map} (train on 0..{y.nunique()-1})")
 
@@ -309,17 +384,6 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
 
 
 
-    # -- Persist label maps for predict/backtest --
-    os.makedirs("models", exist_ok=True)
-    with open("models/label_map.json", "w") as f:
-        json.dump(
-            {
-                "label_map": {str(k): int(v) for k, v in label_map.items()},         # original -> encoded
-                "inv_label_map": {str(k): int(v) for k, v in inv_label_map.items()}  # encoded -> original
-            },
-            f, indent=2
-        )
-    print("💾 Saved label maps to models/label_map.json")
 
 
 
@@ -356,7 +420,9 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         verbosity=0,
         tree_method="hist",
         use_label_encoder=False,
+        scale_pos_weight=spw,
     )
+
     if is_binary:
         xgb_obj = dict(objective="binary:logistic", eval_metric="logloss")
     else:
@@ -373,12 +439,13 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         k_choices = [k for k in k_choices if 1 <= k <= max_k]
 
         steps = [
+            ("imputer", SimpleImputer(strategy="median")),
             ("smote", smote_step),
             ("kbest", SelectKBest(score_func=f_classif)),
             ("clf", XGBClassifier(**xgb_common, **xgb_obj)),
-
         ]
         pipe = Pipeline(steps=steps)
+
 
         param_grid = {
             "kbest__k": k_choices,
@@ -389,12 +456,14 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             "clf__colsample_bytree": [0.8, 1.0],
         }
     else:
+        
         steps = [
             ("smote", smote_step),
             ("clf", XGBClassifier(**xgb_common, **xgb_obj)),
 
         ]
         pipe = Pipeline(steps=steps)
+
 
         param_grid = {
             "clf__n_estimators": [100, 200],
@@ -428,14 +497,6 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     best_model = grid_search.best_estimator_
 
     
-    # Make a clone with SMOTE disabled for the weighted refit
-    from copy import deepcopy
-
-    best_model_wn = deepcopy(best_model)
-    if hasattr(best_model_wn, "steps"):
-        steps = dict(best_model_wn.steps)
-        if "smote" in steps:
-            best_model_wn.set_params(smote="passthrough")
 
     from sklearn.utils.class_weight import compute_sample_weight
 
@@ -462,10 +523,89 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
 
     # Calibrate on the *weighted-refit* model
     from sklearn.calibration import CalibratedClassifierCV
-    cal = CalibratedClassifierCV(best_model_wn, cv=3, method="isotonic")
-    cal.fit(X, y)
+    try:
+        cal = CalibratedClassifierCV(best_model_wn, cv=3, method="isotonic")
+        cal.fit(X, y)
+    except Exception as e:
+        print(f"⚠️ Isotonic calibration failed ({e}) — falling back to sigmoid.")
+        cal = CalibratedClassifierCV(best_model_wn, cv=3, method="sigmoid")
+        cal.fit(X, y)
+
     best_model = cal
     joblib.dump(best_model, model_path)
+
+
+    # ---- SHAP export (post-fit, SHAP with fallback to permutation importance) ----
+    try:
+        import shap  # optional dependency
+        import numpy as _np
+
+        # Handle CalibratedClassifierCV(base_estimator=Pipeline(...))
+        shap_est = None
+        shap_X = None
+
+        base_est = getattr(best_model, "base_estimator", None) or best_model  # CalibratedClassifierCV -> Pipeline or estimator
+        if hasattr(base_est, "named_steps"):
+            kb  = base_est.named_steps.get("kbest", None)
+            clf = base_est.named_steps.get("clf", None)
+            if kb is not None and hasattr(kb, "transform"):
+                shap_X = kb.transform(X)  # numpy array post-KBest
+                # Align feature names to selected set (if mask available)
+                try:
+                    mask = kb.get_support()
+                    feat_names = list(np.array(list(X.columns))[mask]) if hasattr(mask, "__len__") and len(mask) == X.shape[1] else list(X.columns)
+                except Exception:
+                    feat_names = list(X.columns)
+            else:
+                shap_X = X.values
+                feat_names = list(X.columns)
+            shap_est = clf or base_est
+        else:
+            shap_est = base_est
+            shap_X = X.values
+            feat_names = list(X.columns)
+
+        # Sample to keep runtime reasonable
+        sample_n = min(5000, shap_X.shape[0])
+        if sample_n < shap_X.shape[0]:
+            rs = np.random.RandomState(42)
+            take = rs.choice(shap_X.shape[0], size=sample_n, replace=False)
+            shap_X_sample = shap_X[take]
+        else:
+            shap_X_sample = shap_X
+
+        explainer = shap.TreeExplainer(shap_est)
+        shap_vals = explainer.shap_values(shap_X_sample)
+
+        # Binary/multi-class unification: mean |SHAP| per feature
+        if isinstance(shap_vals, list):
+            shap_abs = _np.abs(_np.array(shap_vals)).max(axis=0)  # max across classes
+        else:
+            shap_abs = _np.abs(shap_vals)
+
+        mean_abs = shap_abs.mean(axis=0)
+        shap_df = pd.DataFrame({"feature": feat_names, "mean_abs_shap": mean_abs}).sort_values("mean_abs_shap", ascending=False)
+        shap_df.to_csv("logs/shap_importance.csv", index=False)
+        print("💾 Wrote SHAP importances → logs/shap_importance.csv")
+
+    except ModuleNotFoundError:
+        # SHAP not installed — fallback to permutation importance with the same schema
+        print("ℹ️ SHAP not installed — falling back to permutation importance.")
+        try:
+            from sklearn.inspection import permutation_importance
+            pi = permutation_importance(best_model, X, y, n_repeats=5, random_state=42, n_jobs=-1)
+            mean_abs = np.abs(pi.importances_mean)
+            shap_df = pd.DataFrame({"feature": list(X.columns), "mean_abs_shap": mean_abs}).sort_values("mean_abs_shap", ascending=False)
+            shap_df.to_csv("logs/shap_importance.csv", index=False)
+            print("💾 Wrote permutation importance → logs/shap_importance.csv")
+        except Exception as e2:
+            print(f"⚠️ Permutation importance also failed: {e2}")
+    except Exception as e:
+        print(f"⚠️ Importance export skipped: {e}")
+
+
+
+
 
     
 
@@ -529,33 +669,49 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             ap = average_precision_score((y_true_orig == cls_orig).astype(int), proba[:, i])
             print(f"AP (class={cls_orig}): {ap:.4f}")
 
-        # -- Select a threshold for ORIGINAL class 1 (Crash) to maximize macro-F1 --
+        # -- Select a threshold for ORIGINAL class 1 (Crash) to maximize F1 for Crash only --
         # Determine which proba column corresponds to original label 1
         cls_order_enc = list(getattr(best_model, "classes_", sorted(pd.Series(y).unique())))  # e.g. [0,1]
         pos_orig = 1                                     # ORIGINAL class 1 = Crash in your codebase
         pos_enc = label_map[pos_orig]                    # encoded id (0 or 1) of original class 1
-        col_idx = cls_order_enc.index(pos_enc)           # proba column index for class 1
-        p_pos = proba[:, col_idx]
+        col_idx = cls_order_enc.index(pos_enc)           # proba column index for class 1 (Crash)
+        p_pos = proba[:, col_idx]                        # predicted prob for Crash
 
+        # Optimize F1 for Crash-vs-NotCrash (instead of macro-F1)
+
+        y_pos = (y == pos_enc).astype(int)               # 1 = Crash, 0 = NotCrash
         ts = np.linspace(0.05, 0.95, 19)
-        best_t, best_macro = 0.50, -1.0
+
+        best_t = 0.50
+        best_f1 = -1.0
+        best_prec = 0.0
+        best_rec  = 0.0
+
         for t_ in ts:
-            y_hat_enc = np.where(p_pos >= t_, pos_enc, 1 - pos_enc)
-            macro = f1_score(y, y_hat_enc, average="macro")
-            if macro > best_macro:
-                best_macro, best_t = macro, t_
+            y_hat = (p_pos >= t_).astype(int)            # 1 = predict Crash
+            f1  = f1_score(y_pos, y_hat, zero_division=0)
+            if f1 > best_f1:
+                best_f1  = f1
+                best_t   = t_
+                best_prec = precision_score(y_pos, y_hat, zero_division=0)
+                best_rec  = recall_score(y_pos, y_hat, zero_division=0)
 
         thr_payload = {
             "pos_orig": int(pos_orig),
             "pos_enc": int(pos_enc),
             "proba_col_index": int(col_idx),
             "threshold": float(best_t),
-            "metric": "f1_macro",
-            "metric_on_train": float(best_macro),
+            "metric": "f1_crash_only",
+            "precision_on_train": float(best_prec),
+            "recall_on_train": float(best_rec),
+            "f1_on_train": float(best_f1),
         }
         with open("models/thresholds.json", "w") as f:
             json.dump(thr_payload, f, indent=2)
-        print(f"💾 Saved decision threshold → models/thresholds.json: t={best_t:.3f} (train F1_macro={best_macro:.4f})")
+        print(
+            f"💾 Saved decision threshold → models/thresholds.json: "
+            f"t={best_t:.3f} (Crash: P={best_prec:.3f}, R={best_rec:.3f}, F1={best_f1:.3f})"
+        )
 
     except Exception as e:
         print(f"⚠️ AP (per-class) skipped: {e}")
