@@ -15,6 +15,28 @@ from external_signals import add_external_signals #EXTERNAL SIGNALS MODULE
 
 load_dotenv()
 
+# --- Hooks consumed by run_all.py ----------------------------------------------------
+def update_spy_data():
+    """
+    Hook for run_all.py step_refresh_data().
+    If you already have a real price refresh elsewhere, call it here.
+    For now we just touch/load SPY to mark the step successful.
+    """
+    try:
+        _ = load_SPY_data()
+        return True
+    except Exception:
+        return False
+
+# Optional aliases that run_all.py also checks for:
+def refresh_prices():
+    return update_spy_data()
+
+def update_yfinance_data():
+    return update_spy_data()
+# -------------------------------------------------------------------------------------
+
+
 
 
 # --- Ensure folders exist ---
@@ -42,10 +64,39 @@ def get_feature_list():
         "RSI_Lag_1", "RSI_Lag_3", "RSI_Lag_5",
         "Rolling_STD_5", "Daily_Return",
         "MACD_x_RSI", "Volume_per_ATR",
-        "Stoch_K", "Stoch_D"
+        "Stoch_K", "Stoch_D", "BB_PctB","KC_Width","VWAP_Dev","Ret_Skew_20","Ret_Kurt_20",
+        "Sent_x_Vol","RSI_x_NewsZ","RSI_x_RedditZ"
+
     ]
 
 
+def in_human_speak(label):
+    """
+    Convert your internal labels to human-readable strings.
+
+    Accepts ints or strings. Your codebase convention has:
+      0 = NORMAL (often filtered out before training)
+      1 = CRASH
+      2 = SPIKE
+    """
+    try:
+        if isinstance(label, str) and label.isdigit():
+            label = int(label)
+    except Exception:
+        pass
+
+    mapping = {
+        0: "NORMAL",
+        1: "CRASH",
+        2: "SPIKE",
+        "0": "NORMAL",
+        "1": "CRASH",
+        "2": "SPIKE",
+        "NORMAL": "NORMAL",
+        "CRASH": "CRASH",
+        "SPIKE": "SPIKE",
+    }
+    return mapping.get(label, str(label))
 
 # --- Log prediction to file ---
 # --- Log prediction to file ---
@@ -58,9 +109,23 @@ def log_prediction_to_file(timestamp, prediction, crash_conf, spike_conf,
 
     headers = [
         "Date","Timestamp","Prediction","Crash_Conf","Spike_Conf",
-        "Close","Open","High","Low","Confidence"
+        "Close","Open","High","Low","Confidence","Regime","FeatSnapshot"
+
     ]
     date_str = str(getattr(timestamp, "date", lambda: timestamp)())
+
+    regime = os.getenv("REGIME_TAG", "")
+    import hashlib, json as _json, os as _os
+    def _hash_file(p):
+        try:
+            with open(p,"rb") as fh: return hashlib.sha1(fh.read()).hexdigest()[:10]
+        except Exception: return "NA"
+    feat_snapshot = "-".join([
+        _hash_file("models/market_crash_model.pkl"),
+        _hash_file("models/thresholds.json"),
+        _hash_file("configs/best_thresholds.json"),
+    ])
+
 
     row = {
         "Date":        date_str,
@@ -72,7 +137,10 @@ def log_prediction_to_file(timestamp, prediction, crash_conf, spike_conf,
         "Open":        float(open_price) if open_price is not None else "",
         "High":        float(high) if high is not None else "",
         "Low":         float(low) if low is not None else "",
-        "Confidence":  float(max(crash_conf or 0.0, spike_conf or 0.0))
+        "Confidence":  float(max(crash_conf or 0.0, spike_conf or 0.0)),
+        "Regime": regime,
+        "FeatSnapshot": feat_snapshot,
+
     }
 
     with open(log_path, "a", newline="") as f:
@@ -116,8 +184,14 @@ def label_real_outcomes_from_log(crash_thresh=-0.005, spike_thresh=0.005):
         print("[⏭] Not enough data to label real outcomes — skipping for now.")
         return
 
-    df["Next_Close"] = df["Close_Price"].shift(-1)
-    df["Future_Return"] = (df["Next_Close"] - df["Close_Price"]) / df["Close_Price"]
+    # Your log_prediction_to_file() writes 'Close' (not 'Close_Price')
+    price_col = "Close"
+    if price_col not in df.columns:
+        raise KeyError(f"[label_real_outcomes_from_log] Expected column '{price_col}' in {LOG_FILE}")
+
+    df["Next_Close"] = df[price_col].shift(-1)
+    df["Future_Return"] = (df["Next_Close"] - df[price_col]) / df[price_col]
+
     df["Actual_Event"] = np.select(
         [df["Future_Return"] < -0.005, df["Future_Return"] > 0.005],
         [1, 2],
@@ -368,6 +442,44 @@ def add_features(df):
     df["Stoch_K"] = 100 * ((df["Close"] - low_14) / (high_14 - low_14 + 1e-9))
     df["Stoch_D"] = df["Stoch_K"].rolling(3).mean()
 
+    # --- Bands & Channels ---
+    ma20 = df["Close"].rolling(20).mean()
+    sd20 = df["Close"].rolling(20).std()
+    upper = ma20 + 2*sd20
+    lower = ma20 - 2*sd20
+    df["BB_PctB"] = (df["Close"] - lower) / ((upper - lower) + 1e-9)
+
+    # Keltner: EMA + ATR-like true range
+    hl = (df["High"] - df["Low"]).abs()
+    hc = (df["High"] - df["Close"].shift(1)).abs()
+    lc = (df["Low"]  - df["Close"].shift(1)).abs()
+    tr = pd.concat([hl, hc, lc], axis=1).max(axis=1)
+    atr20 = tr.ewm(alpha=1/20, adjust=False).mean()
+    ema20 = df["Close"].ewm(span=20, adjust=False).mean()
+    kc_upper = ema20 + 2*atr20
+    kc_lower = ema20 - 2*atr20
+    df["KC_Width"] = (kc_upper - kc_lower) / (ema20 + 1e-9)
+
+    # VWAP deviation (rolling daily approx)
+    typ = (df["High"] + df["Low"] + df["Close"]) / 3.0
+    vwap = (typ * df["Volume"]).rolling(20).sum() / (df["Volume"].rolling(20).sum() + 1e-9)
+    df["VWAP_Dev"] = (df["Close"] - vwap) / (vwap + 1e-9)
+
+    # Tail stats
+    ret = df["Close"].pct_change()
+    df["Ret_Skew_20"] = ret.rolling(20).skew()
+    df["Ret_Kurt_20"] = ret.rolling(20).kurt()
+
+    # Interactions with externals (guard for missing)
+    news_z   = df.get("News_Sent_Z20")
+    reddit_z = df.get("Reddit_Sent_Z20")
+    if "Volatility" not in df.columns:
+        df["Volatility"] = df["Close"].rolling(20).std()
+    df["Sent_x_Vol"]    = (news_z if news_z is not None else 0) * df["Volatility"]
+    df["RSI_x_NewsZ"]   = df["RSI"] * (news_z if news_z is not None else 0)
+    df["RSI_x_RedditZ"] = df["RSI"] * (reddit_z if reddit_z is not None else 0)
+
+
     # --- VOLATILITY / RANGE ---
     tr = pd.concat([
         (df["High"] - df["Low"]),
@@ -405,7 +517,7 @@ def add_features(df):
     df["NR7"] = (rng == rng.rolling(7).min()).astype(int)
 
     # Overnight gap
-    df["Gap_Pct"] = (df["Open"] - df["Close"].shift(1)) / df["Close"].shift(1)
+    #df["Gap_Pct"] = (df["Open"] - df["Close"].shift(1)) / df["Close"].shift(1)
 
     # Realized vol (Parkinson)
     df["Parkinson_RV"] = (np.log(df["High"]/df["Low"])**2).rolling(20).mean()
@@ -506,27 +618,31 @@ def notify_user(prediction, crash_conf, spike_conf):
             pass
 
 #telegram bot
-def send_telegram_alert(message, token=None, chat_id=None):
+def send_telegram_alert(text, token=None, chat_id=None):
+    import requests, json, os
     token = token or os.getenv("TELEGRAM_TOKEN")
     chat_id = chat_id or os.getenv("TELEGRAM_CHAT_ID")
-
     if not token or not chat_id:
-        print("⚠️ Telegram credentials missing.")
-        return
+        print("⚠️ Telegram not configured (missing token or chat id).")
+        return False
 
     url = f"https://api.telegram.org/bot{token}/sendMessage"
-    payload = {
-        "chat_id": chat_id,
-        "text": message,
-        "parse_mode": "Markdown"
-    }
-
+    payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
     try:
-        response = requests.post(url, data=payload)
-        if response.status_code != 200:
-            print(f"⚠️ Telegram error: {response.text}")
+        r = requests.post(url, json=payload, timeout=10)
+        if r.ok:
+            return True
+        else:
+            try:
+                err = r.json()
+            except Exception:
+                err = {"status_code": r.status_code, "text": r.text[:200]}
+            print(f"⚠️ Telegram error: {json.dumps(err)}")
+            return False
     except Exception as e:
         print(f"⚠️ Telegram exception: {e}")
+        return False
+
 
 def label_events_volatility_adjusted(df, window=3, vol_window=10, multiplier=0.2):
     df = df.copy()
