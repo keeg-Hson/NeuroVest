@@ -206,8 +206,8 @@ def run_backtest(window_days: int | None = None,
                  allow_overlap: bool = True,
                  ambig_policy: str = "sl_first",   # 'sl_first' | 'tp_first' | 'skip' | 'close_dir' | 'random'
                  rng_seed: int = 7,
-                 fee_bps: float = 0.0,   # 0.005% per fill
-                 slip_bps: float = 0.0,  # 0.01% per fill
+                 fee_bps: float = 0.5,   # 0.005% per fill
+                 slip_bps: float = 1.0,  # 0.01% per fill
                  atr_len: int = 14,
                  trend_len: int = 50, 
 
@@ -228,9 +228,9 @@ def run_backtest(window_days: int | None = None,
                  use_conf_size: bool = True,
                  use_opposite_exit: bool = True,
 
-                 use_weekly_trend: bool = False,
+                 use_weekly_trend: bool = True,
                  use_atr_band: bool = False,
-                 use_regime_filter: bool = False,
+                 use_regime_filter: bool = True,
 
                  dyn_t: float | None = None,      
                  margin: float = 0.05 
