@@ -66,29 +66,39 @@ def _read_feature_list(path: str) -> list[str]:
 
 def _required_feature_names_for_pipeline(model) -> list[str]:
     """
-    Prefer the fitted KBest's input names; then estimator.feature_names_in_;
-    lastly models/selected_features.txt (safe when there's no KBest step).
+    Return the exact pre-KBest input schema used at train time.
+    Order of preference:
+      1) Unwrap CalibratedClassifierCV → Pipeline → KBest.feature_names_in_
+      2) models/input_features.txt (persisted at train time)
+      3) Estimator.feature_names_in_ (if present and no KBest)
+    We DO NOT use selected_features.txt here (that is post-KBest and will break KBest.transform).
     """
-    # 1) If the model is a Pipeline with KBest, use the input columns seen at fit time
+    # Unwrap calibrator if present
+    base = getattr(model, "base_estimator", model)
+
+    # 1) Pipeline with KBest → use the input names seen during fit
     try:
-        if hasattr(model, "named_steps") and "kbest" in model.named_steps:
-            kb = model.named_steps["kbest"]
+        if hasattr(base, "named_steps") and "kbest" in base.named_steps:
+            kb = base.named_steps["kbest"]
             if hasattr(kb, "feature_names_in_"):
                 return list(kb.feature_names_in_)
     except Exception:
         pass
 
-    # 2) Otherwise, if the estimator exposes feature_names_in_, use that
-    if hasattr(model, "feature_names_in_"):
-        return list(model.feature_names_in_)
+    # 2) models/input_features.txt saved by train.py
+    try:
+        p = "models/input_features.txt"
+        if os.path.exists(p):
+            return pd.read_csv(p, header=None)[0].astype(str).str.strip().tolist()
+    except Exception:
+        pass
 
-    # 3) Fallback: selected_features.txt (only safe if there was no KBest)
-    p = "models/selected_features.txt"
-    if os.path.exists(p):
-        import pandas as pd  # ensure pandas is imported at top of file
-        return pd.read_csv(p, header=None)[0].astype(str).str.strip().tolist()
+    # 3) If no KBest and estimator exposes names
+    if hasattr(base, "feature_names_in_"):
+        return list(base.feature_names_in_)
 
     return []
+
 
 
 
@@ -129,6 +139,8 @@ def live_predict(feature_df: pd.DataFrame, raw_df: pd.DataFrame, model_path: str
 
         # Determine columns the pipeline expects
         req = _required_feature_names_for_pipeline(model)
+        print(f"🧱 Required input schema (pre-KBest): {req}")
+
         if not req:
             print("⚠️ No usable feature columns found for the model.")
             return None, None, None
@@ -175,8 +187,53 @@ def live_predict(feature_df: pd.DataFrame, raw_df: pd.DataFrame, model_path: str
         crash_confidence = proba_by_orig.get(1, float(class_probs[0]))
         spike_confidence = proba_by_orig.get(2, float(class_probs[1] if len(class_probs) > 1 else 0.0))
 
-        if max(class_probs) < 0.6:
+
+        # --- Decide winner consistently (argmax), then gate with thresholds ---
+        # Probabilities already mapped to ORIGINAL labels:
+        #   crash_confidence = P(orig=1), spike_confidence = P(orig=2)
+        winner_is_crash = (crash_confidence >= spike_confidence)
+        prediction = 1 if winner_is_crash else 2
+        winner_prob = crash_confidence if winner_is_crash else spike_confidence
+
+        # Optional quality gates
+        GLOBAL_MIN_CONF = 0.65
+
+        # Trend agreement (weekly MA filter)
+        close = raw_df["Close"].astype(float)
+        weekly = close.resample("W-FRI").last()
+        weekly_ma = weekly.rolling(26).mean().reindex(close.index, method="ffill")
+        in_uptrend = (close.iloc[-1] >= weekly_ma.iloc[-1]) if pd.notna(weekly_ma.iloc[-1]) else True
+        trend_agrees = (not winner_is_crash and in_uptrend) or (winner_is_crash and not in_uptrend)
+
+        # Extra sweep-based per-class thresholds (optional)
+        from pathlib import Path as _Path
+        best_cfg = {}
+        cfg_path = _Path("configs/best_thresholds.json")
+        if cfg_path.exists():
+            try:
+                import json as _json
+                best_cfg = _json.load(open(cfg_path))
+            except Exception:
+                best_cfg = {}
+        best_conf  = best_cfg.get("confidence_thresh", None)
+        best_crash = best_cfg.get("crash_thresh", None)
+        best_spike = best_cfg.get("spike_thresh", None)
+
+        # Learned crash threshold t (from models/thresholds.json). If class-specific
+        # thresholds exist, use those; else use t for both classes.
+        class_t = float(
+            best_crash if (winner_is_crash and best_crash is not None)
+            else best_spike if ((not winner_is_crash) and best_spike is not None)
+            else t
+        )
+
+        # Final gate: must clear (winner-specific threshold) AND global min AND optional best_conf
+        min_required = max(class_t, (best_conf or 0.0), GLOBAL_MIN_CONF)
+        passed = (winner_prob >= min_required) and trend_agrees
+
+        if max(crash_confidence, spike_confidence) < 0.60:
             print("⚠️ Low-confidence prediction — consider ignoring this signal.")
+
 
         # Log + output
         timestamp = datetime.now()
@@ -195,20 +252,25 @@ def live_predict(feature_df: pd.DataFrame, raw_df: pd.DataFrame, model_path: str
         print(f"📊 Class Probabilities (orig labels): Crash={crash_confidence:.4f}, Spike={spike_confidence:.4f}")
         print(f"Crash: {crash_confidence*100:.2f}%")
         print(f"Spike: {spike_confidence*100:.2f}%")
-        print(f"Prediction Forecast: {in_human_speak(prediction, crash_confidence, spike_confidence)}")
+
+        try:
+            forecast_text = in_human_speak(prediction)
+        except TypeError:
+            # Fallback if someone changes the signature again
+            forecast_text = f"{'CRASH' if prediction == 1 else 'SPIKE'}"
+        print(f"Prediction Forecast: {forecast_text}")
+
+
 
         notify_user(prediction, crash_confidence, spike_confidence)
 
-        # Use the learned threshold for alert gating too — winner must exceed t
-        winner_is_crash = crash_confidence >= spike_confidence
-        passed = (crash_confidence >= t) if winner_is_crash else (spike_confidence >= t)
-
-        label = "CRASH" if (winner_is_crash and passed) else \
-                "SPIKE" if ((not winner_is_crash) and passed) else \
-                "NORMAL"
+        # Use the decision computed above
+        label = "CRASH" if winner_is_crash else "SPIKE"
 
 
-        if label != "NORMAL":
+
+
+        if passed:
             msg = (
                 f"🚨 *Market Alert* — {label} signal detected!\n\n"
                 f"📉 Crash: `{crash_confidence:.2f}`\n"
