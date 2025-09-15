@@ -14,12 +14,13 @@ os.makedirs("logs", exist_ok=True)
 os.makedirs("configs", exist_ok=True)
 
 # Parameter ranges (tweak as desired)
-CONFIDENCE_RANGE: List[float | None] = [None, 0.55, 0.60, 0.65, 0.70]
-CRASH_RANGE:      List[float | None] = [0.20, 0.30, 0.40]
-SPIKE_RANGE:      List[float | None] = [0.20, 0.30, 0.40]
+CONFIDENCE_RANGE: List[float | None] = [None, 0.60, 0.65, 0.70, 0.75]
+CRASH_RANGE:      List[float | None] = [0.20, 0.25, 0.30, 0.35, 0.40]
+SPIKE_RANGE:      List[float | None] = [0.20, 0.25, 0.30, 0.35, 0.40]
+
 
 # Choose optimization objective: "avg_dollar_return" | "final_balance" | "total_return" | "profit_factor" | "win_rate"
-OBJECTIVE = "avg_dollar_return"
+OBJECTIVE = "sharpe" #was "avg_dollar_return"
 
 # Optional: limit backtest to last N days (set to None for full history)
 BACKTEST_WINDOW_DAYS = None
