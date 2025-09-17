@@ -713,54 +713,22 @@ def _drop_constant_and_allnan(df: pd.DataFrame, cols: list[str], min_var=1e-12):
     return keep
 
 
+# --- Label real outcomes using future close data ---   # (search anchor a few lines above)
 def finalize_features(df, feature_cols):
     """
-    Make feature matrix model-safe:
-    - Intersect with existing columns
-    - Ensure numeric dtype
-    - Interpolate time-wise if we have a DatetimeIndex
-    - Always fall back to ffill/bfill
-    - Return df with original columns preserved
+    Keep exactly the features selected for training (order matters),
+    and median-impute NaNs. No blanket dropping of external columns.
     """
-    df = df.copy()
+    out = df.copy()
+    # add any missing columns as zeros (predict-time parity)
+    for c in feature_cols:
+        if c not in out.columns:
+            out[c] = 0.0
+    out = out[feature_cols]
+    out = out.replace([np.inf, -np.inf], np.nan)
+    out = out.fillna(out.median(numeric_only=True))
+    return out
 
-    # Keep only features that actually exist now (we'll coerce to numeric next)
-    cols = [c for c in feature_cols if c in df.columns]
-
-    # Coerce to numeric (non-numeric -> NaN)
-    for c in cols:
-        df[c] = pd.to_numeric(df[c], errors="coerce")
-
-    # Ensure a DatetimeIndex (temporarily if needed) for time interpolation
-    had_dt_index = isinstance(df.index, pd.DatetimeIndex)
-    reset_back = False
-    if not had_dt_index:
-        if "Date" in df.columns:
-            df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-            df = df.set_index("Date")
-            reset_back = True
-        elif "Timestamp" in df.columns:
-            df["Timestamp"] = pd.to_datetime(df["Timestamp"], errors="coerce")
-            df = df.set_index("Timestamp")
-            reset_back = True
-        else:
-            df.index = pd.to_datetime(df.index, errors="coerce")
-
-    # Drop NaT index rows and interpolate if time index
-    if isinstance(df.index, pd.DatetimeIndex):
-        df = df[df.index.notna()]
-        if cols:
-            df[cols] = df[cols].interpolate(method="time", limit_direction="both")
-
-    # Safety fills regardless
-    if cols:
-        df[cols] = df[cols].ffill().bfill()
-
-    # Restore original index shape if we temporarily set it
-    if reset_back:
-        df = df.reset_index().rename(columns={"index": "Date"})
-
-    return df
 
 
 
@@ -829,6 +797,14 @@ def add_forward_returns_and_labels(
       - long_only=True: y = 1 if net_fwd_ret > pos_threshold else 0 (no-trade)
       - long_only=False (optional): y in {1 (long), -1 (short), 0 (no-trade)} via thresholds
     """
+    if price_col not in df.columns:
+        for alt in ["Adj Close","ClosePrice","Price","Last","Last Price"]:
+            if alt in df.columns:
+                price_col = alt
+                break
+        else:
+            raise KeyError(f"Price column '{price_col}' not found and no fallback present.")
+
     df = df.copy()
     df["fwd_price"] = df[price_col].shift(-horizon)
     raw_ret = (df["fwd_price"] - df[price_col]) / df[price_col]
