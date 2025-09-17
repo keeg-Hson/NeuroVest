@@ -279,75 +279,74 @@ def summarize_trades(trades, initial_balance=10000, save_plot_path=None):
     }
 
 
-def load_SPY_data():
-    """
-    Loads data/SPY.csv robustly and returns a clean OHLCV dataframe:
-    - Quietly coerces index to datetime (no parse_dates warnings)
-    - Flattens accidental MultiIndex columns
-    - Normalizes column names to canonical OHLCV
-    - Forces numeric dtype
-    - Drops duplicate/NaT index entries; sorts by date
-    - Trims trailing incomplete rows (e.g., NaN High/Low/Volume)
-    - Ensures both a DatetimeIndex (named 'Date') and a 'Date' column exist
-    """
-    spy_path = "data/SPY.csv"
-    if not os.path.exists(spy_path):
-        raise FileNotFoundError(f"[❌] Could not find SPY data at {spy_path}")
+def load_SPY_data(path: str | None = None):
+    import pandas as pd
+    from pathlib import Path
 
-    # Read without global parse_dates to avoid noisy inference warnings
-    df = pd.read_csv(spy_path, index_col=0, low_memory=False)
+    def read_one(p: Path):
+        if not p.exists():
+            return None
+        try:
+            d = pd.read_csv(p)
+        except Exception:
+            return None
+        d.columns = [str(c).strip() for c in d.columns]
+        if "Date" not in d.columns:
+            if d.index.name:
+                d = d.reset_index().rename(columns={d.index.name: "Date"})
+            else:
+                d = d.reset_index().rename(columns={d.columns[0]: "Date"})
+        d["Date"] = pd.to_datetime(d["Date"], errors="coerce")
+        d = d.dropna(subset=["Date"]).drop_duplicates(subset=["Date"]).set_index("Date").sort_index()
+        # map AlphaVantage keys if present
+        d = d.rename(columns={
+            "1. open":"Open","2. high":"High","3. low":"Low","4. close":"Close","5. volume":"Volume"
+        })
+        return d
 
-    # Coerce index → datetime, quietly
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=UserWarning)
-        # If your CSV index is always YYYY-MM-DD, you can use format="%Y-%m-%d"
-        df.index = pd.to_datetime(df.index, errors="coerce")
+    paths = []
+    if path:
+        paths = [Path(path)]
+    else:
+        paths = [Path("data/spy_daily.csv"), Path("data/SPY.csv")]
 
-    # Drop rows where the index couldn't be parsed; de-dup & sort
-    df = df[~df.index.isna()]
-    df = df[~df.index.duplicated(keep="last")]
-    df = df.sort_index()
+    base = None
+    for p in paths:
+        d = read_one(p)
+        if d is not None:
+            base = d if base is None else base.combine_first(d)
 
-    # Flatten accidental MultiIndex columns
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = ["_".join([str(x) for x in tup if str(x) != ""]).strip("_") for tup in df.columns]
+    if base is None or base.empty:
+        raise FileNotFoundError("Could not load SPY data from data/spy_daily.csv or data/SPY.csv")
 
-    # Normalize names → keep canonical OHLCV
-    rename_map = {
-        # common “ticker suffixed” names
-        "Open_SPY": "Open", "High_SPY": "High", "Low_SPY": "Low", "Close_SPY": "Close",
-        "Adj Close_SPY": "Adj Close", "Volume_SPY": "Volume",
-        "SPY_Open": "Open", "SPY_High": "High", "SPY_Low": "Low", "SPY_Close": "Close",
-        "SPY_Adj Close": "Adj Close", "SPY_Volume": "Volume",
-        # minor variants
-        "AdjClose": "Adj Close", "Adj_Close": "Adj Close",
-    }
-    df = df.rename(columns={c: rename_map.get(c, c) for c in df.columns})
+    def pick(name, *alts):
+        cols = [c for c in (name,)+alts if c in base.columns]
+        if not cols:
+            return None
+        s = None
+        for c in cols:
+            vals = base[c]
+            if isinstance(vals, pd.DataFrame):
+                tmp = None
+                for sub in vals.columns:
+                    ser = pd.to_numeric(vals[sub], errors="coerce")
+                    tmp = ser if tmp is None else tmp.combine_first(ser)
+                vals = tmp
+            else:
+                vals = pd.to_numeric(vals, errors="coerce")
+            s = vals if s is None else s.combine_first(vals)
+        return s
 
-    # Keep canonical columns if present
-    keep = [c for c in ["Open", "High", "Low", "Close", "Adj Close", "Volume"] if c in df.columns]
-    if keep:
-        df = df[keep]
+    out = pd.DataFrame(index=base.index)
+    out["Open"]   = pick("Open")
+    out["High"]   = pick("High")
+    out["Low"]    = pick("Low")
+    out["Close"]  = pick("Close", "Adj Close")
+    out["Volume"] = pick("Volume")
+    out = out.dropna(subset=["Close"]).sort_index()
+    out = out[["Open","High","Low","Close","Volume"]]
+    return out
 
-    # Force numeric dtypes
-    for c in df.columns:
-        df[c] = pd.to_numeric(df[c], errors="coerce")
-
-    # Repeatedly drop the last row while critical fields are NaN (incomplete latest bar)
-    crit = [c for c in ["High", "Low", "Volume"] if c in df.columns]
-    while len(df) and crit and df.iloc[-1][crit].isna().any():
-        df = df.iloc[:-1]
-
-    # Also drop any rows missing Open/Close entirely
-    base_crit = [c for c in ["Open", "Close"] if c in df.columns]
-    if base_crit:
-        df = df.dropna(subset=base_crit)
-
-    # Ensure DatetimeIndex and a 'Date' column for downstream merges
-    df.index.name = "Date"
-    df["Date"] = df.index
-
-    return df
 
 def safe_read_csv(path, prefer_index=True):
     """Robust CSV reader that tolerates missing 'Date' column."""
@@ -772,14 +771,20 @@ def drop_dupes_and_nans(df):
     return df.dropna(how="any")
 
 def ensure_no_future_leakage(df, feature_cols, label_cols, horizon_col="horizon_forward"):
-    # Basic sentinel: labels must depend on strictly future info.
+    """
+    Basic future-leakage sentinels:
+      - forward-looking markers must not be present in features
+      - horizon must be positive if present
+    """
+    bad_names = [c for c in feature_cols if str(c).startswith("fwd_") or c in {"y", "fwd_price", "fwd_ret_raw", "fwd_ret_net", "horizon_forward"}]
+    if bad_names:
+        raise ValueError(f"Future leakage detected in features: {sorted(set(bad_names))}")
+
     if horizon_col in df.columns:
-        if (df[horizon_col] <= 0).any():
+        if (pd.to_numeric(df[horizon_col], errors="coerce") <= 0).any():
             raise ValueError("Detected non-positive forward horizon rows; check labeling.")
-    # Spot check: features computed via rolling must not reference future rows.
-    # (Heuristic: ensure no merging on future timestamps happened.)
-    # Feature-generation logic must enforce windowing.
     return True
+
 
 def add_forward_returns_and_labels(
     df,
