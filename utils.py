@@ -15,6 +15,10 @@ from external_signals import add_external_signals #EXTERNAL SIGNALS MODULE
 
 load_dotenv()
 
+import socket
+socket.setdefaulttimeout(float(os.getenv("NET_TIMEOUT", "3")))
+
+
 # --- Hooks consumed by run_all.py ----------------------------------------------------
 def update_spy_data():
     """
@@ -536,8 +540,16 @@ def add_features(df):
     df["DOW"] = df["Date"].dt.weekday if "Date" in df.columns else df.index.weekday
 
 
-    # --- External Macro + Sentiment Signals ---
-    df = add_external_signals(df)
+    # --- External Macro + Sentiment Signals (optional/skip when offline) ---
+    OFFLINE = os.getenv("OFFLINE_MODE", "0").lower() in {"1", "true", "yes"}
+    if OFFLINE:
+        print("🔌 OFFLINE_MODE=1 → skipping external macro/sentiment fetches.")
+    else:
+        try:
+            df = add_external_signals(df)
+        except Exception as e:
+            print(f"⚠️ add_external_signals failed: {e} — continuing without externals.")
+
 
     # (Optional) chatty warning — safe to comment out if noisy
     # if df.isna().sum().sum() > 0:
@@ -686,52 +698,72 @@ def label_events_simple(df, window=3, pct_threshold=0.01):
 
     return df
 
+def _drop_constant_and_allnan(df: pd.DataFrame, cols: list[str], min_var=1e-12):
+    keep = []
+    for c in cols:
+        s = pd.to_numeric(df[c], errors="coerce")
+        if s.notna().any():
+            # keep if there is variance (after fills/interp)
+            if s.std(skipna=True) > min_var:
+                keep.append(c)
+        # else: drop columns that are entirely NaN
+    dropped = [c for c in cols if c not in keep]
+    if dropped:
+        print(f"ℹ️ Dropping constant/empty features: {dropped[:12]}{'...' if len(dropped)>12 else ''}")
+    return keep
+
+
 def finalize_features(df, feature_cols):
     """
     Make feature matrix model-safe:
     - Intersect with existing columns
     - Ensure numeric dtype
-    - Interpolate time-wise if a DatetimeIndex is present; otherwise fallback to ffill/bfill
+    - Interpolate time-wise if we have a DatetimeIndex
+    - Always fall back to ffill/bfill
     - Return df with original columns preserved
     """
     df = df.copy()
 
-    # Keep only features that exist now
-    cols = [c for c in feature_cols if c in df.columns and pd.api.types.is_numeric_dtype(df[c]) or c in df.columns]
-    # Force numeric where possible
+    # Keep only features that actually exist now (we'll coerce to numeric next)
+    cols = [c for c in feature_cols if c in df.columns]
+
+    # Coerce to numeric (non-numeric -> NaN)
     for c in cols:
         df[c] = pd.to_numeric(df[c], errors="coerce")
 
-    # If there's a Date column but no DatetimeIndex, temporarily set it
-    had_datetime_index = isinstance(df.index, pd.DatetimeIndex)
+    # Ensure a DatetimeIndex (temporarily if needed) for time interpolation
+    had_dt_index = isinstance(df.index, pd.DatetimeIndex)
     reset_back = False
-    if not had_datetime_index:
+    if not had_dt_index:
         if "Date" in df.columns:
             df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
             df = df.set_index("Date")
             reset_back = True
+        elif "Timestamp" in df.columns:
+            df["Timestamp"] = pd.to_datetime(df["Timestamp"], errors="coerce")
+            df = df.set_index("Timestamp")
+            reset_back = True
+        else:
+            df.index = pd.to_datetime(df.index, errors="coerce")
 
-    # Interpolate if time index; else skip to ffill/bfill
+    # Drop NaT index rows and interpolate if time index
     if isinstance(df.index, pd.DatetimeIndex):
-        if not isinstance(df.index, pd.DatetimeIndex):
-            if "Date" in df.columns:
-                df = df.set_index(pd.to_datetime(df["Date"], errors="coerce"))
-            elif "Timestamp" in df.columns:
-                df = df.set_index(pd.to_datetime(df["Timestamp"], errors="coerce"))
-            else:
-                df.index = pd.to_datetime(df.index, errors="coerce")
         df = df[df.index.notna()]
+        if cols:
+            df[cols] = df[cols].interpolate(method="time", limit_direction="both")
 
-        df[cols] = df[cols].interpolate(method="time", limit_direction="both")
+    # Safety fills regardless
+    if cols:
+        df[cols] = df[cols].ffill().bfill()
 
-    # Always do safety fills
-    df[cols] = df[cols].ffill().bfill()
-
-    # Restore original index/Date column if changed
+    # Restore original index shape if we temporarily set it
     if reset_back:
         df = df.reset_index().rename(columns={"index": "Date"})
 
     return df
+
+
+
 
 def label_events_triple_barrier(df, vol_col="ATR_14", pt_mult=2.0, sl_mult=2.0, t_max=5):
     """
