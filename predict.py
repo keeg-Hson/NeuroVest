@@ -7,6 +7,9 @@ import pandas as pd
 from datetime import datetime
 from dotenv import load_dotenv
 import json
+from config import PREDICT_CFG
+from utils import expected_value  # already implemented in utils.py
+
 
 
 from utils import (
@@ -26,7 +29,32 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-MODEL_PATH = "models/market_crash_model.pkl"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Variant toggle (Crash/Spike vs Forward-Returns)
+# ──────────────────────────────────────────────────────────────────────────────
+PREDICT_VARIANT = os.getenv("PREDICT_VARIANT", "crash_spike").strip().lower()
+# valid: "crash_spike" | "forward_returns"
+
+ARTIFACTS = {
+    "crash_spike": {
+        "model":      "models/market_crash_model.pkl",
+        "label_map":  "models/label_map.json",
+        "thresholds": "models/thresholds.json",
+    },
+    "forward_returns": {
+        "model":      "models/market_crash_model_fwd.pkl",
+        "label_map":  "models/label_map_fwd.json",
+        "thresholds": "models/thresholds_fwd.json",
+    },
+}
+if PREDICT_VARIANT not in ARTIFACTS:
+    raise ValueError(f"Unknown PREDICT_VARIANT={PREDICT_VARIANT}")
+
+MODEL_PATH      = ARTIFACTS[PREDICT_VARIANT]["model"]
+LABEL_MAP_PATH  = ARTIFACTS[PREDICT_VARIANT]["label_map"]
+THRESH_PATH     = ARTIFACTS[PREDICT_VARIANT]["thresholds"]
+
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -166,9 +194,9 @@ def live_predict(feature_df: pd.DataFrame, raw_df: pd.DataFrame, model_path: str
         classes_enc = list(getattr(model, "classes_", [0, 1]))
 
         # Load maps/threshold
-        maps = json.load(open("models/label_map.json"))
+        maps = json.load(open(LABEL_MAP_PATH))
         inv_label_map = {int(k): int(v) for k, v in maps["inv_label_map"].items()}
-        thr = json.load(open("models/thresholds.json"))
+        thr = json.load(open(THRESH_PATH))
         col_idx = int(thr["proba_col_index"])
         t = float(thr["threshold"])
         pos_enc = int(thr["pos_enc"])
@@ -189,11 +217,42 @@ def live_predict(feature_df: pd.DataFrame, raw_df: pd.DataFrame, model_path: str
 
 
         # --- Decide winner consistently (argmax), then gate with thresholds ---
-        # Probabilities already mapped to ORIGINAL labels:
-        #   crash_confidence = P(orig=1), spike_confidence = P(orig=2)
-        winner_is_crash = (crash_confidence >= spike_confidence)
-        prediction = 1 if winner_is_crash else 2
-        winner_prob = crash_confidence if winner_is_crash else spike_confidence
+        if PREDICT_VARIANT == "crash_spike":
+            # winner = argmax(Crash, Spike)
+            winner_is_crash = (crash_confidence >= spike_confidence)
+            prediction = 1 if winner_is_crash else 2           # 1=Crash, 2=Spike (original labels)
+            winner_prob = crash_confidence if winner_is_crash else spike_confidence
+        else:
+            # forward_returns: labels are {0=No-Trade, 1=Trade}
+            # Well treat "Trade" as the positive action; use its probability directly.
+            # Ensure we are reading the correct probability column for class=1 from thresholds.
+            col_idx = int(thr.get("proba_col_index", 1))
+            p_trade = float(class_probs[col_idx]) if col_idx < len(class_probs) else float(class_probs[-1])
+            winner_prob = p_trade
+            prediction = 1 if p_trade >= float(thr.get("threshold", 0.5)) else 0
+            # For uniform downstream logging, derive a pseudo “winner” label & confidences
+            winner_is_crash = False
+            crash_confidence = 0.0
+            spike_confidence = p_trade  # reuse this column just so logs print something meaningful
+
+
+        # Expected Value (EV) check — avoids negative-EV alerts/trades
+        avg_gain = PREDICT_CFG.get("avg_gain", 0.0040)
+        avg_loss = PREDICT_CFG.get("avg_loss", 0.0030)
+        fee_bps  = PREDICT_CFG.get("fee_bps", 1.5)
+        slip_bps = PREDICT_CFG.get("slippage_bps", 2.0)
+
+        ev = expected_value(
+            prob_long=winner_prob,
+            avg_gain=avg_gain,
+            avg_loss=avg_loss,
+            fee_bps=fee_bps,
+            slippage_bps=slip_bps,
+        )
+
+        # Keep existing confidence/trend gates, then AND with EV≥ev_min
+        EV_MIN = PREDICT_CFG.get("ev_min", 0.0005)
+
 
         # Optional quality gates
         GLOBAL_MIN_CONF = 0.65
@@ -229,7 +288,8 @@ def live_predict(feature_df: pd.DataFrame, raw_df: pd.DataFrame, model_path: str
 
         # Final gate: must clear (winner-specific threshold) AND global min AND optional best_conf
         min_required = max(class_t, (best_conf or 0.0), GLOBAL_MIN_CONF)
-        passed = (winner_prob >= min_required) and trend_agrees
+        passed = (winner_prob >= min_required) and trend_agrees and (ev >= EV_MIN)
+
 
         if max(crash_confidence, spike_confidence) < 0.60:
             print("⚠️ Low-confidence prediction — consider ignoring this signal.")
@@ -265,7 +325,11 @@ def live_predict(feature_df: pd.DataFrame, raw_df: pd.DataFrame, model_path: str
         notify_user(prediction, crash_confidence, spike_confidence)
 
         # Use the decision computed above
-        label = "CRASH" if winner_is_crash else "SPIKE"
+        if PREDICT_VARIANT == "crash_spike":
+            label = "CRASH" if winner_is_crash else "SPIKE"
+        else:
+            label = "TRADE" if prediction == 1 else "NO-TRADE"
+
 
 
 
@@ -328,33 +392,78 @@ def run_predictions(confidence_threshold: float = 0.80) -> pd.DataFrame | None:
     classes_enc = list(getattr(model, "classes_", [0, 1]))
 
     # Load label maps + threshold
-    with open("models/label_map.json", "r") as f:
+    with open(LABEL_MAP_PATH, "r") as f:
         maps = json.load(f)
     inv_label_map = {int(k): int(v) for k, v in maps["inv_label_map"].items()}
 
-    with open("models/thresholds.json", "r") as f:
+    with open(THRESH_PATH, "r") as f:
         thr = json.load(f)
 
     col_idx = int(thr["proba_col_index"])  # which proba column corresponds to ORIGINAL class 1 (Crash)
     t = float(thr["threshold"])
     pos_enc = int(thr["pos_enc"])          # encoded id for original class 1
 
-    # Thresholded predictions in ENCODED label space → ORIGINAL labels
-    p_pos = probs[:, col_idx]
-    y_hat_enc = np.where(p_pos >= t, pos_enc, 1 - pos_enc)
-    y_hat_orig = np.vectorize(inv_label_map.get)(y_hat_enc).astype(int)  # {1,2}
+    if PREDICT_VARIANT == "crash_spike":
+        # Map to ORIGINAL labels {1=Crash, 2=Spike}
+        inv_label_map = {int(k): int(v) for k, v in maps["inv_label_map"].items()}
 
-    # Map probability columns to ORIGINAL labels
-    proba_by_orig = {}
-    for j, enc_lab in enumerate(classes_enc):
-        orig = inv_label_map.get(enc_lab, enc_lab)  # 0/1 -> 1/2
-        proba_by_orig[int(orig)] = probs[:, j]
+        col_idx = int(thr["proba_col_index"])  # proba column for ORIGINAL class 1 (Crash)
+        t = float(thr["threshold"])
+        pos_enc = int(thr["pos_enc"])
 
-    # Attach outputs (IMPORTANT: 1=Crash, 2=Spike in your code)
-    feature_df["Prediction"] = y_hat_orig
-    feature_df["Crash_Conf"] = proba_by_orig.get(1, probs[:, 0])  # orig=1
-    feature_df["Spike_Conf"] = proba_by_orig.get(2, probs[:, 1])  # orig=2
-    feature_df["Confidence"] = probs.max(axis=1) if probs.size else np.zeros(len(X))
+        # Thresholded predictions in ENCODED label space -> ORIGINAL labels
+        p_pos = probs[:, col_idx]
+        y_hat_enc  = np.where(p_pos >= t, pos_enc, 1 - pos_enc)
+        y_hat_orig = np.vectorize(inv_label_map.get)(y_hat_enc).astype(int)  # {1,2}
+
+        # Probability columns to ORIGINAL labels
+        proba_by_orig = {}
+        for j, enc_lab in enumerate(classes_enc):
+            orig = inv_label_map.get(enc_lab, enc_lab)  # 0/1 -> 1/2
+            proba_by_orig[int(orig)] = probs[:, j]
+
+        # Attach outputs (1=Crash, 2=Spike)
+        feature_df["Prediction"]  = y_hat_orig
+        feature_df["Crash_Conf"]  = proba_by_orig.get(1, probs[:, 0])
+        feature_df["Spike_Conf"]  = proba_by_orig.get(2, probs[:, 1])
+        feature_df["Confidence"]  = probs.max(axis=1) if probs.size else np.zeros(len(X))
+
+    else:
+        # forward_returns: labels are {0=No-Trade, 1=Trade}
+        # We’ll expose a consistent set of columns; use Trade_Conf as our main prob.
+        try:
+            # If thresholds_fwd.json has proba_col_index, use it; else pick column for class=1
+            col_idx = int(thr.get("proba_col_index", 1))
+        except Exception:
+            col_idx = 1
+        p_trade = probs[:, col_idx] if probs.shape[1] > col_idx else probs[:, -1]
+        t = float(thr.get("threshold", 0.5))
+        y_hat_bin = (p_trade >= t).astype(int)  # 1=Trade
+
+        feature_df["Prediction"]  = y_hat_bin            # {0,1}
+        feature_df["Trade_Conf"]  = p_trade              # probability of class=1 (Trade)
+        feature_df["Confidence"]  = probs.max(axis=1) if probs.size else np.zeros(len(X))
+        # For compatibility with any downstream code expecting Crash/Spike columns, set them to NaN/0
+        feature_df["Crash_Conf"]  = 0.0
+        feature_df["Spike_Conf"]  = p_trade  # reuse this as a confidence column if graphed later
+
+
+    # Compute EV per row for analysis/filters
+    avg_gain = PREDICT_CFG.get("avg_gain", 0.0040)
+    avg_loss = PREDICT_CFG.get("avg_loss", 0.0030)
+    fee_bps  = PREDICT_CFG.get("fee_bps", 1.5)
+    slip_bps = PREDICT_CFG.get("slippage_bps", 2.0)
+
+    # Winner-side prob per row
+    winner_prob = np.maximum(feature_df["Crash_Conf"].values, feature_df["Spike_Conf"].values)
+    feature_df["EV"] = expected_value(winner_prob, avg_gain, avg_loss, fee_bps, slip_bps)
+
+    # OPTIONAL: filter to positive-EV only in the saved CSV
+    # (comment this out if you eventually want to keep ALL rows for analysis)
+    # ev_min = PREDICT_CFG.get("ev_min", 0.0005)
+    # feature_df = feature_df.loc[feature_df["EV"] >= ev_min].copy()
+
+
 
     print(f"🔧 Using learned threshold t={t:.3f} on class=1 (Crash) [proba col={col_idx}]")
     print("Pred counts with learned threshold:\n", feature_df["Prediction"].value_counts())
