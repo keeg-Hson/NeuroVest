@@ -100,6 +100,27 @@ def _merge_sent_cache(cache_path: Path, new_df: pd.DataFrame, col_name: str) -> 
 # -----------------------------
 # General helpers
 # -----------------------------
+
+def _find_csv_anywhere(filename: str, roots: list[str] = [".", "data", "data/etfs"]) -> str | None:
+    target = filename.lower()
+    ticker = target.replace(".csv", "")
+    for root in roots:
+        try:
+            for dirpath, _, files in os.walk(root):
+                for f in files:
+                    fl = f.lower()
+                    if fl == target:  # exact
+                        return os.path.join(dirpath, f)
+                    if fl.endswith(".csv"):
+                        base = fl[:-4]
+                        if base == ticker or base.startswith(ticker) or ticker in base:  # fuzzy
+                            return os.path.join(dirpath, f)
+        except Exception:
+            continue
+    return None
+
+
+
 def _ensure_unique_sorted_index(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     out = out[~out.index.duplicated(keep="last")]
@@ -120,14 +141,32 @@ def _ensure_dt_index(df: pd.DataFrame) -> pd.DataFrame:
 
 def _read_csv_maybe(path: str, index_is_date: bool = True) -> pd.DataFrame | None:
     """
-    Robust CSV reader for Yahoo-style files.
-    Handles both normal single-header and "Price/Ticker/Date" multi-header outputs.
-    Returns a DataFrame; if index_is_date=True, DatetimeIndex is set.
+    Robust CSV reader for Yahoo-style files (and similar two-row headers where
+    one level is the ticker and the other is the field: Close/Open/High/Low/Volume/Date).
+    Returns a DataFrame indexed by Date (if present) and sorted ascending.
     """
     if not os.path.exists(path):
         return None
 
+    FIELD_NAMES = {"adj close","adjusted close","close","open","high","low","volume","date","closeprice","last","last price"}
+
     def _finalize(df: pd.DataFrame) -> pd.DataFrame:
+        # --- PROMOTE DATE-LIKE COLUMN IF NEEDED ---
+        if "Date" not in df.columns:
+            # check a few left-most columns for parseable dates
+            for c in list(df.columns)[:3]:
+                try:
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore", category=UserWarning)
+                        # pandas >=2.0 supports format="mixed"; if older, this still works and warnings are silenced
+                        sample = pd.to_datetime(df[c], errors="coerce")
+                    if sample.notna().mean() >= 0.90:
+                        df = df.rename(columns={c: "Date"})
+                        break
+                except Exception:
+                    pass
+
+
         # If a Date column exists, prefer it as index
         if "Date" in df.columns:
             with warnings.catch_warnings():
@@ -141,58 +180,80 @@ def _read_csv_maybe(path: str, index_is_date: bool = True) -> pd.DataFrame | Non
         df = df[df.index.notna()]
         return df.sort_index()
 
+
     try:
-        # First try the simple case
+        # First try normal single-header read
         df0 = pd.read_csv(path, low_memory=False)
-        # Detect Yahoo-style multi-header OR files that kept a 'Ticker' header
-        if df0.columns.tolist() and (df0.columns[0] == "Price" or "Ticker" in df0.columns):
-            try:
-                df1 = pd.read_csv(path, header=[0, 1], low_memory=False)
 
-                # Drop a bogus first data row like ['Date', ...] or ['0','Date',...]
-                first_cell = str(df1.iloc[0, 0])
-                if first_cell.lower() in {"date", "0"} or "date" in first_cell.lower():
-                    df1 = df1.iloc[1:].reset_index(drop=True)
+        # Heuristic: if first row looks like header (contains 'Date' or field names),
+        # promote it to header.
+        if df0.shape[0] > 0:
+            first_row_vals = [str(v) for v in df0.iloc[0].tolist()]
+            hits = sum(v.strip().lower() in FIELD_NAMES for v in first_row_vals)
+            if hits >= 2 or any(v.strip().lower() == "date" for v in first_row_vals):
+                df0.columns = first_row_vals
+                df0 = df0.drop(df0.index[0]).reset_index(drop=True)
 
-                # Flatten: keep the lower level (field names: Close, Adj Close, etc.)
-                if isinstance(df1.columns, pd.MultiIndex):
-                    df1.columns = [c[-1] for c in df1.columns]
+        # If we can already finalize this, do it.
+        simple = _finalize(df0.copy())
+        if simple.shape[1] > 0:
+            return simple
 
-                # If a 'Ticker' column survived as a real column, drop it
-                if "Ticker" in df1.columns:
-                    df1 = df1.drop(columns=["Ticker"], errors="ignore")
+        # Try two-row header read
+        df1 = pd.read_csv(path, header=[0, 1], low_memory=False)
 
-                # Make columns unique (some exports duplicate field names many times)
-                # Keep the first occurrence of each canonical field
-                keep_order = ["Close", "Adj Close", "Open", "High", "Low", "Volume", "Date"]
-                seen = set()
-                new_cols = []
-                for c in df1.columns:
-                    if c in keep_order and c not in seen:
-                        new_cols.append(c); seen.add(c)
-                    elif c not in keep_order and c not in seen:
-                        new_cols.append(c); seen.add(c)
-                    # else skip duplicates
-                df1 = df1.loc[:, new_cols]
+        # Some exports include a bogus first data row like ['Date', ...] etc.
+        try:
+            first_cell = str(df1.iloc[0, 0])
+            if first_cell.lower() in {"date", "0"} or "date" in first_cell.lower():
+                df1 = df1.iloc[1:].reset_index(drop=True)
+        except Exception:
+            pass
 
-                df = _finalize(df1)
-                return df
-            except Exception:
-                pass  # fall through to generic heuristics
+        # If we genuinely have a MultiIndex header, decide which level is "field" vs "ticker".
+        if isinstance(df1.columns, pd.MultiIndex):
+            level0 = [str(c[0]).strip().lower() for c in df1.columns]
+            level1 = [str(c[1]).strip().lower() for c in df1.columns]
+            hits0 = sum(x in FIELD_NAMES for x in level0)
+            hits1 = sum(x in FIELD_NAMES for x in level1)
 
+            # Choose the level with more field-name hits as the column names
+            if hits0 >= hits1:
+                df1.columns = [c[0] for c in df1.columns]
+            else:
+                df1.columns = [c[1] for c in df1.columns]
+        else:
+            # Not a MultiIndex; fall back to df0 behavior
+            return _finalize(df0)
 
-        # If we got here, try normal finalize (single header)
-        return _finalize(df0)
+        # If a 'Ticker' column survived, drop it
+        if "Ticker" in df1.columns:
+            df1 = df1.drop(columns=["Ticker"], errors="ignore")
+
+        # If we still have duplicates (e.g., repeated field names per ticker), keep first occurrence
+        keep_order = []
+        seen = set()
+        for c in df1.columns:
+            if c not in seen:
+                keep_order.append(c); seen.add(c)
+        df1 = df1.loc[:, keep_order]
+
+        return _finalize(df1)
 
     except Exception as e:
         warnings.warn(f"[external_signals] Failed to read {path}: {e}")
         return None
 
 
+
 def _pick_price_series(df_like: pd.DataFrame | None, prefer_name: str | None = None) -> pd.Series | None:
     if df_like is None or len(df_like) == 0:
         return None
-    for col in ["Adj Close", "Close", "Value", "Price", "ClosePrice"]:
+    candidates = [
+        "Adj Close","AdjClose","Adjusted Close","Close","close","CLOSE",
+        "Value","Price","ClosePrice","Last","Last Price","Close*","Adj Close*"
+    ]
+    for col in candidates:
         if col in df_like.columns:
             s = pd.to_numeric(df_like[col], errors="coerce")
             s.name = prefer_name or col
@@ -203,6 +264,7 @@ def _pick_price_series(df_like: pd.DataFrame | None, prefer_name: str | None = N
             s.name = prefer_name or col
             return s
     return None
+
 
 def _clean_series_index(s: pd.Series) -> pd.Series:
     s = s.copy()
@@ -500,7 +562,7 @@ def add_external_signals(df: pd.DataFrame) -> pd.DataFrame:
         out = out.join(news_df, how="left")
     else:
         if "News_Sentiment" not in out.columns:
-            out["News_Sentiment"] = np.nan
+            out["News_Sentiment"] = 0.0
 
     # ---- Reddit sentiment ----
     reddit_df = fetch_reddit_sentiment(days=365, limit=300)
@@ -509,20 +571,51 @@ def add_external_signals(df: pd.DataFrame) -> pd.DataFrame:
         out = out.join(reddit_df, how="left")
     else:
         if "Reddit_Sentiment" not in out.columns:
-            out["Reddit_Sentiment"] = np.nan
+            out["Reddit_Sentiment"] = 0.0
 
     # ---- Sector breadth proxies ----
-    sector_dir = "data/etfs"
+    candidate_dirs = ["data/etfs", "data", "."]
     sector_tickers = ["XLF","XLK","XLE","XLI","XLV","XLY","XLP","XLU","XLB","XLRE"]
     sector_series = []
+    missing = []
 
-    if os.path.isdir(sector_dir):
-        for t in sector_tickers:
-            df_csv = _read_csv_maybe(os.path.join(sector_dir, f"{t}.csv"))
-            s = _pick_price_series(df_csv, prefer_name=t)
-            if s is not None:
-                s = _clean_series_index(s).rename(t)
-                sector_series.append(s)
+    for t in sector_tickers:
+        csv_path = None
+        # try direct paths first
+        for d in candidate_dirs:
+            p = os.path.join(d, f"{t}.csv")
+            if os.path.exists(p):
+                csv_path = p
+                break
+        # otherwise fuzzy-search anywhere
+        if csv_path is None:
+            csv_path = _find_csv_anywhere(f"{t}.csv")
+
+        if not csv_path:
+            missing.append(t)
+            continue
+
+        df_csv = _read_csv_maybe(csv_path)
+        if df_csv is None or df_csv.empty:
+            print(f"[extsig] {t}: file found but empty/unreadable -> {csv_path}")
+            continue
+
+        s = _pick_price_series(df_csv, prefer_name=t)
+        if s is None:
+            print(f"[extsig] {t}: no numeric close-like column -> {csv_path}; cols={list(df_csv.columns)[:8]}")
+            continue
+
+        s = _clean_series_index(s).rename(t)
+        sector_series.append(s)
+
+    # one concise summary line
+    print("[extsig] sector tickers loaded:", len(sector_series), [getattr(s, "name", "unknown") for s in sector_series][:5])
+    if missing:
+        print("[extsig] sector tickers missing (no CSV found):", missing)
+
+
+
+
     # fallback: if tickers already in 'out'
     if not sector_series:
         for t in sector_tickers:
@@ -534,12 +627,24 @@ def add_external_signals(df: pd.DataFrame) -> pd.DataFrame:
         sectors = _ensure_unique_sorted_index(sectors)
         sectors = sectors.reindex(out.index.unique()).ffill()
 
-        rets_5  = sectors.pct_change(5)
-        rets_20 = sectors.pct_change(20)
+        # ensure numeric before pct_change
+        sectors = sectors.astype("float64")
+
+        # avoid deprecated default pad-fill; compute clean percentage changes
+        rets_5  = sectors.pct_change(5, fill_method=None)
+        rets_20 = sectors.pct_change(20, fill_method=None)
+
         out["Sector_MedianRet_5"]  = rets_5.median(axis=1)
         out["Sector_MedianRet_20"] = rets_20.median(axis=1)
         out["Sector_Dispersion_5"]  = rets_5.std(axis=1)
         out["Sector_Dispersion_20"] = rets_20.std(axis=1)
+
+
+        print("coverage:",
+            float(out["Sector_MedianRet_20"].notna().mean()),
+            float(out["Sector_Dispersion_20"].notna().mean()))
+
+
     else:
         for c in ["Sector_MedianRet_5","Sector_MedianRet_20","Sector_Dispersion_5","Sector_Dispersion_20"]:
             if c not in out.columns:
@@ -597,6 +702,13 @@ def add_external_signals(df: pd.DataFrame) -> pd.DataFrame:
 
 
     # ---- Structured Sentiment Features ----
+
+    if "News_Sentiment" in out.columns:
+        out["News_Sentiment"] = out["News_Sentiment"].fillna(0.0)
+    if "Reddit_Sentiment" in out.columns:
+        out["Reddit_Sentiment"] = out["Reddit_Sentiment"].fillna(0.0)
+
+
     if "News_Sentiment" in out.columns:
         out["News_Sent_Z20"]  = _zscore(out["News_Sentiment"], 20)
         out["News_Sent_ROC3"] = out["News_Sentiment"].diff(3)
@@ -642,6 +754,10 @@ def add_external_signals(df: pd.DataFrame) -> pd.DataFrame:
         "News_Sent_Z20","Reddit_Sent_Z20"
     ]
     out = _lag_joined_columns(out, _lag_cols, n=1)
+
+    print("sample sector rows:",
+      out[["Sector_MedianRet_20","Sector_Dispersion_20"]].dropna().tail(3).to_dict("records"))
+
 
     return out
 
