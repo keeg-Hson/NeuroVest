@@ -104,6 +104,8 @@ def in_human_speak(label):
 
 # --- Log prediction to file ---
 # --- Log prediction to file ---
+
+
 def log_prediction_to_file(timestamp, prediction, crash_conf, spike_conf,
                            close_price, open_price=None, high=None, low=None,
                            log_path="logs/daily_predictions.csv"):
@@ -128,7 +130,10 @@ def log_prediction_to_file(timestamp, prediction, crash_conf, spike_conf,
         _hash_file("models/market_crash_model.pkl"),
         _hash_file("models/thresholds.json"),
         _hash_file("configs/best_thresholds.json"),
+        _hash_file("models/market_crash_model_fwd.pkl"),
+        _hash_file("models/thresholds_fwd.json"),
     ])
+
 
 
     row = {
@@ -279,73 +284,86 @@ def summarize_trades(trades, initial_balance=10000, save_plot_path=None):
     }
 
 
-def load_SPY_data(path: str | None = None):
+def load_SPY_data():
     import pandas as pd
     from pathlib import Path
 
-    def read_one(p: Path):
-        if not p.exists():
-            return None
-        try:
-            d = pd.read_csv(p)
-        except Exception:
-            return None
-        d.columns = [str(c).strip() for c in d.columns]
-        if "Date" not in d.columns:
-            if d.index.name:
-                d = d.reset_index().rename(columns={d.index.name: "Date"})
-            else:
-                d = d.reset_index().rename(columns={d.columns[0]: "Date"})
-        d["Date"] = pd.to_datetime(d["Date"], errors="coerce")
-        d = d.dropna(subset=["Date"]).drop_duplicates(subset=["Date"]).set_index("Date").sort_index()
-        # map AlphaVantage keys if present
-        d = d.rename(columns={
-            "1. open":"Open","2. high":"High","3. low":"Low","4. close":"Close","5. volume":"Volume"
-        })
-        return d
+    ROOT = Path(__file__).resolve().parent
+    DATA = ROOT / "data"
 
-    paths = []
-    if path:
-        paths = [Path(path)]
-    else:
-        paths = [Path("data/spy_daily.csv"), Path("data/SPY.csv")]
+    def _read_one(p: Path) -> pd.DataFrame:
+        df = pd.read_csv(p, low_memory=False)
+        df.columns = df.columns.map(str).str.strip()
+        df = df.loc[:, ~df.columns.duplicated(keep="first")]
 
-    base = None
-    for p in paths:
-        d = read_one(p)
-        if d is not None:
-            base = d if base is None else base.combine_first(d)
+        # choose a date-like column by priority and coverage
+        candidates = [c for c in df.columns if c.lower() in ("date","datetime","timestamp")]
+        if not candidates:
+            return pd.DataFrame()
+        dcol = max(candidates, key=lambda c: df[c].notna().sum())
 
-    if base is None or base.empty:
-        raise FileNotFoundError("Could not load SPY data from data/spy_daily.csv or data/SPY.csv")
+        raw = df[dcol].astype(str).str.strip()
 
-    def pick(name, *alts):
-        cols = [c for c in (name,)+alts if c in base.columns]
-        if not cols:
-            return None
-        s = None
-        for c in cols:
-            vals = base[c]
-            if isinstance(vals, pd.DataFrame):
-                tmp = None
-                for sub in vals.columns:
-                    ser = pd.to_numeric(vals[sub], errors="coerce")
-                    tmp = ser if tmp is None else tmp.combine_first(ser)
-                vals = tmp
-            else:
-                vals = pd.to_numeric(vals, errors="coerce")
-            s = vals if s is None else s.combine_first(vals)
-        return s
+        # 1) ISO-8601 first
+        parsed = pd.to_datetime(raw, errors="coerce", format="ISO8601")
 
-    out = pd.DataFrame(index=base.index)
-    out["Open"]   = pick("Open")
-    out["High"]   = pick("High")
-    out["Low"]    = pick("Low")
-    out["Close"]  = pick("Close", "Adj Close")
-    out["Volume"] = pick("Volume")
-    out = out.dropna(subset=["Close"]).sort_index()
-    out = out[["Open","High","Low","Close","Volume"]]
-    return out
+        # 2) fallback common US format
+        if parsed.isna().all():
+            parsed = pd.to_datetime(raw, errors="coerce", format="%m/%d/%Y")
+
+        # 3) fallback numeric epoch (s, then ms)
+        if parsed.isna().all():
+            num = pd.to_numeric(raw, errors="coerce")
+            parsed = pd.to_datetime(num, errors="coerce", unit="s")
+            if parsed.isna().all():
+                parsed = pd.to_datetime(num, errors="coerce", unit="ms")
+
+        df["__dt"] = parsed
+        df = df[df["__dt"].notna()].drop_duplicates(subset=["__dt"]).set_index("__dt").sort_index()
+
+        def pick(*names):
+            for n in names:
+                cands = [c for c in df.columns if c == n or c.startswith(n + ".")]
+                for c in cands:
+                    s = pd.to_numeric(df[c], errors="coerce")
+                    if s.notna().any():
+                        return s
+            return pd.Series(index=df.index, dtype="float64")
+
+        out = pd.DataFrame(index=df.index)
+        out["Open"]      = pick("Open","1. open")
+        out["High"]      = pick("High","2. high")
+        out["Low"]       = pick("Low","3. low")
+        out["Close"]     = pick("Close","4. close","Adj Close","adjclose","close")
+        out["Adj Close"] = pick("Adj Close","adjclose","close")
+        out["Volume"]    = pick("Volume","5. volume","volume")
+        for c in out.columns:
+            out[c] = pd.to_numeric(out[c], errors="coerce")
+        return out
+
+
+    sources = [DATA / "spy_daily.csv", DATA / "SPY.csv"]
+    parts = []
+    for p in sources:
+        d = _read_one(p)
+        if not d.empty:
+            parts.append(d)
+    if not parts:
+        raise FileNotFoundError("No SPY data could be loaded from data/spy_daily.csv or data/SPY.csv")
+    base = __import__("pandas").concat(parts).sort_index()
+    base = base[~base.index.duplicated(keep="last")]
+
+    base = base.copy()
+    base.index = pd.to_datetime(base.index, errors="coerce").tz_localize(None).normalize()
+    base = base[base.index.notna()]
+    base = base.sort_index()
+    base = base[~base.index.duplicated(keep="last")]
+    base = base[base.index >= pd.Timestamp("1993-01-29")]
+    base.index.name = "Date"
+
+
+    return base
+
 
 
 def safe_read_csv(path, prefer_index=True):
