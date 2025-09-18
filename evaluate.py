@@ -1,3 +1,4 @@
+from utils import load_SPY_data
 # evaluate.py
 #Model Evaluation + Outcome Labeling
 
@@ -15,7 +16,7 @@ def label_prediction_outcomes():
 
     try:
         pred = pd.read_csv("logs/daily_predictions.csv", parse_dates=["Timestamp"])
-        spy = safe_read_csv("data/spy_daily.csv")  # index = Date
+        spy = load_SPY_data()  # index = Date
 
         spy["Date"] = pd.to_datetime(spy["Date"])
 
