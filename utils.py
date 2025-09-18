@@ -292,42 +292,26 @@ def load_SPY_data():
     DATA = ROOT / "data"
 
     def _read_one(p: Path) -> pd.DataFrame:
+        if not p.exists():
+            return pd.DataFrame()
         df = pd.read_csv(p, low_memory=False)
         df.columns = df.columns.map(str).str.strip()
-        df = df.loc[:, ~df.columns.duplicated(keep="first")]
-
-        # choose a date-like column by priority and coverage
-        candidates = [c for c in df.columns if c.lower() in ("date","datetime","timestamp")]
-        if not candidates:
+        dcol = next((c for c in df.columns if c.lower().startswith("date")), None)
+        if not dcol:
             return pd.DataFrame()
-        dcol = max(candidates, key=lambda c: df[c].notna().sum())
 
-        raw = df[dcol].astype(str).str.strip()
-
-        # 1) ISO-8601 first
-        parsed = pd.to_datetime(raw, errors="coerce", format="ISO8601")
-
-        # 2) fallback common US format
-        if parsed.isna().all():
-            parsed = pd.to_datetime(raw, errors="coerce", format="%m/%d/%Y")
-
-        # 3) fallback numeric epoch (s, then ms)
-        if parsed.isna().all():
-            num = pd.to_numeric(raw, errors="coerce")
-            parsed = pd.to_datetime(num, errors="coerce", unit="s")
-            if parsed.isna().all():
-                parsed = pd.to_datetime(num, errors="coerce", unit="ms")
-
-        df["__dt"] = parsed
-        df = df[df["__dt"].notna()].drop_duplicates(subset=["__dt"]).set_index("__dt").sort_index()
+        dt = pd.to_datetime(df[dcol].astype(str).str.slice(0,10), errors="coerce", format="mixed")
+        df = df.loc[dt.notna()].copy()
+        df[dcol] = dt
+        df = df.drop_duplicates(subset=[dcol]).set_index(dcol).sort_index()
 
         def pick(*names):
             for n in names:
-                cands = [c for c in df.columns if c == n or c.startswith(n + ".")]
-                for c in cands:
-                    s = pd.to_numeric(df[c], errors="coerce")
-                    if s.notna().any():
-                        return s
+                for c in df.columns:
+                    if c == n or c.startswith(n + "."):
+                        s = pd.to_numeric(df[c], errors="coerce")
+                        if s.notna().any():
+                            return s
             return pd.Series(index=df.index, dtype="float64")
 
         out = pd.DataFrame(index=df.index)
@@ -337,35 +321,24 @@ def load_SPY_data():
         out["Close"]     = pick("Close","4. close","Adj Close","adjclose","close")
         out["Adj Close"] = pick("Adj Close","adjclose","close")
         out["Volume"]    = pick("Volume","5. volume","volume")
-        for c in out.columns:
-            out[c] = pd.to_numeric(out[c], errors="coerce")
         return out
 
-
-    sources = [DATA / "spy_daily.csv", DATA / "SPY.csv"]
     parts = []
-    for p in sources:
-        d = _read_one(p)
+    for pth in [DATA / "SPY.csv", DATA / "spy_daily.csv"]:
+        d = _read_one(pth)
         if not d.empty:
             parts.append(d)
+
     if not parts:
         raise FileNotFoundError("No SPY data could be loaded from data/spy_daily.csv or data/SPY.csv")
-    base = __import__("pandas").concat(parts).sort_index()
-    base = base[~base.index.duplicated(keep="last")]
 
-    base = base.copy()
+    base = pd.concat(parts)
     base.index = pd.to_datetime(base.index, errors="coerce").tz_localize(None).normalize()
-    base = base[base.index.notna()]
-    base = base.sort_index()
-    base = base[~base.index.duplicated(keep="last")]
+    base = base[base.index.notna()].sort_index()
+    base = base.groupby(level=0).agg(lambda col: col.dropna().iloc[-1] if col.notna().any() else pd.NA)
     base = base[base.index >= pd.Timestamp("1993-01-29")]
     base.index.name = "Date"
-
-
     return base
-
-
-
 def safe_read_csv(path, prefer_index=True):
     """Robust CSV reader that tolerates missing 'Date' column."""
     import pandas as pd, os
@@ -875,10 +848,115 @@ def expected_value(prob_long, avg_gain, avg_loss, fee_bps=1.5, slippage_bps=2.0)
     return ev
 
 
+# === UNION LOADER ===
+def load_SPY_data():
+    import pandas as pd
+    from pathlib import Path
 
+    ROOT = Path(__file__).resolve().parent
+    DATA = ROOT / "data"
 
+    def _read_one(p: Path) -> pd.DataFrame:
+        if not p.exists():
+            return pd.DataFrame()
+        df = pd.read_csv(p, low_memory=False)
+        df.columns = df.columns.map(str).str.strip()
+        dcol = next((c for c in df.columns if c.lower().startswith("date")), None)
+        if not dcol:
+            return pd.DataFrame()
 
+        dt = pd.to_datetime(df[dcol].astype(str).str.slice(0,10), errors="coerce", format="mixed")
+        df = df.loc[dt.notna()].copy()
+        df[dcol] = dt
+        df = df.drop_duplicates(subset=[dcol]).set_index(dcol).sort_index()
 
+        def pick(*names):
+            for n in names:
+                for c in df.columns:
+                    if c == n or c.startswith(n + "."):
+                        s = pd.to_numeric(df[c], errors="coerce")
+                        if s.notna().any():
+                            return s
+            return pd.Series(index=df.index, dtype="float64")
 
+        out = pd.DataFrame(index=df.index)
+        out["Open"]      = pick("Open","1. open")
+        out["High"]      = pick("High","2. high")
+        out["Low"]       = pick("Low","3. low")
+        out["Close"]     = pick("Close","4. close","Adj Close","adjclose","close")
+        out["Adj Close"] = pick("Adj Close","adjclose","close")
+        out["Volume"]    = pick("Volume","5. volume","volume")
+        return out
 
+    parts = []
+    for pth in [DATA / "SPY.csv", DATA / "spy_daily.csv"]:
+        d = _read_one(pth)
+        if not d.empty:
+            parts.append(d)
 
+    if not parts:
+        raise FileNotFoundError("No SPY data could be loaded from data/spy_daily.csv or data/SPY.csv")
+
+    base = pd.concat(parts)
+    base.index = pd.to_datetime(base.index, errors="coerce").tz_localize(None).normalize()
+    base = base[base.index.notna()].sort_index()
+    base = base.groupby(level=0).agg(lambda col: col.dropna().iloc[-1] if col.notna().any() else pd.NA)
+    base = base[base.index >= pd.Timestamp("1993-01-29")]
+    base.index.name = "Date"
+    return base
+# === UNION LOADER v2 (normalize -> dedupe -> clean -> clamp) ===
+def load_SPY_data():
+    import pandas as pd
+    from pathlib import Path
+
+    ROOT = Path(__file__).resolve().parent
+    DATA = ROOT / "data"
+
+    def _read_one(p: Path) -> pd.DataFrame:
+        if not p.exists():
+            return pd.DataFrame()
+        df = pd.read_csv(p, low_memory=False)
+        df.columns = df.columns.map(str).str.strip()
+        dcol = next((c for c in df.columns if c.lower().startswith("date")), None)
+        if not dcol:
+            return pd.DataFrame()
+
+        dt = pd.to_datetime(df[dcol].astype(str).str.slice(0,10), errors="coerce", format="mixed")
+        df = df.loc[dt.notna()].copy()
+        df[dcol] = dt
+        df = df.drop_duplicates(subset=[dcol]).set_index(dcol).sort_index()
+
+        def pick(*names):
+            for n in names:
+                for c in df.columns:
+                    if c == n or c.startswith(n + "."):
+                        s = pd.to_numeric(df[c], errors="coerce")
+                        if s.notna().any():
+                            return s
+            return pd.Series(index=df.index, dtype="float64")
+
+        out = pd.DataFrame(index=df.index)
+        out["Open"]      = pick("Open","1. open")
+        out["High"]      = pick("High","2. high")
+        out["Low"]       = pick("Low","3. low")
+        out["Close"]     = pick("Close","4. close","Adj Close","adjclose","close")
+        out["Adj Close"] = pick("Adj Close","adjclose","close")
+        out["Volume"]    = pick("Volume","5. volume","volume")
+        return out
+
+    parts = []
+    for pth in [DATA / "SPY.csv", DATA / "spy_daily.csv"]:
+        d = _read_one(pth)
+        if not d.empty:
+            parts.append(d)
+
+    if not parts:
+        raise FileNotFoundError("No SPY data could be loaded from data/spy_daily.csv or data/SPY.csv")
+
+    base = pd.concat(parts)
+    base.index = pd.to_datetime(base.index, errors="coerce").tz_localize(None).normalize()
+    base = base[base.index.notna()].sort_index()
+    base = base.groupby(level=0).agg(lambda col: col.dropna().iloc[-1] if col.notna().any() else pd.NA)
+    base = base[base.index >= pd.Timestamp("1993-01-29")]
+    base.index.name = "Date"
+    return base
