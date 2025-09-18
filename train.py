@@ -7,6 +7,8 @@ import warnings
 from datetime import datetime
 import json
 from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import cross_val_predict
+from sklearn.metrics import f1_score, precision_score, recall_score
 
 import joblib
 import pandas as pd
@@ -130,6 +132,7 @@ warnings.filterwarnings(
 )
 xgb.set_config(verbosity=0)
 
+
 # Output dirs
 os.makedirs("logs", exist_ok=True)
 os.makedirs("models", exist_ok=True)
@@ -219,6 +222,66 @@ def _safe_smote_from_fold(y: pd.Series, cv: BaseCrossValidator):
     print(f"ℹ️ SMOTE enabled with k_neighbors={k} (min minority per fold={m}).")
     return True, SMOTE(random_state=42, k_neighbors=k)
 
+from sklearn.base import clone
+
+def pick_threshold_from_oof(pipe, X, y, cv, pos_label=1):
+    """
+    Time-series-safe OOF: iterate your CV splits, fit on train, predict_proba on test,
+    fill a single out-of-fold vector (no sample predicted more than once), then pick t*.
+    """
+    n = len(X)
+    proba_oof = np.full(n, np.nan, dtype=float)
+    seen = np.zeros(n, dtype=bool)
+    classes_seen = None
+    col_idx = None
+
+    # Use your existing generator
+    for tr, te in _iter_splits(cv, n):
+        est = clone(pipe)
+        est.fit(X.iloc[tr], y.iloc[tr])
+        probs = est.predict_proba(X.iloc[te])
+        if classes_seen is None:
+            classes_seen = list(getattr(est, "classes_", [0, 1]))
+            try:
+                col_idx = classes_seen.index(pos_label)
+            except ValueError:
+                col_idx = 1 if probs.shape[1] > 1 else 0
+
+        # If a sample shows up twice (shouldn't), keep the first prediction
+        write_mask = ~seen[te]
+        idxs = np.asarray(te)[write_mask]
+        if idxs.size:
+            proba_oof[idxs] = probs[write_mask, col_idx]
+            seen[idxs] = True
+
+    mask = ~np.isnan(proba_oof)
+    if not mask.any():
+        raise RuntimeError("OOF builder produced no predictions. Check CV splits.")
+
+    y_pos = (np.asarray(y)[mask] == pos_label).astype(int)
+    p = proba_oof[mask]
+
+    ts = np.linspace(0.05, 0.95, 19)
+    best_t, best_f1, best_prec, best_rec = 0.50, -1.0, 0.0, 0.0
+    for t_ in ts:
+        y_hat = (p >= t_).astype(int)
+        f1  = f1_score(y_pos, y_hat, zero_division=0)
+        if f1 > best_f1:
+            best_f1  = f1
+            best_t   = t_
+            best_prec = precision_score(y_pos, y_hat, zero_division=0)
+            best_rec  = recall_score(y_pos, y_hat, zero_division=0)
+
+    return best_t, {
+        "precision": float(best_prec),
+        "recall": float(best_rec),
+        "f1": float(best_f1),
+        "proba_col_index": int(col_idx if col_idx is not None else 1),
+        "pos_enc": int(pos_label),
+    }
+
+
+
 def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     print("\n📊 Generating features...")
     df, all_feature_cols = add_features(df)
@@ -285,7 +348,9 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     import pandas as _pd
     try:
         _raw = load_SPY_data()
-        _raw_idxed = _raw.set_index(_pd.to_datetime(_raw["Date"]))["Close"].astype(float)
+        _raw_idxed = _raw["Close"].astype(float)
+        df.index = _pd.to_datetime(df.index, errors="coerce")
+        _raw_idxed.index = _pd.to_datetime(_raw_idxed.index, errors="coerce")
         df["Close"] = _raw_idxed.reindex(df.index)
     except Exception as _e:
         if "Close" not in df.columns:
@@ -384,8 +449,9 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         use_kbest = X.shape[1] >= 2
         if use_kbest:
             max_k = X.shape[1]
-            k_choices = sorted(set([1, 2, 3, 5, 8, 10, 12, max(1, max_k // 2)]))
-            k_choices = [k for k in k_choices if 1 <= k <= max_k]
+            # Floor at 5 to avoid underfitting to a single feature
+            k_choices = sorted(set([5, 8, 10, 12, max(5, max_k // 2), max_k]))
+            k_choices = [k for k in k_choices if 5 <= k <= max_k]
             steps = [
                 ("imputer", SimpleImputer(strategy="median")),
                 ("varth", VarianceThreshold(threshold=0.0)),
@@ -417,6 +483,7 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
                 "clf__subsample": [0.8, 1.0],
                 "clf__colsample_bytree": [0.8, 1.0],
             }
+
 
         sample_weight_profit = compute_sample_weights(
             df,
@@ -485,34 +552,31 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         print("💾 [FWD] Label maps → models/label_map_fwd.json")
 
         try:
-            proba = best_model.predict_proba(X)[:, 1]
-            y_pos = (y == 1).astype(int)
-            ts = np.linspace(0.05, 0.95, 19)
-            best_t, best_f1, best_prec, best_rec = 0.50, -1.0, 0.0, 0.0
-            for t_ in ts:
-                y_hat = (proba >= t_).astype(int)
-                f1  = f1_score(y_pos, y_hat, zero_division=0)
-                if f1 > best_f1:
-                    best_f1  = f1
-                    best_t   = t_
-                    best_prec = precision_score(y_pos, y_hat, zero_division=0)
-                    best_rec  = recall_score(y_pos, y_hat, zero_division=0)
-
-            thr_payload = {
-                "pos_orig": 1,
-                "pos_enc": 1,
-                "proba_col_index": 1,
-                "threshold": float(best_t),
-                "metric": "f1_positive_only",
-                "precision_on_train": float(best_prec),
-                "recall_on_train": float(best_rec),
-                "f1_on_train": float(best_f1),
-            }
-            with open("models/thresholds_fwd.json", "w") as f:
-                json.dump(thr_payload, f, indent=2)
-            print(f"💾 [FWD] Thresholds → models/thresholds_fwd.json: t={best_t:.3f} (P={best_prec:.3f}, R={best_rec:.3f}, F1={best_f1:.3f})")
+            # Use the best gridsearch pipeline (pre reweight/refit) to get OOF probabilities
+            best_pipe_for_oof = grid_search.best_estimator_
+            t_star, metr = pick_threshold_from_oof(best_pipe_for_oof, X, y, tscv_local, pos_label=1)
         except Exception as e:
-            print(f"⚠️ [FWD] Threshold selection skipped: {e}")
+            print(f"⚠️ [FWD] OOF threshold selection failed ({e}) — falling back to 0.50.")
+            t_star, metr = 0.50, {"precision": 0.0, "recall": 0.0, "f1": 0.0, "proba_col_index": 1, "pos_enc": 1}
+
+        thr_payload = {
+            "pos_orig": 1,
+            "pos_enc": metr.get("pos_enc", 1),
+            "proba_col_index": metr.get("proba_col_index", 1),
+            "threshold": float(t_star),
+            "metric": "f1_positive_only_oof",
+            "precision_oof": float(metr.get("precision", 0.0)),
+            "recall_oof": float(metr.get("recall", 0.0)),
+            "f1_oof": float(metr.get("f1", 0.0)),
+        }
+        with open("models/thresholds_fwd.json", "w") as f:
+            json.dump(thr_payload, f, indent=2)
+        print(
+            f"💾 [FWD] Thresholds → models/thresholds_fwd.json: "
+            f"t={t_star:.3f} (P_oof={thr_payload['precision_oof']:.3f}, "
+            f"R_oof={thr_payload['recall_oof']:.3f}, F1_oof={thr_payload['f1_oof']:.3f})"
+        )
+
 
         print("✅ [FWD] Forward-returns training completed.")
         print("ℹ️ To use this model in predict.py, set MODEL_PATH to 'models/market_crash_model_fwd.pkl' and load thresholds from 'models/thresholds_fwd.json'.")
@@ -525,7 +589,7 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
 
     df = label_events_triple_barrier(df, vol_col="ATR_14", pt_mult=1.0, sl_mult=1.0, t_max=10)
 
-    print(df[["Date", "Close", "Event"]].tail(15))
+    print((df if "Date" in df.columns else df.reset_index().rename(columns={"index":"Date"}))[["Date","Close","Event"]].tail(15))
     print("\n📊 Distribution of Event labels (incl. NaNs):")
     print(df["Event"].value_counts(dropna=False))
     print("\n📊 Number of unique Events:")
