@@ -35,7 +35,6 @@ from utils import (
     load_SPY_data,
     add_features,
     finalize_features,
-    label_events_triple_barrier,
     add_forward_returns_and_labels,
     compute_sample_weights,
     ensure_no_future_leakage,
@@ -583,6 +582,8 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         return True
 
     # -------- Triple-barrier branch (unchanged) --------
+    from utils import label_events_triple_barrier
+
     df["Volatility"] = df["Close"].rolling(window=20).std()
     print("\n🧪 Sample volatility (tail):")
     print(df["Volatility"].dropna().tail(10))
