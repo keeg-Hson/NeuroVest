@@ -476,3 +476,123 @@ def notify_user(prediction, crash_conf, spike_conf):
         print(f"[notify] {label} — Crash={crash_conf:.3f}, Spike={spike_conf:.3f}")
     except Exception:
         print("[notify] event")
+
+# === Forward-returns labeling & safety helpers =====================================
+
+def add_forward_returns_and_labels(
+    df: pd.DataFrame,
+    price_col: str = "Close",
+    horizon: int = 5,
+    fee_bps: float = 1.5,
+    slippage_bps: float = 2.0,
+    long_only: bool = True,
+    pos_threshold: float = 0.0,
+):
+    """
+    Adds:
+      - 'fwd_price': price shifted -horizon
+      - 'fwd_ret_raw': (fwd_price / Close) - 1
+      - 'fwd_ret_net': fees/slippage adjusted forward return
+      - 'horizon_forward': the lookahead horizon (int)
+      - 'y': 1 if forward trade is positive (>= pos_threshold), else 0 (long_only)
+             If long_only=False, you can extend to 3-class, but train.py expects {0,1}.
+    """
+    d = df.copy()
+    if price_col not in d.columns:
+        raise KeyError(f"[add_forward_returns_and_labels] '{price_col}' not in df.")
+
+    d[price_col] = pd.to_numeric(d[price_col], errors="coerce")
+    cost = (float(fee_bps) + float(slippage_bps)) * 1e-4  # per round-trip, conservative
+
+    d["fwd_price"]   = d[price_col].shift(-int(horizon))
+    d["fwd_ret_raw"] = (d["fwd_price"] / d[price_col]) - 1.0
+    # Subtract costs on both sides (entry/exit) once; adjust if model fills separately
+    d["fwd_ret_net"] = d["fwd_ret_raw"] - cost
+
+    d["horizon_forward"] = int(horizon)
+
+    # Binary label: trade (1) vs no-trade (0)
+    if long_only:
+        d["y"] = (d["fwd_ret_net"] >= float(pos_threshold)).astype(int)
+    else:
+        d["y"] = (d["fwd_ret_net"] >= float(pos_threshold)).astype(int)
+
+    return d
+
+
+def compute_sample_weights(
+    df: pd.DataFrame,
+    min_weight: float = 0.5,
+    max_weight: float = 5.0,
+    power: float = 1.0,
+    long_only: bool = True,
+):
+    """
+    Profit-aware weights. More positive forward return ⇒ larger weight.
+    - If 'fwd_ret_net' missing, returns ones.
+    - Clipped to [min_weight, max_weight].
+    """
+    n = len(df)
+    if n == 0:
+        return np.array([], dtype=float)
+
+    if "fwd_ret_net" not in df.columns:
+        return np.ones(n, dtype=float)
+
+    r = pd.to_numeric(df["fwd_ret_net"], errors="coerce").fillna(0.0).to_numpy()
+
+    # Emphasize positive outcomes; non-positive stay closer to min_weight
+    pos = np.maximum(r, 0.0)
+    # Normalize by a small scale to avoid exploding weights; 1% is a decent default scale
+    scale = 0.01
+    w = 1.0 + (pos / scale) ** float(power)
+
+
+    w = np.clip(w, float(min_weight), float(max_weight))
+    return w
+
+
+def ensure_no_future_leakage(
+    df: pd.DataFrame,
+    feature_cols: list[str],
+    target_cols: list[str],
+    horizon_col: str = "horizon_forward",
+):
+    """
+    Sanity checks that features don't include forward-looking columns.
+    Will raise if obviously leaky columns are present.
+    """
+    blacklist = {
+        "y", "fwd_price", "fwd_ret_raw", "fwd_ret_net",
+        horizon_col, "horizon", "future_return", "future_price"
+    }
+    feats = set(map(str, feature_cols))
+    leaks = feats & blacklist
+    # Also catch any features that *look* forward-y by name
+    leaks |= {c for c in feats if c.lower().startswith(("fwd_", "future_"))}
+
+    if leaks:
+        raise RuntimeError(f"[ensure_no_future_leakage] Leaky features detected: {sorted(leaks)}")
+
+    # Optional: could check that all features use only information up to t (e.g., via lags).
+    return True
+
+
+# --- stub to avoid crashes if triple-barrier import is hit -------------
+def label_events_triple_barrier(
+    df: pd.DataFrame,
+    vol_col: str = "ATR_14",
+    pt_mult: float = 1.0,
+    sl_mult: float = 1.0,
+    t_max: int = 10,
+):
+    """
+    Minimal stub. Produces an Event column of zeros so training will fall back
+    to forward-returns (train.py already handles 'not enough class diversity').
+    Replace with your full triple-barrier labeling when ready.
+    """
+    out = df.copy()
+    out["Event"] = 0
+    return out
+# ================================================================================
+
