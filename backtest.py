@@ -3,7 +3,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from data_utils import load_spy_daily_data
+from utils import load_SPY_data
 from datetime import timedelta, datetime
 import subprocess
 
@@ -132,6 +132,24 @@ def _load_predictions(prefer_full: bool = True) -> pd.DataFrame:
         raise FileNotFoundError(f"No predictions file found at {path}")
 
     preds = pd.read_csv(path)
+
+    # If we loaded the "full" file but confidences are all zeros, fall back to daily.
+    if (path.endswith("predictions_full.csv")
+        and os.path.exists("logs/daily_predictions.csv")):
+        # probe whether confidences are non-informative (all zeros or NaN)
+        def _conf_all_zero(df, cols):
+            for c in cols:
+                if c in df.columns:
+                    s = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
+                    if s.abs().sum() > 0:
+                        return False
+            return True
+
+        if _conf_all_zero(preds, ["Trade_Conf", "Spike_Conf", "Crash_Conf"]):
+            print("ℹ️ predictions_full.csv has zero confidences — falling back to daily_predictions.csv")
+            path = "logs/daily_predictions.csv"
+            preds = pd.read_csv(path)
+
     # Timestamp → datetime (naive), then a daily Date key
     if "Timestamp" in preds.columns:
         preds["Timestamp"] = pd.to_datetime(preds["Timestamp"], errors="coerce").dt.tz_localize(None)
@@ -251,9 +269,24 @@ def run_backtest(window_days: int | None = None,
     # ── 1) Load predictions ─────────────────────────────────────────────────────
     preds = _load_predictions(prefer_full=True)
 
+    # --- Adapt predictions for forward-returns variant ---
+    VAR = os.getenv("PREDICT_VARIANT", "crash_spike").strip().lower()
+    if VAR == "forward_returns":
+        # Ensure expected columns exist for downstream sizing/filters
+        if "Crash_Conf" not in preds.columns:
+            preds["Crash_Conf"] = 0.0
+        # predict.py (forward-returns) writes Trade_Conf; reuse as Spike_Conf for charts/logic
+        if "Spike_Conf" not in preds.columns and "Trade_Conf" in preds.columns:
+            preds["Spike_Conf"] = preds["Trade_Conf"]
+
+        # Map {0,1} (No-Trade/Trade) -> {0,2} (Hold/Spike=long) to match backtest logic
+        if "Prediction" in preds.columns:
+            preds["Prediction"] = preds["Prediction"].replace({1: 2})
+
+
 
     # ── 2) Load & normalize SPY ─────────────────────────────────────────────────
-    spy_df = load_spy_daily_data()
+    spy_df = load_SPY_data()
 
     # 2a) Flatten MultiIndex like ('Open','SPY') → 'Open'
     if isinstance(spy_df.columns, pd.MultiIndex):
@@ -765,6 +798,24 @@ def run_backtest(window_days: int | None = None,
         "avg_long": avg_long, "avg_short": avg_short,
         "max_drawdown": max_drawdown, "profit_factor": profit_factor
     }
+
+    # --- Optional top-K per week/month to force activity ---
+    TOPK_MODE      = os.getenv("BT_TOPK_MODE", "").strip().lower()    # "week" or "month" or ""
+    TOPK_PER_BUCKET= int(os.getenv("BT_TOPK_K", "0"))                  # e.g. 2
+    TOPK_MIN_PROB  = float(os.getenv("BT_TOPK_MIN_PROB", "0.0"))       # low bar, e.g. 0.35
+
+    if TOPK_MODE in {"week", "month"} and TOPK_PER_BUCKET > 0 and "Spike_Conf" in df.columns:
+        df["bucket"] = df["Date"].dt.to_period("W" if TOPK_MODE=="week" else "M")
+        # use Spike_Conf because forward-returns adapter maps trade→Spike
+        def _topk(g):
+            g = g.sort_values("Spike_Conf", ascending=False)
+            g = g[g["Spike_Conf"] >= TOPK_MIN_PROB]
+            return g.head(TOPK_PER_BUCKET)
+        before = len(df)
+        df = df.groupby("bucket", group_keys=False).apply(_topk)
+        print(f"🎯 TOP-K filter kept {len(df)} of {before} rows "
+            f"({TOPK_PER_BUCKET}/{TOPK_MODE}, min_prob={TOPK_MIN_PROB:.2f})")
+
 
 
     return trades, metrics, simulate_mode
