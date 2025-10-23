@@ -1,19 +1,15 @@
 # update_spy_data.py
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from pandas.tseries.offsets import BDay
 import pandas as pd
 import yfinance as yf
 import os
-import pandas as pd
 
-DATA_DIR = "data"
-CSV_PATH = f"{DATA_DIR}/SPY.csv"
+# Use the single source of truth path from utils.py
+from utils import CSV_PATH  # points to "data/SPY.csv"
 
 def _ensure_dirs():
-    os.makedirs(DATA_DIR, exist_ok=True)
-
-def _today_iso() -> str:
-    return date.today().isoformat()
+    os.makedirs(os.path.dirname(CSV_PATH), exist_ok=True)
 
 def _exclusive_end_today() -> str:
     # yfinance end is exclusive; add +1 day to include today's bar when available
@@ -22,7 +18,8 @@ def _exclusive_end_today() -> str:
 def _bootstrap():
     base = "2010-01-01"
     end  = _exclusive_end_today()
-    df = yf.download("SPY", start=base, end=end, interval="1d", auto_adjust=False, progress=False)
+    df = yf.download("SPY", start=base, end=end, interval="1d",
+                     auto_adjust=False, progress=False)
     if df is None or df.empty:
         print("❌ Could not download initial SPY history.")
         return False
@@ -34,13 +31,14 @@ def _bootstrap():
     return True
 
 def _append_new_rows():
-    df = pd.read_csv(CSV_PATH)
-
-
+    # Parse dates so .date() is valid later
+    df = pd.read_csv(CSV_PATH, parse_dates=["Date"])
     if df.empty:
         return _bootstrap()
 
-    last_date = df["Date"].max().date()
+    # Robust last_date extraction
+    last_date = pd.to_datetime(df["Date"]).max().date()
+
     # Start next business day after last_date
     start = (pd.Timestamp(last_date) + BDay(1)).date()
     end = date.today() + timedelta(days=1)  # exclusive end
@@ -49,12 +47,14 @@ def _append_new_rows():
         print("ℹ️ SPY.csv is already up to date — no new days to fetch.")
         return True
 
-    newdf = yf.download("SPY",
-                        start=start.isoformat(),
-                        end=end.isoformat(),
-                        interval="1d",
-                        auto_adjust=False,
-                        progress=False)
+    newdf = yf.download(
+        "SPY",
+        start=start.isoformat(),
+        end=end.isoformat(),
+        interval="1d",
+        auto_adjust=False,
+        progress=False
+    )
     if newdf is None or newdf.empty:
         print("ℹ️ No new SPY data returned by yfinance.")
         return True
