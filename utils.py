@@ -18,6 +18,11 @@ load_dotenv()
 import socket
 socket.setdefaulttimeout(float(os.getenv("NET_TIMEOUT", "3")))
 
+# --- canonical data locations ---
+DATA_DIR = os.getenv("DATA_DIR", "data")
+CSV_PATH = os.path.join(DATA_DIR, "SPY.csv")
+
+
 
 # --- Hooks consumed by run_all.py ----------------------------------------------------
 def update_spy_data():
@@ -595,4 +600,178 @@ def label_events_triple_barrier(
     out["Event"] = 0
     return out
 # ================================================================================
+
+# --- SPY data loader ---
+import pandas as pd, os
+DATA_DIR = "data"
+CSV_PATH = os.path.join(DATA_DIR, "SPY.csv")
+
+def load_SPY_data(parse_dates=True):
+    if parse_dates:
+        df = pd.read_csv(CSV_PATH, parse_dates=["Date"])
+    else:
+        df = pd.read_csv(CSV_PATH)
+    df = df.sort_values("Date").reset_index(drop=True)
+    return df
+
+# =========================
+# Canonical loader + helpers
+# =========================
+
+def safe_read_csv(path: str, **kwargs):
+    """
+    A tolerant CSV reader used everywhere we read our own data files.
+    - Parses Date if present
+    - Strips columns
+    - Returns empty DataFrame on failure (with a warning)
+    """
+    import pandas as pd
+    try:
+        kw = dict(kwargs)
+        if "parse_dates" not in kw and "Date" in pd.read_csv(path, nrows=1).columns:
+            kw["parse_dates"] = ["Date"]
+        df = pd.read_csv(path, **kw)
+        df.columns = [str(c).strip() for c in df.columns]
+        return df
+    except Exception as e:
+        print(f"⚠️ safe_read_csv: could not read {path} ({e})")
+        return pd.DataFrame()
+
+
+def add_forward_returns_and_labels(
+    df: pd.DataFrame,
+    price_col: str = "Close",
+    horizon: int = 1,
+    fee_bps: float = 1.5,
+    slippage_bps: float = 2.0,
+    long_only: bool = True,
+    pos_threshold: float = 0.0,
+) -> pd.DataFrame:
+    """
+    Build forward-returns labels:
+      - fwd_price, fwd_ret_raw, fwd_ret_net
+      - y ∈ {0,1} for forward_returns (1 = take-trade), or { -1,0,1 } if long_only=False
+    """
+    out = df.copy()
+    if price_col not in out.columns:
+        raise RuntimeError(f"add_forward_returns_and_labels: missing price_col '{price_col}'")
+
+    out["fwd_price"]   = out[price_col].shift(-horizon)
+    out["fwd_ret_raw"] = out["fwd_price"] / out[price_col] - 1.0
+
+    # simple round-trip costs
+    c = (fee_bps + slippage_bps) / 1e4
+    out["fwd_ret_net"] = (1.0 + out["fwd_ret_raw"]) * (1.0 - c) - 1.0
+
+    if long_only:
+        # 1 = trade if forward net return >= threshold; else 0 = no-trade
+        out["y"] = (out["fwd_ret_net"] >= float(pos_threshold)).astype(int)
+    else:
+        # ternary label: go short if sufficiently negative, otherwise long if >= pos_threshold
+        neg_thr = -abs(float(pos_threshold))
+        out["y"] = 0
+        out.loc[out["fwd_ret_net"] >= float(pos_threshold), "y"] = 1
+        out.loc[out["fwd_ret_net"] <= neg_thr, "y"] = -1
+
+    # horizon stamp (helps leakage checks)
+    out["horizon_forward"] = int(horizon)
+    return out
+
+
+def compute_sample_weights(
+    df_labeled: pd.DataFrame,
+    min_weight: float = 0.5,
+    max_weight: float = 3.0,
+    power: float = 1.0,
+    long_only: bool = True,
+) -> np.ndarray:
+    """
+    Emphasize samples with larger |forward net return|.
+    Bounded in [min_weight, max_weight].
+    """
+    import numpy as _np
+    dfx = df_labeled
+    if "fwd_ret_net" not in dfx.columns:
+        raise RuntimeError("compute_sample_weights: missing fwd_ret_net (call add_forward_returns_and_labels first)")
+
+    mag = _np.abs(_np.asarray(dfx["fwd_ret_net"].fillna(0.0)))
+    if power != 1.0:
+        mag = mag ** float(power)
+
+    # normalize to [0,1] then scale into [min,max]
+    if mag.max() > 0:
+        mag = mag / mag.max()
+    w = min_weight + (max_weight - min_weight) * mag
+
+    # optional: downweight "no-trade" (y=0) slightly in long_only regime
+    if long_only and "y" in dfx.columns:
+        w = _np.where(dfx["y"].values == 0, _np.maximum(min_weight, 0.8 * w), w)
+
+    return w
+
+
+def ensure_no_future_leakage(
+    df: pd.DataFrame,
+    feature_cols: list[str],
+    target_cols: list[str],
+    horizon_col: str = "horizon_forward",
+) -> None:
+    """
+    Very fast structural checks that your model inputs can't peek forward.
+    - Forbids fwd/*future columns in features
+    - Ensures horizon stamp exists if present in pipeline
+    """
+    forbidden = {"y", "fwd_price", "fwd_ret_raw", "fwd_ret_net", horizon_col}
+    leaky = sorted(forbidden.intersection(set(feature_cols)))
+    if leaky:
+        raise RuntimeError(f"Leakage: features contain forward-looking columns: {leaky}")
+
+    # If horizon stamp exists, it must *NOT* be in features
+    if horizon_col in feature_cols:
+        raise RuntimeError(f"Leakage: '{horizon_col}' is in features")
+
+    # Targets should be present
+    missing_targets = [c for c in target_cols if c not in df.columns]
+    if missing_targets:
+        raise RuntimeError(f"Missing target columns: {missing_targets}")
+    
+# utils.py (put near other IO helpers)
+import os
+import pandas as pd
+
+DATA_DIR = os.getenv("DATA_DIR", "data")
+CSV_PATH = os.path.join(DATA_DIR, "SPY.csv")
+
+def load_SPY_data() -> pd.DataFrame:
+    """
+    Canonical SPY daily loader.
+    - Always parse Date as datetime
+    - Drop bad rows
+    - De-duplicate by Date (keep last)
+    - Return with DatetimeIndex (daily, sorted, unique)
+    """
+    df = pd.read_csv(CSV_PATH, parse_dates=["Date"])
+    # keep only columns we use
+    keep = [c for c in ["Date","Open","High","Low","Close","Adj Close","Volume"] if c in df.columns]
+    df = df[keep].copy()
+
+    # drop obvious bad rows
+    df = df.dropna(subset=["Date"])
+    # ensure monotonic, unique dates; keep the freshest duplicate if any
+    df = (df.sort_values("Date")
+            .drop_duplicates(subset=["Date"], keep="last")
+            .set_index("Date"))
+
+    # enforce numeric dtypes
+    for c in ["Open","High","Low","Close","Adj Close","Volume"]:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+
+    # final cleanup and sort
+    df = df.dropna(subset=["Open","High","Low","Close"])
+    df = df[~df.index.duplicated(keep="last")].sort_index()
+    return df
+
+
+
 
