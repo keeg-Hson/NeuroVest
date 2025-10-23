@@ -13,6 +13,10 @@ subprocess.run(["python3", "update_spy_data.py"])
 import os, json
 from pathlib import Path
 
+import sys, subprocess, pathlib
+subprocess.run([sys.executable, str(pathlib.Path(__file__).with_name("update_spy_data.py"))], check=False)
+
+
 def _ensure_logs_dir(path: str = "logs") -> None:
     Path(path).mkdir(parents=True, exist_ok=True)
 
@@ -288,6 +292,9 @@ def run_backtest(window_days: int | None = None,
     # ── 2) Load & normalize SPY ─────────────────────────────────────────────────
     spy_df = load_SPY_data()
 
+    spy_df = spy_df[~spy_df.index.duplicated(keep="last")].sort_index()
+
+
     # 2a) Flatten MultiIndex like ('Open','SPY') → 'Open'
     if isinstance(spy_df.columns, pd.MultiIndex):
         spy_df.columns = [c[0] if isinstance(c, tuple) else c for c in spy_df.columns]
@@ -495,10 +502,35 @@ def run_backtest(window_days: int | None = None,
     lc = (spy_df["Low"]  - spy_df["Close"].shift(1)).abs()
     tr = pd.concat([hl, hc, lc], axis=1).max(axis=1)
     atr = tr.ewm(alpha=1/atr_len, adjust=False).mean()
+
+    # Ensure df["Date"] is datetime and unique for reindexing
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    df = df.dropna(subset=["Date"]).sort_values(["Date","Timestamp" if "Timestamp" in df.columns else "Date"])
+    # if multiple rows share the same Date, keep the last signal for that day
+    df = df.drop_duplicates(subset=["Date"], keep="last")
+
+    # Also make sure ATR's index itself has no duplicates
+    atr = atr[~atr.index.duplicated(keep="last")].sort_index()
+
+
    
 
     # align to joined df dates
     df["ATR_dol"] = atr.reindex(df["Date"]).to_numpy()
+
+    # Ensure df["Date"] is datetime and unique for reindexing
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    df = df.dropna(subset=["Date"]).sort_values(["Date","Timestamp" if "Timestamp" in df.columns else "Date"])
+    # if multiple rows share the same Date, keep the last signal for that day
+    df = df.drop_duplicates(subset=["Date"], keep="last")
+
+    # Also make sure ATR's index itself has no duplicates
+    atr = atr[~atr.index.duplicated(keep="last")].sort_index()
+
+    # Now this reindex will be safe
+    df["ATR_dol"] = atr.reindex(df["Date"]).to_numpy()
+
+
     df["ATR_dol"] = pd.to_numeric(df["ATR_dol"], errors="coerce").replace([np.inf,-np.inf], np.nan)
     # optional: trim ultra-low ATR tails to avoid microscopic bands
     df["ATR_dol"] = df["ATR_dol"].fillna(np.nanmedian(df["ATR_dol"]))
@@ -989,6 +1021,7 @@ if __name__ == "__main__":
     def _load_json(path: str) -> dict:
         with open(path, "r") as f:
             return json.load(f)
+
         
     def _parse_grid_list(s: str):
         # e.g. "None,0.7,0.8,0.9" -> [None, 0.7, 0.8, 0.9]
@@ -996,7 +1029,9 @@ if __name__ == "__main__":
                 for t in s.split(",") if t.strip() != ""]
 
     def _save_best_thresholds(path, conf, crash, spike, meta=None):
-        os.makedirs(os.path.dirname(path), exist_ok=True)
+        dirpath = os.path.dirname(path)
+        if dirpath:  # only mkdir if there is a directory component
+            os.makedirs(dirpath, exist_ok=True)
         payload = {
             "confidence_thresh": conf,
             "crash_thresh": crash,
@@ -1005,7 +1040,8 @@ if __name__ == "__main__":
         }
         with open(path, "w") as f:
             json.dump(payload, f, indent=2)
-        print(f"💾 Saved best thresholds → {path}")
+        print(f"Saved best thresholds → {path}")
+
 
         
     
