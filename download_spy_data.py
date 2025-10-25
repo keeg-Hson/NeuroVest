@@ -1,5 +1,3 @@
-#download_spy_data.py
-
 from __future__ import annotations
 import os
 import pandas as pd
@@ -15,12 +13,18 @@ def main():
     pred_df = pd.read_csv(PREDICTIONS_PATH)
     if "Date" not in pred_df.columns:
         raise KeyError(f"'Date' column missing in {PREDICTIONS_PATH}")
-    pred_df["Date"] = pd.to_datetime(pred_df["Date"], errors="coerce")
 
-    # Canonical SPY (Date index) -> reset to column for merge
+    # Robust date parsing with fast-path ISO and a flexible fallback
+    date_series = pred_df["Date"].astype(str).str.strip()
+    try:
+        pred_df["Date"] = pd.to_datetime(date_series, format="%Y-%m-%d", errors="coerce")
+        if pred_df["Date"].isna().all():
+            raise ValueError("all-na after strict ISO parse; falling back")
+    except Exception:
+        pred_df["Date"] = pd.to_datetime(date_series, errors="coerce", utc=False)
+
+    # Canonical SPY → reset index to merge on "Date"
     spy = load_SPY_data().reset_index()
-
-    # Keep only the OHLCV columns we actually need for enrichment
     keep = [c for c in ["Date", "Open", "High", "Low", "Close", "Volume"] if c in spy.columns]
     spy  = spy[keep]
 
