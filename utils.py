@@ -551,35 +551,36 @@ def label_events_triple_barrier(
 #CSV_PATH = os.path.join(DATA_DIR, "SPY.csv")
 
 # === Canonical SPY loader =====================
-# Requires CSV_PATH = os.path.join(DATA_DIR, "SPY.csv") to be defined PRIOR.
 def load_SPY_data() -> pd.DataFrame:
-    """
-    Canonical daily SPY loader:
-    - Reads data/SPY.csv
-    - Parses Date
-    - De-dupes by Date (keep last)
-    - Returns with DatetimeIndex and numeric OHLCV
-    """
-    df = pd.read_csv(CSV_PATH, parse_dates=["Date"])
-    # Keep only the OHLCV columns we actually use
-    keep = [c for c in ["Date","Open","High","Low","Close","Adj Close","Volume"] if c in df.columns]
-    df = df[keep].copy()
+    # read header once to learn which OHLCV cols exist
+    header = pd.read_csv(CSV_PATH, nrows=1, low_memory=False)
+    want = ["Date","Open","High","Low","Close","Adj Close","Volume"]
+    usecols = [c for c in want if c in header.columns]
 
-    # Clean & index
+    # read full CSV with only desired columns
+    df = pd.read_csv(
+        CSV_PATH,
+        usecols=usecols,
+        parse_dates=["Date"],
+        low_memory=False,
+    )
+
+    # Clean Date index
     df = df.dropna(subset=["Date"])
     df = (df.sort_values("Date")
             .drop_duplicates(subset=["Date"], keep="last")
             .set_index("Date"))
 
-    # Enforce numeric types
+    # Ensure numeric types
     for c in ["Open","High","Low","Close","Adj Close","Volume"]:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
-    # Final tidy
+    # Clean rows with missing OHLC
     df = df.dropna(subset=["Open","High","Low","Close"])
     df = df[~df.index.duplicated(keep="last")].sort_index()
     return df
+
 # =======================================================================
 
 
@@ -711,34 +712,6 @@ import pandas as pd
 DATA_DIR = os.getenv("DATA_DIR", "data")
 CSV_PATH = os.path.join(DATA_DIR, "SPY.csv")
 
-def load_SPY_data() -> pd.DataFrame:
-    """
-    Canonical SPY daily loader.
-    - Always parse Date as datetime
-    - Drop bad rows
-    - De-duplicate by Date (keep last)
-    - Return with DatetimeIndex (daily, sorted, unique)
-    """
-    df = pd.read_csv(CSV_PATH, parse_dates=["Date"])
-    # keep only columns we use
-    keep = [c for c in ["Date","Open","High","Low","Close","Adj Close","Volume"] if c in df.columns]
-    df = df[keep].copy()
 
-    # drop obvious bad rows
-    df = df.dropna(subset=["Date"])
-    # ensure monotonic, unique dates; keep the freshest duplicate if any
-    df = (df.sort_values("Date")
-            .drop_duplicates(subset=["Date"], keep="last")
-            .set_index("Date"))
-
-    # enforce numeric dtypes
-    for c in ["Open","High","Low","Close","Adj Close","Volume"]:
-        if c in df.columns:
-            df[c] = pd.to_numeric(df[c], errors="coerce")
-
-    # final cleanup and sort
-    df = df.dropna(subset=["Open","High","Low","Close"])
-    df = df[~df.index.duplicated(keep="last")].sort_index()
-    return df
 
 
