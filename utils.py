@@ -316,62 +316,6 @@ def summarize_trades(trades, initial_balance=10000, save_plot_path=None):
     }
 
 
-def load_SPY_data():
-    import pandas as pd
-    from pathlib import Path
-
-    ROOT = Path(__file__).resolve().parent
-    DATA = ROOT / "data"
-
-    def _read_one(p: Path) -> pd.DataFrame:
-        if not p.exists():
-            return pd.DataFrame()
-        df = pd.read_csv(p, low_memory=False)
-        df.columns = df.columns.map(str).str.strip()
-        dcol = next((c for c in df.columns if c.lower().startswith("date")), None)
-        if not dcol:
-            return pd.DataFrame()
-
-        dt = pd.to_datetime(df[dcol].astype(str).str.slice(0,10), errors="coerce", format="mixed")
-        df = df.loc[dt.notna()].copy()
-        df[dcol] = dt
-        df = df.drop_duplicates(subset=[dcol]).set_index(dcol).sort_index()
-
-        def pick(*names):
-            for n in names:
-                for c in df.columns:
-                    if c == n or c.startswith(n + "."):
-                        s = pd.to_numeric(df[c], errors="coerce")
-                        if s.notna().any():
-                            return s
-            return pd.Series(index=df.index, dtype="float64")
-
-        out = pd.DataFrame(index=df.index)
-        out["Open"]      = pick("Open","1. open")
-        out["High"]      = pick("High","2. high")
-        out["Low"]       = pick("Low","3. low")
-        out["Close"]     = pick("Close","4. close","Adj Close","adjclose","close")
-        out["Adj Close"] = pick("Adj Close","adjclose","close")
-        out["Volume"]    = pick("Volume","5. volume","volume")
-        return out
-
-    parts = []
-    for pth in [DATA / "SPY.csv", DATA / "spy_daily.csv"]:
-        d = _read_one(pth)
-        if not d.empty:
-            parts.append(d)
-
-    if not parts:
-        raise FileNotFoundError("No SPY data could be loaded from data/spy_daily.csv or data/SPY.csv")
-
-    base = pd.concat(parts)
-    base.index = pd.to_datetime(base.index, errors="coerce").tz_localize(None).normalize()
-    base = base[base.index.notna()].sort_index()
-    base = base.groupby(level=0).agg(lambda col: col.dropna().iloc[-1] if col.notna().any() else pd.NA)
-    base = base[base.index >= pd.Timestamp("1993-01-29")]
-    base.index.name = "Date"
-    return base
-
 def expected_value(prob_long, avg_gain, avg_loss, fee_bps=1.5, slippage_bps=2.0):
     costs = (fee_bps + slippage_bps) * 1e-4
     return prob_long * avg_gain - (1.0 - prob_long) * avg_loss - costs
@@ -602,17 +546,42 @@ def label_events_triple_barrier(
 # ================================================================================
 
 # --- SPY data loader ---
-import pandas as pd, os
-DATA_DIR = "data"
-CSV_PATH = os.path.join(DATA_DIR, "SPY.csv")
+#import pandas as pd, os
+#DATA_DIR = "data"
+#CSV_PATH = os.path.join(DATA_DIR, "SPY.csv")
 
-def load_SPY_data(parse_dates=True):
-    if parse_dates:
-        df = pd.read_csv(CSV_PATH, parse_dates=["Date"])
-    else:
-        df = pd.read_csv(CSV_PATH)
-    df = df.sort_values("Date").reset_index(drop=True)
+# === Canonical SPY loader =====================
+# Requires CSV_PATH = os.path.join(DATA_DIR, "SPY.csv") to be defined PRIOR.
+def load_SPY_data() -> pd.DataFrame:
+    """
+    Canonical daily SPY loader:
+    - Reads data/SPY.csv
+    - Parses Date
+    - De-dupes by Date (keep last)
+    - Returns with DatetimeIndex and numeric OHLCV
+    """
+    df = pd.read_csv(CSV_PATH, parse_dates=["Date"])
+    # Keep only the OHLCV columns we actually use
+    keep = [c for c in ["Date","Open","High","Low","Close","Adj Close","Volume"] if c in df.columns]
+    df = df[keep].copy()
+
+    # Clean & index
+    df = df.dropna(subset=["Date"])
+    df = (df.sort_values("Date")
+            .drop_duplicates(subset=["Date"], keep="last")
+            .set_index("Date"))
+
+    # Enforce numeric types
+    for c in ["Open","High","Low","Close","Adj Close","Volume"]:
+        if c in df.columns:
+            df[c] = pd.to_numeric(df[c], errors="coerce")
+
+    # Final tidy
+    df = df.dropna(subset=["Open","High","Low","Close"])
+    df = df[~df.index.duplicated(keep="last")].sort_index()
     return df
+# =======================================================================
+
 
 # =========================
 # Canonical loader + helpers
@@ -771,7 +740,5 @@ def load_SPY_data() -> pd.DataFrame:
     df = df.dropna(subset=["Open","High","Low","Close"])
     df = df[~df.index.duplicated(keep="last")].sort_index()
     return df
-
-
 
 
