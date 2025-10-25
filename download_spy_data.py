@@ -1,34 +1,35 @@
-import pandas as pd
+#download_spy_data.py
+
+from __future__ import annotations
 import os
+import pandas as pd
+from utils import load_SPY_data  # canonical SPY loader (data/SPY.csv)
 
-# File paths
 PREDICTIONS_PATH = "logs/daily_predictions_cleaned.csv"
-SPY_PATH = "data/SPY.csv"
-OUTPUT_PATH = "logs/daily_predictions_enriched.csv"
+OUTPUT_PATH      = "logs/daily_predictions_enriched.csv"
 
-# Load predictions
-pred_df = pd.read_csv(PREDICTIONS_PATH)
-pred_df["Date"] = pd.to_datetime(pred_df["Date"], errors="coerce")
+def main():
+    if not os.path.exists(PREDICTIONS_PATH):
+        raise FileNotFoundError(f"{PREDICTIONS_PATH} not found.")
 
-# Load SPY data
-spy_df = pd.read_csv(SPY_PATH, index_col=0, parse_dates=True)
-spy_df.reset_index(inplace=True)
-spy_df.rename(columns={spy_df.columns[0]: "Date"}, inplace=True)
+    pred_df = pd.read_csv(PREDICTIONS_PATH)
+    if "Date" not in pred_df.columns:
+        raise KeyError(f"'Date' column missing in {PREDICTIONS_PATH}")
+    pred_df["Date"] = pd.to_datetime(pred_df["Date"], errors="coerce")
 
-# Merge on date
-merged_df = pd.merge(pred_df, spy_df, on="Date", how="left")
+    # Canonical SPY (Date index) -> reset to column for merge
+    spy = load_SPY_data().reset_index()
 
-# Fill in Open, Close, Low, High — override or combine as needed
-for col in ["Open", "Close", "Low", "High"]:
-    merged_df[col] = merged_df.get(col, pd.Series([None]*len(merged_df)))  # ensure column exists
-    if f"{col}_y" in merged_df.columns:
-        merged_df[col] = merged_df[f"{col}_y"]
+    # Keep only the OHLCV columns we actually need for enrichment
+    keep = [c for c in ["Date", "Open", "High", "Low", "Close", "Volume"] if c in spy.columns]
+    spy  = spy[keep]
 
-# Drop redundant or confusing columns
-merged_df = merged_df.drop(columns=[c for c in merged_df.columns if "_x" in c or "_y" in c or c in ["Price", "Volume", "Close_Price"]])
-merged_df = merged_df[merged_df["Date"].notna()]
+    merged = pred_df.merge(spy, on="Date", how="left")
+    merged = merged[merged["Date"].notna()]
 
+    os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
+    merged.to_csv(OUTPUT_PATH, index=False)
+    print(f"[✅] Final enriched predictions written to {OUTPUT_PATH}")
 
-# Save clean enriched output
-merged_df.to_csv(OUTPUT_PATH, index=False)
-print(f"[✅] Final enriched predictions written to {OUTPUT_PATH}")
+if __name__ == "__main__":
+    main()
