@@ -189,7 +189,10 @@ def _load_best_thresholds(
 
     # Fallback to CSV leaderboard
     try:
-        df = pd.read_csv(csv_path)
+        from utils import load_price_data
+        df = load_price_data()
+
+
         if "trades" in df.columns:
             df = df[df["trades"] >= min_trades]
         if df.empty:
