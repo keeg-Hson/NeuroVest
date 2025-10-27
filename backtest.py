@@ -13,6 +13,17 @@ from pathlib import Path
 import sys, subprocess, pathlib
 subprocess.run([sys.executable, str(pathlib.Path(__file__).with_name("update_spy_data.py"))], check=False)
 
+def _assert_predictions_schema(df: pd.DataFrame) -> None:
+    req = {"Date","Prediction"}
+    if not req.issubset(df.columns):
+        missing = sorted(req - set(df.columns))
+        raise AssertionError(f"Backtest: predictions missing required columns: {missing}")
+    if "Timestamp" in df.columns:
+        df["Timestamp"] = pd.to_datetime(df["Timestamp"], errors="coerce").dt.tz_localize(None)
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    if df["Date"].isna().any():
+        bad = int(df["Date"].isna().sum())
+        raise AssertionError(f"Backtest: {bad} rows have invalid Date after normalization")
 
 def _ensure_logs_dir(path: str = "logs") -> None:
     Path(path).mkdir(parents=True, exist_ok=True)
@@ -120,60 +131,28 @@ def _resolve_bar_exit_short(bar, tp_px, sl_px):
 
 
 def _load_predictions(prefer_full: bool = True) -> pd.DataFrame:
-    """
-    Load predictions, preferring the full dump if available.
-    Returns a dataframe with Timestamp (naive) and a normalized Date column.
-    De-duplicates by Date keeping the last row (most recent signal of the day).
-    """
-    full_path  = "logs/predictions_full.csv"
     daily_path = "logs/daily_predictions.csv"
+    full_path  = "logs/predictions_full.csv"
 
-    path = full_path if (prefer_full and os.path.exists(full_path)) else daily_path
+    path = daily_path if os.path.exists(daily_path) else full_path
     if not os.path.exists(path):
-        raise FileNotFoundError(f"No predictions file found at {path}")
+        raise FileNotFoundError("No predictions file found (expected logs/daily_predictions.csv).")
 
     preds = pd.read_csv(path)
 
-    # If we loaded the "full" file but confidences are all zeros, fall back to daily.
-    if (path.endswith("predictions_full.csv")
-        and os.path.exists("logs/daily_predictions.csv")):
-        # probe whether confidences are non-informative (all zeros or NaN)
-        def _conf_all_zero(df, cols):
-            for c in cols:
-                if c in df.columns:
-                    s = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
-                    if s.abs().sum() > 0:
-                        return False
-            return True
-
-        if _conf_all_zero(preds, ["Trade_Conf", "Spike_Conf", "Crash_Conf"]):
-            print("ℹ️ predictions_full.csv has zero confidences — falling back to daily_predictions.csv")
-            path = "logs/daily_predictions.csv"
-            preds = pd.read_csv(path)
-
-    # Timestamp >>> datetime (naive), then a daily Date key
+    # Normalize time keys
     if "Timestamp" in preds.columns:
         preds["Timestamp"] = pd.to_datetime(preds["Timestamp"], errors="coerce").dt.tz_localize(None)
-    else:
-        # fall back to any Date column present
-        preds["Timestamp"] = pd.to_datetime(preds.get("Date", pd.NaT), errors="coerce").dt.tz_localize(None)
+    preds["Date"] = pd.to_datetime(preds.get("Date", pd.NaT), errors="coerce")
 
-    preds = preds.dropna(subset=["Timestamp"]).copy()
-    preds["Date"] = preds["Timestamp"].dt.normalize()
+    # Schema guard
+    _assert_predictions_schema(preds)
 
-    # If there are multiple rows per Date, keep the last one (often the most recent append)
-    preds = preds.sort_values(["Date", "Timestamp"]).drop_duplicates(subset=["Date"], keep="last")
+    # Deduplicate by Date → keep the last row (most recent signal)
+    preds = preds.sort_values(["Date","Timestamp" if "Timestamp" in preds.columns else "Date"]) \
+                 .drop_duplicates(subset=["Date"], keep="last")
 
-    # Avoid collisions later
     preds = preds.loc[:, ~preds.columns.duplicated(keep="first")]
-    vc = preds.get("Prediction", pd.Series(dtype=int)).value_counts(dropna=False)
-    print("🔍 Raw Prediction label counts (before mapping/filters):")
-    print(vc.to_string())
-
-    vc_raw = preds.get("Prediction", pd.Series(dtype=int)).value_counts(dropna=False)
-    print("🔎 [bt] Raw labels before mapping:", dict(vc_raw))
-
-
     return preds
 
 
