@@ -32,10 +32,13 @@ def main(top_n: int = TOP_N, corr_file: str = CORR_FILE, out_file: str = OUTPUT_
         for name, val in top.items():
             f.write(f"{name},{val}\n")
 
+
     # Nice console print for run_all log
     pretty = f"✅ Top {top_n} signals saved to {out_file}:\n\n{top.to_string()}"
     print(pretty)
     return pretty
+
+    
 
 if __name__ == "__main__":
     main()
