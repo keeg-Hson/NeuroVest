@@ -569,6 +569,14 @@ def load_SPY_data() -> pd.DataFrame:
             .drop_duplicates(subset=["Date"], keep="last")
             .set_index("Date"))
 
+    # basic sanity checks 
+    if not isinstance(df.index, pd.DatetimeIndex):
+        raise AssertionError("SPY loader: index is not DatetimeIndex")
+    if df.index.tz is not None:
+        df.index = df.index.tz_localize(None)
+    if "Open" not in df.columns or "Close" not in df.columns:
+        raise AssertionError("SPY loader: missing required OHLC columns")
+
     for c in ["Open","High","Low","Close","Adj Close","Volume"]:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
