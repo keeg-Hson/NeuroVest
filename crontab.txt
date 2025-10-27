@@ -1,0 +1,5 @@
+15 9 * * 1-5 /usr/local/bin/python3 /Users/keeganhutchinson/Market-Trading-Bot/predict.py >> /Users/keeganhutchinson/Market-Trading-Bot/logs/predict_cron.log 2>&1
+0 16 * * 1-5 /usr/local/bin/python3 /Users/keeganhutchinson/Market-Trading-Bot/run_daily_pipeline.py >> /Users/keeganhutchinson/Market-Trading-Bot/logs/cron.log 2>&1
+
+
+
