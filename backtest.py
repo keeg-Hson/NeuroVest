@@ -7,9 +7,6 @@ from utils import load_SPY_data
 from datetime import timedelta, datetime
 import subprocess
 
-#auto update SPY data before anything else
-subprocess.run(["python3", "update_spy_data.py"])
-
 import os, json
 from pathlib import Path
 
@@ -154,7 +151,7 @@ def _load_predictions(prefer_full: bool = True) -> pd.DataFrame:
             path = "logs/daily_predictions.csv"
             preds = pd.read_csv(path)
 
-    # Timestamp → datetime (naive), then a daily Date key
+    # Timestamp >>> datetime (naive), then a daily Date key
     if "Timestamp" in preds.columns:
         preds["Timestamp"] = pd.to_datetime(preds["Timestamp"], errors="coerce").dt.tz_localize(None)
     else:
@@ -169,16 +166,21 @@ def _load_predictions(prefer_full: bool = True) -> pd.DataFrame:
 
     # Avoid collisions later
     preds = preds.loc[:, ~preds.columns.duplicated(keep="first")]
+    vc = preds.get("Prediction", pd.Series(dtype=int)).value_counts(dropna=False)
+    print("🔍 Raw Prediction label counts (before mapping/filters):")
+    print(vc.to_string())
+
+    vc_raw = preds.get("Prediction", pd.Series(dtype=int)).value_counts(dropna=False)
+    print("🔎 [bt] Raw labels before mapping:", dict(vc_raw))
+
+
     return preds
 
 
-def _load_best_thresholds(
-    csv_path="logs/threshold_search.csv",
-    json_path="configs/best_thresholds.json",
-    min_trades=10,
-    objective_col="score",
-):
-    # Prefer JSON if present
+def _load_best_thresholds(csv_path="logs/threshold_search.csv",
+                          json_path="configs/best_thresholds.json",
+                          min_trades=10,
+                          objective_col="score"):
     if os.path.exists(json_path):
         try:
             with open(json_path, "r") as f:
@@ -187,24 +189,20 @@ def _load_best_thresholds(
         except Exception as e:
             print(f"⚠️ Could not read {json_path}: {e}")
 
-    # Fallback to CSV leaderboard
     try:
-        from utils import load_price_data
-        df = load_price_data()
-
-
+        if not os.path.exists(csv_path):
+            raise FileNotFoundError(csv_path)
+        df = pd.read_csv(csv_path)
         if "trades" in df.columns:
             df = df[df["trades"] >= min_trades]
         if df.empty:
             return None, None, None
         row = df.sort_values(objective_col, ascending=False).iloc[0]
         return row.get("confidence_thresh"), row.get("crash_thresh"), row.get("spike_thresh")
-    except FileNotFoundError:
-        print(f"⚠️ {csv_path} not found — run a threshold sweep first.")
     except Exception as e:
         print(f"⚠️ Could not read {csv_path}: {e}")
-
     return None, None, None
+
 
 
 
@@ -273,11 +271,15 @@ def run_backtest(window_days: int | None = None,
       - joins by Date and simulates ENTRY_SHIFT/EXIT_SHIFT trade rules
       - returns (trades_df, metrics_dict, simulate_mode)
     """
+
     # ── 1) Load predictions ─────────────────────────────────────────────────────
     preds = _load_predictions(prefer_full=True)
 
+   
+
     # --- Adapt predictions for forward-returns variant ---
     VAR = os.getenv("PREDICT_VARIANT", "crash_spike").strip().lower()
+    print(f"🔧 PREDICT_VARIANT = {VAR}")
     if VAR == "forward_returns":
         # Ensure expected columns exist for downstream sizing/filters
         if "Crash_Conf" not in preds.columns:
@@ -289,6 +291,11 @@ def run_backtest(window_days: int | None = None,
         # Map {0,1} (No-Trade/Trade) -> {0,2} (Hold/Spike=long) to match backtest logic
         if "Prediction" in preds.columns:
             preds["Prediction"] = preds["Prediction"].replace({1: 2})
+
+    print(f"🔧 [bt] PREDICT_VARIANT = {VAR}")
+    vc_post = preds.get("Prediction", pd.Series(dtype=int)).value_counts(dropna=False)
+    print("🔎 [bt] Labels after mapping:", dict(vc_post))
+
 
 
 
@@ -463,6 +470,17 @@ def run_backtest(window_days: int | None = None,
 
     n_trades = int((df["Prediction"].isin([1,2])).sum())
     print(f"✅ After filters: {len(df)} rows kept, {n_trades} trade signals in window.")
+
+    vc_final = df.get("Prediction", pd.Series(dtype=int)).value_counts(dropna=False)
+    print("🔎 [bt] Labels after join+filters:", dict(vc_final))
+
+    mapped_path = "logs/debug_mapped_shorts_to_longs.csv"
+    if os.path.exists(mapped_path):
+        import pandas as _pd
+        _m = _pd.read_csv(mapped_path)
+        print(f"🧪 [bt] Sample mapped (1->2) rows present: {len(_m)}  | {mapped_path}")
+    else:
+        print("🧪 [bt] No mapped (1->2) sample file found (expected only if you run this debug).")
 
 
 
