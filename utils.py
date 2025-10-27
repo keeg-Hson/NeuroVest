@@ -552,12 +552,11 @@ def label_events_triple_barrier(
 
 # === Canonical SPY loader =====================
 def load_SPY_data() -> pd.DataFrame:
-    # read header once to learn which OHLCV cols exist
+    # read header once to decide the columns to parse
     header = pd.read_csv(CSV_PATH, nrows=1, low_memory=False)
     want = ["Date","Open","High","Low","Close","Adj Close","Volume"]
     usecols = [c for c in want if c in header.columns]
 
-    # read full CSV with only desired columns
     df = pd.read_csv(
         CSV_PATH,
         usecols=usecols,
@@ -565,18 +564,15 @@ def load_SPY_data() -> pd.DataFrame:
         low_memory=False,
     )
 
-    # Clean Date index
     df = df.dropna(subset=["Date"])
     df = (df.sort_values("Date")
             .drop_duplicates(subset=["Date"], keep="last")
             .set_index("Date"))
 
-    # Ensure numeric types
     for c in ["Open","High","Low","Close","Adj Close","Volume"]:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
-    # Clean rows with missing OHLC
     df = df.dropna(subset=["Open","High","Low","Close"])
     df = df[~df.index.duplicated(keep="last")].sort_index()
     return df
