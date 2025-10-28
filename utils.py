@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 import os, shutil, datetime
 import requests
-import pandas_ta as ta
+import indicators_shim as ta
 import platform
 import warnings
 
@@ -709,13 +709,6 @@ def ensure_no_future_leakage(
     if missing_targets:
         raise RuntimeError(f"Missing target columns: {missing_targets}")
     
-# utils.py (put near other IO helpers)
-import os
-import pandas as pd
-
-DATA_DIR = os.getenv("DATA_DIR", "data")
-CSV_PATH = os.path.join(DATA_DIR, "SPY.csv")
-
 
 
 

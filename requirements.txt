@@ -1,9 +1,8 @@
-# NeuroVest - pinned dependencies
-# Tested around Python 3.10–3.11. Use a fresh virtualenv.
+# Core
 pandas==2.2.2
 numpy==1.26.4
 scikit-learn==1.4.2
-xgboost==2.0.3
+xgboost==1.7.6
 pandas_ta==0.3.14b0
 joblib==1.3.2
 matplotlib==3.8.4
@@ -12,12 +11,12 @@ python-dotenv==1.0.1
 tqdm==4.66.4
 yfinance==0.2.40
 
-# Optional (API + dashboard for a pilot)
+# Optional (API/dashboard)
 fastapi==0.111.0
 uvicorn==0.29.0
 pydantic==2.7.0
 
-# Dev tooling (optional but recommended)
+# Dev tooling
 pytest==8.1.1
 ruff==0.4.2
 black==24.8.0
