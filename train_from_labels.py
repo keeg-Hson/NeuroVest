@@ -1,7 +1,8 @@
+import joblib
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-import joblib
+
 
 def train_model(labeled_file="logs/labeled_predictions.csv", model_output="models/rf_trained.pkl"):
     df = pd.read_csv(labeled_file)
@@ -18,6 +19,7 @@ def train_model(labeled_file="logs/labeled_predictions.csv", model_output="model
     joblib.dump(model, model_output)
     print(f"[✔] Trained model saved to {model_output}")
     print(f"[ℹ] Training accuracy: {model.score(X_train, y_train):.2%}")
+
 
 if __name__ == "__main__":
     train_model()

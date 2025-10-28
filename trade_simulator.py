@@ -1,7 +1,8 @@
-#trade_simulator.py
+# trade_simulator.py
+
 import pandas as pd
+
 from utils import summarize_trades
-import os
 
 # === CONFIG ===
 INITIAL_BALANCE = 10000.0
@@ -9,10 +10,11 @@ HOLD_DAYS = 3
 TRADE_LOG_PATH = "logs/trade_log.csv"
 
 # 🔒 New Constraints
-MAX_TRADE_AMOUNT = 2000           # Hard cap per trade
-MAX_SHARES = 1000                 # Cap number of shares bought
-REINVEST_FRACTION = 0.2           # Use only 20% of available cash per trade
-REQUIRE_PROFIT = True             # Only sell if profitable
+MAX_TRADE_AMOUNT = 2000  # Hard cap per trade
+MAX_SHARES = 1000  # Cap number of shares bought
+REINVEST_FRACTION = 0.2  # Use only 20% of available cash per trade
+REQUIRE_PROFIT = True  # Only sell if profitable
+
 
 def simulate_trades(df, initial_balance=INITIAL_BALANCE, hold_days=HOLD_DAYS):
     balance = initial_balance
@@ -22,8 +24,8 @@ def simulate_trades(df, initial_balance=INITIAL_BALANCE, hold_days=HOLD_DAYS):
     trades = []
 
     for i, row in df.iterrows():
-        date = pd.to_datetime(row['Timestamp'])
-        prediction = row['Prediction']
+        date = pd.to_datetime(row["Timestamp"])
+        prediction = row["Prediction"]
         price = row.get("Close_Price", row.get("Close"))
 
         if price is None or pd.isna(price):
@@ -40,18 +42,22 @@ def simulate_trades(df, initial_balance=INITIAL_BALANCE, hold_days=HOLD_DAYS):
                 entry_price = price
                 entry_date = date
 
-                trades.append({
-                    "Date": date,
-                    "Action": "BUY",
-                    "Price": round(price, 2),
-                    "Shares": shares_to_buy,
-                    "Balance": round(balance, 2),
-                    "Position": position
-                })
+                trades.append(
+                    {
+                        "Date": date,
+                        "Action": "BUY",
+                        "Price": round(price, 2),
+                        "Shares": shares_to_buy,
+                        "Balance": round(balance, 2),
+                        "Position": position,
+                    }
+                )
 
         # SELL logic
-        elif position > 0 and entry_price is not None and (
-            prediction == 1 or (date - entry_date).days >= hold_days
+        elif (
+            position > 0
+            and entry_price is not None
+            and (prediction == 1 or (date - entry_date).days >= hold_days)
         ):
             roi = (price - entry_price) / entry_price
             if not REQUIRE_PROFIT or roi > 0:
@@ -59,16 +65,18 @@ def simulate_trades(df, initial_balance=INITIAL_BALANCE, hold_days=HOLD_DAYS):
                 profit = proceeds - (entry_price * position)
                 balance += proceeds
 
-                trades.append({
-                    "Date": date,
-                    "Action": "SELL",
-                    "Price": round(price, 2),
-                    "Shares": position,
-                    "Balance": round(balance, 2),
-                    "Position": 0,
-                    "Profit": round(profit, 2),
-                    "ROI": round(roi, 4)
-                })
+                trades.append(
+                    {
+                        "Date": date,
+                        "Action": "SELL",
+                        "Price": round(price, 2),
+                        "Shares": position,
+                        "Balance": round(balance, 2),
+                        "Position": 0,
+                        "Profit": round(profit, 2),
+                        "ROI": round(roi, 4),
+                    }
+                )
 
                 position = 0
                 entry_price = None
@@ -81,18 +89,21 @@ def simulate_trades(df, initial_balance=INITIAL_BALANCE, hold_days=HOLD_DAYS):
             proceeds = final_price * position
             profit = proceeds - (entry_price * position)
             balance += proceeds
-            trades.append({
-                "Date": df.iloc[-1]['Timestamp'],
-                "Action": "FINAL SELL",
-                "Price": round(final_price, 2),
-                "Shares": position,
-                "Balance": round(balance, 2),
-                "Position": 0,
-                "Profit": round(profit, 2),
-                "ROI": round((final_price - entry_price) / entry_price, 4)
-            })
+            trades.append(
+                {
+                    "Date": df.iloc[-1]["Timestamp"],
+                    "Action": "FINAL SELL",
+                    "Price": round(final_price, 2),
+                    "Shares": position,
+                    "Balance": round(balance, 2),
+                    "Position": 0,
+                    "Profit": round(profit, 2),
+                    "ROI": round((final_price - entry_price) / entry_price, 4),
+                }
+            )
 
     return balance, trades
+
 
 def save_trade_log(trades, path=TRADE_LOG_PATH):
     if trades:
@@ -100,6 +111,7 @@ def save_trade_log(trades, path=TRADE_LOG_PATH):
         print(f"✅ Trade log saved to {path}")
     else:
         print("⚠️ No trades executed.")
+
 
 # === MAIN RUNNER ===
 if __name__ == "__main__":
@@ -109,9 +121,7 @@ if __name__ == "__main__":
     save_trade_log(trade_log)
 
     summary = summarize_trades(
-        trade_log,
-        INITIAL_BALANCE,
-        save_plot_path="logs/equity_drawdown_plot.png"
+        trade_log, INITIAL_BALANCE, save_plot_path="logs/equity_drawdown_plot.png"
     )
     print(f"\n💰 Final Balance: ${summary['final_balance']:.2f}")
     print(f"📈 Total trades: {summary['total_trades']}")

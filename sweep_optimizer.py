@@ -1,12 +1,12 @@
 # sweep_optimizer.py
 import json
 import os
-from typing import Iterable
+from collections.abc import Iterable
 
 import numpy as np
 import pandas as pd
 
-from backtest import run_backtest, CAPITAL_BASE
+from backtest import CAPITAL_BASE, run_backtest
 from predict import run_predictions
 
 os.makedirs("logs", exist_ok=True)
@@ -15,10 +15,11 @@ os.makedirs("configs", exist_ok=True)
 # Dense ranges (adjust as you like)
 SPIKE_GRID: Iterable[float] = np.arange(0.50, 0.91, 0.05)
 CRASH_GRID: Iterable[float] = np.arange(0.50, 0.91, 0.05)
-CONF_GRID:  Iterable[float | None] = [None, 0.50, 0.60, 0.70, 0.80]
+CONF_GRID: Iterable[float | None] = [None, 0.50, 0.60, 0.70, 0.80]
 
 OBJECTIVE = "final_balance"  # "avg_dollar_return" | "final_balance" | "total_return" | "win_rate" | "profit_factor"
 BACKTEST_WINDOW_DAYS = None  # set to N (e.g., 365) to speed up
+
 
 def main():
     # Generate predictions once
@@ -32,7 +33,9 @@ def main():
     for spike in SPIKE_GRID:
         for crash in CRASH_GRID:
             for conf in CONF_GRID:
-                print(f"\n🔎 Testing thresholds — spike={spike:.2f}, crash={crash:.2f}, confidence={conf}")
+                print(
+                    f"\n🔎 Testing thresholds — spike={spike:.2f}, crash={crash:.2f}, confidence={conf}"
+                )
                 trades, metrics, _ = run_backtest(
                     window_days=BACKTEST_WINDOW_DAYS,
                     crash_thresh=float(crash),
@@ -60,20 +63,22 @@ def main():
                 else:  # final_balance
                     score = final_balance
 
-                rows.append({
-                    "spike_thresh": float(spike),
-                    "crash_thresh": float(crash),
-                    "confidence_thresh": None if conf is None else float(conf),
-                    "trades": n,
-                    "win_rate": metrics.get("win_rate", 0.0),
-                    "sharpe": metrics.get("sharpe", float("nan")),
-                    "max_drawdown": metrics.get("max_drawdown", float("nan")),
-                    "profit_factor": metrics.get("profit_factor", float("nan")),
-                    "total_return": metrics.get("total_return", 0.0),
-                    "avg_dollar_return": avg_dollar_return,
-                    "final_balance": final_balance,
-                    "score": score,
-                })
+                rows.append(
+                    {
+                        "spike_thresh": float(spike),
+                        "crash_thresh": float(crash),
+                        "confidence_thresh": None if conf is None else float(conf),
+                        "trades": n,
+                        "win_rate": metrics.get("win_rate", 0.0),
+                        "sharpe": metrics.get("sharpe", float("nan")),
+                        "max_drawdown": metrics.get("max_drawdown", float("nan")),
+                        "profit_factor": metrics.get("profit_factor", float("nan")),
+                        "total_return": metrics.get("total_return", 0.0),
+                        "avg_dollar_return": avg_dollar_return,
+                        "final_balance": final_balance,
+                        "score": score,
+                    }
+                )
 
     if not rows:
         print("\n🚫 No combinations produced trades — nothing to save.")

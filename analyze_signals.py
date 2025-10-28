@@ -1,11 +1,14 @@
 # analyze_signals.py
 
-import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
-from utils import load_SPY_data, add_features
 import warnings
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+
+from utils import add_features, load_SPY_data
+
 warnings.filterwarnings("ignore", message=".*no_silent_downcasting.*")
 
 
@@ -19,7 +22,9 @@ def analyze_signals():
     df.ffill(inplace=True)
 
     # Only keep valid numeric feature columns
-    valid_feature_cols = [c for c in feature_cols if c in df.columns and pd.api.types.is_numeric_dtype(df[c])]
+    valid_feature_cols = [
+        c for c in feature_cols if c in df.columns and pd.api.types.is_numeric_dtype(df[c])
+    ]
 
     # 1) Full feature-to-feature correlation (for heatmap)
     print("Computing feature-to-feature correlation (no Close)...")
@@ -35,7 +40,7 @@ def analyze_signals():
     print("Saved: logs/correlation_heatmap.png")
     plt.close()
 
-    # 2) Correlation of features vs. NEXT-DAY RETURN 
+    # 2) Correlation of features vs. NEXT-DAY RETURN
     print("Computing correlation to next-day return...")
     next_ret = df["Close"].pct_change().shift(-1)
 
@@ -59,21 +64,20 @@ def analyze_signals():
     else:
         print("⚠️ Not enough valid data to compute correlations to next-day return.")
 
-
     # Example overlays (no emojis in titles)
-    example_signals = ['RSI', 'MACD', 'MACD_Signal', 'VIX', 'News_Sentiment', 'Reddit_Sentiment']
+    example_signals = ["RSI", "MACD", "MACD_Signal", "VIX", "News_Sentiment", "Reddit_Sentiment"]
     for signal in example_signals:
         if signal in df.columns:
             plt.figure(figsize=(14, 6))
-            ax1 = df['Close'].plot(label='Close', linewidth=2)
+            ax1 = df["Close"].plot(label="Close", linewidth=2)
             ax2 = df[signal].plot(secondary_y=True, label=signal, alpha=0.6)
 
             ax1.set_ylabel("Close Price")
             ax2.set_ylabel(f"{signal}")
 
             plt.title(f"Close vs {signal}")
-            ax1.legend(loc='upper left')
-            ax2.legend(loc='upper right')
+            ax1.legend(loc="upper left")
+            ax2.legend(loc="upper right")
             plt.grid(True)
             plt.tight_layout()
             plt.savefig(f"logs/close_vs_{signal}.png")

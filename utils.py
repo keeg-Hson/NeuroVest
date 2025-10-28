@@ -1,27 +1,23 @@
 # utils.py
-import os
 import csv
+import datetime
+import os
+import shutil
 from datetime import datetime
-import pandas as pd
-import numpy as np
-import os, shutil, datetime
-import requests
-import indicators_shim as ta
-import platform
-import warnings
 
+import numpy as np
+import pandas as pd
 from dotenv import load_dotenv
-from external_signals import add_external_signals #EXTERNAL SIGNALS MODULE
 
 load_dotenv()
 
 import socket
+
 socket.setdefaulttimeout(float(os.getenv("NET_TIMEOUT", "3")))
 
 # --- canonical data locations ---
 DATA_DIR = os.getenv("DATA_DIR", "data")
 CSV_PATH = os.path.join(DATA_DIR, "SPY.csv")
-
 
 
 # --- Hooks consumed by run_all.py ----------------------------------------------------
@@ -37,15 +33,17 @@ def update_spy_data():
     except Exception:
         return False
 
+
 # Optional aliases that run_all.py also checks for:
 def refresh_prices():
     return update_spy_data()
 
+
 def update_yfinance_data():
     return update_spy_data()
+
+
 # -------------------------------------------------------------------------------------
-
-
 
 
 # --- Ensure folders exist ---
@@ -56,6 +54,7 @@ os.makedirs("graphs", exist_ok=True)
 LOG_FILE = "logs/daily_predictions.csv"
 LABELED_LOG_FILE = "logs/labeled_predictions.csv"
 
+
 # --- Ensure labeled_predictions.csv exists ---
 def init_labeled_log_file():
     if not os.path.exists(LABELED_LOG_FILE):
@@ -63,19 +62,45 @@ def init_labeled_log_file():
         with open(LABELED_LOG_FILE, "w") as f:
             f.write("Timestamp,Prediction,Crash_Conf,Spike_Conf,Close_Price,Actual_Event\n")
 
+
 # --- Feature List ---
 def get_feature_list():
     return [
-        "MA_20", "EMA_12", "EMA_26", "MACD", "MACD_Signal", "MACD_Histogram",
-        "BB_Width", "Volatility", "OBV", "Vol_Ratio", "Price_Momentum_10", "Acceleration",
-        "RSI", "RSI_Delta", "ZMomentum",
-        "Return_Lag1", "Return_Lag3", "Return_Lag5",
-        "RSI_Lag_1", "RSI_Lag_3", "RSI_Lag_5",
-        "Rolling_STD_5", "Daily_Return",
-        "MACD_x_RSI", "Volume_per_ATR",
-        "Stoch_K", "Stoch_D", "BB_PctB","KC_Width","VWAP_Dev","Ret_Skew_20","Ret_Kurt_20",
-        "Sent_x_Vol","RSI_x_NewsZ","RSI_x_RedditZ"
-
+        "MA_20",
+        "EMA_12",
+        "EMA_26",
+        "MACD",
+        "MACD_Signal",
+        "MACD_Histogram",
+        "BB_Width",
+        "Volatility",
+        "OBV",
+        "Vol_Ratio",
+        "Price_Momentum_10",
+        "Acceleration",
+        "RSI",
+        "RSI_Delta",
+        "ZMomentum",
+        "Return_Lag1",
+        "Return_Lag3",
+        "Return_Lag5",
+        "RSI_Lag_1",
+        "RSI_Lag_3",
+        "RSI_Lag_5",
+        "Rolling_STD_5",
+        "Daily_Return",
+        "MACD_x_RSI",
+        "Volume_per_ATR",
+        "Stoch_K",
+        "Stoch_D",
+        "BB_PctB",
+        "KC_Width",
+        "VWAP_Dev",
+        "Ret_Skew_20",
+        "Ret_Kurt_20",
+        "Sent_x_Vol",
+        "RSI_x_NewsZ",
+        "RSI_x_RedditZ",
     ]
 
 
@@ -107,21 +132,40 @@ def in_human_speak(label):
     }
     return mapping.get(label, str(label))
 
+
 # --- Log prediction to file ---
 # --- Log prediction to file ---
 
 
-def log_prediction_to_file(timestamp, prediction, crash_conf, spike_conf,
-                           close_price, open_price=None, high=None, low=None,
-                           log_path="logs/daily_predictions.csv"):
-    import csv, os, hashlib
+def log_prediction_to_file(
+    timestamp,
+    prediction,
+    crash_conf,
+    spike_conf,
+    close_price,
+    open_price=None,
+    high=None,
+    low=None,
+    log_path="logs/daily_predictions.csv",
+):
+    import os
 
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     file_exists = os.path.isfile(log_path)
 
     headers = [
-        "Date","Timestamp","Prediction","Crash_Conf","Spike_Conf",
-        "Close","Open","High","Low","Confidence","Regime","FeatSnapshot"
+        "Date",
+        "Timestamp",
+        "Prediction",
+        "Crash_Conf",
+        "Spike_Conf",
+        "Close",
+        "Open",
+        "High",
+        "Low",
+        "Confidence",
+        "Regime",
+        "FeatSnapshot",
     ]
 
     # Safe date string
@@ -132,47 +176,52 @@ def log_prediction_to_file(timestamp, prediction, crash_conf, spike_conf,
 
     # regime / snapshot hashes
     regime = os.getenv("REGIME_TAG", "")
+
     def _hash_file(pth):
         try:
-            with open(pth,"rb") as fh:
+            with open(pth, "rb") as fh:
                 import hashlib
+
                 return hashlib.sha1(fh.read()).hexdigest()[:10]
         except Exception:
             return "NA"
-    feat_snapshot = "-".join([
-        _hash_file("models/market_crash_model.pkl"),
-        _hash_file("models/thresholds.json"),
-        _hash_file("configs/best_thresholds.json"),
-        _hash_file("models/market_crash_model_fwd.pkl"),
-        _hash_file("models/thresholds_fwd.json"),
-    ])
+
+    feat_snapshot = "-".join(
+        [
+            _hash_file("models/market_crash_model.pkl"),
+            _hash_file("models/thresholds.json"),
+            _hash_file("configs/best_thresholds.json"),
+            _hash_file("models/market_crash_model_fwd.pkl"),
+            _hash_file("models/thresholds_fwd.json"),
+        ]
+    )
 
     row = {
-        "Date":        date_str,
-        "Timestamp":   str(timestamp),
-        "Prediction":  int(prediction) if prediction is not None else 0,
-        "Crash_Conf":  float(crash_conf) if crash_conf is not None else 0.0,
-        "Spike_Conf":  float(spike_conf) if spike_conf is not None else 0.0,
-        "Close":       float(close_price) if close_price is not None else "",
-        "Open":        float(open_price) if open_price is not None else "",
-        "High":        float(high) if high is not None else "",
-        "Low":         float(low) if low is not None else "",
-        "Confidence":  float(max(crash_conf or 0.0, spike_conf or 0.0)),
-        "Regime":      regime,
+        "Date": date_str,
+        "Timestamp": str(timestamp),
+        "Prediction": int(prediction) if prediction is not None else 0,
+        "Crash_Conf": float(crash_conf) if crash_conf is not None else 0.0,
+        "Spike_Conf": float(spike_conf) if spike_conf is not None else 0.0,
+        "Close": float(close_price) if close_price is not None else "",
+        "Open": float(open_price) if open_price is not None else "",
+        "High": float(high) if high is not None else "",
+        "Low": float(low) if low is not None else "",
+        "Confidence": float(max(crash_conf or 0.0, spike_conf or 0.0)),
+        "Regime": regime,
         "FeatSnapshot": feat_snapshot,
     }
 
     # de-dupe: avoid appending if the last row has same Date/Prediction/Close
     try:
         if os.path.isfile(log_path) and os.path.getsize(log_path) > 0:
-            with open(log_path, "r", newline="") as _f:
+            with open(log_path, newline="") as _f:
                 rdr = csv.DictReader(_f)
                 last = None
                 for last in rdr:
                     pass
             if last:
-                same_date  = str(last.get("Date")) == str(row["Date"])
-                same_pred  = str(last.get("Prediction")) == str(row["Prediction"])
+                same_date = str(last.get("Date")) == str(row["Date"])
+                same_pred = str(last.get("Prediction")) == str(row["Prediction"])
                 same_close = str(last.get("Close")) == str(row["Close"])
                 if same_date and same_pred and same_close:
                     print("[skip] duplicate daily_predictions row (same Date/Prediction/Close)")
@@ -187,21 +236,21 @@ def log_prediction_to_file(timestamp, prediction, crash_conf, spike_conf,
         w.writerow(row)
 
     # also append to logs/signals.csv with variant-aware labels
-    VAR = os.getenv("PREDICT_VARIANT","crash_spike").strip().lower()
+    VAR = os.getenv("PREDICT_VARIANT", "crash_spike").strip().lower()
     if VAR == "forward_returns":
         sig = "TRADE" if row["Prediction"] == 1 else "NO-TRADE"
     else:
         sig = "BUY" if row["Prediction"] == 2 else ("SELL" if row["Prediction"] == 1 else "HOLD")
 
     signals_path = "logs/signals.csv"
-    signals_headers = ["Date","Signal","Confidence","Price","Spike_Conf","Crash_Conf"]
+    signals_headers = ["Date", "Signal", "Confidence", "Price", "Spike_Conf", "Crash_Conf"]
     sig_row = {
-        "Date":        date_str,
-        "Signal":      sig,
-        "Confidence":  row["Confidence"],
-        "Price":       row["Close"],
-        "Spike_Conf":  row["Spike_Conf"],
-        "Crash_Conf":  row["Crash_Conf"],
+        "Date": date_str,
+        "Signal": sig,
+        "Confidence": row["Confidence"],
+        "Price": row["Close"],
+        "Spike_Conf": row["Spike_Conf"],
+        "Crash_Conf": row["Crash_Conf"],
     }
     file_exists2 = os.path.isfile(signals_path)
     with open(signals_path, "a", newline="") as f2:
@@ -209,6 +258,7 @@ def log_prediction_to_file(timestamp, prediction, crash_conf, spike_conf,
         if not file_exists2 or os.path.getsize(signals_path) == 0:
             w2.writeheader()
         w2.writerow(sig_row)
+
 
 def label_real_outcomes_from_log(crash_thresh=-0.005, spike_thresh=0.005):
     if not os.path.exists(LOG_FILE):
@@ -228,25 +278,25 @@ def label_real_outcomes_from_log(crash_thresh=-0.005, spike_thresh=0.005):
     # Your log_prediction_to_file() writes 'Close' (not 'Close_Price')
     price_col = "Close"
     if price_col not in df.columns:
-        raise KeyError(f"[label_real_outcomes_from_log] Expected column '{price_col}' in {LOG_FILE}")
+        raise KeyError(
+            f"[label_real_outcomes_from_log] Expected column '{price_col}' in {LOG_FILE}"
+        )
 
     df["Next_Close"] = df[price_col].shift(-1)
     df["Future_Return"] = (df["Next_Close"] - df[price_col]) / df[price_col]
 
     df["Actual_Event"] = np.select(
-        [df["Future_Return"] < -0.005, df["Future_Return"] > 0.005],
-        [1, 2],
-        default=0
+        [df["Future_Return"] < -0.005, df["Future_Return"] > 0.005], [1, 2], default=0
     )
 
     df.dropna(subset=["Future_Return"], inplace=True)
     df.to_csv(LABELED_LOG_FILE, index=False)
     print(f"[DEBUG] wrote {len(df)} rows to {LABELED_LOG_FILE}")
-    #print(f"[Labeling] Return: {future_return:.4f} → Event: {actual_event}")
+    # print(f"[Labeling] Return: {future_return:.4f} → Event: {actual_event}")
 
     print("[✅] Labeled outcomes written to logs/labeled_predictions.csv")
 
-    #backup_logs()
+    # backup_logs()
     df.to_csv(LABELED_LOG_FILE, index=False)
     print("[✅] Labeled outcomes written to logs/labeled_predictions.csv")
 
@@ -260,6 +310,7 @@ def backup_logs():
     shutil.copy(LOG_FILE, f"backups/daily_predictions_{ts}.csv")
     shutil.copy(LABELED_LOG_FILE, f"backups/labeled_predictions_{ts}.csv")
 
+
 def summarize_trades(trades, initial_balance=10000, save_plot_path=None):
     """
     Summarizes trade results: final balance, win rate, trade count.
@@ -269,10 +320,10 @@ def summarize_trades(trades, initial_balance=10000, save_plot_path=None):
     """
     if not trades:
         return {
-            'final_balance': initial_balance,
-            'total_trades': 0,
-            'win_rate': 0.0,
-            'equity_curve': [initial_balance]
+            "final_balance": initial_balance,
+            "total_trades": 0,
+            "win_rate": 0.0,
+            "equity_curve": [initial_balance],
         }
 
     equity = [initial_balance]
@@ -280,10 +331,10 @@ def summarize_trades(trades, initial_balance=10000, save_plot_path=None):
     total_trades = 0
 
     for trade in trades:
-        if 'ROI' in trade:
-            roi = trade['ROI']
-        elif 'Entry_Price' in trade and 'Exit_Price' in trade:
-            roi = (trade['Exit_Price'] - trade['Entry_Price']) / trade['Entry_Price']
+        if "ROI" in trade:
+            roi = trade["ROI"]
+        elif "Entry_Price" in trade and "Exit_Price" in trade:
+            roi = (trade["Exit_Price"] - trade["Entry_Price"]) / trade["Entry_Price"]
         else:
             print("⚠️ Skipping trade — missing ROI or price data:", trade)
             continue
@@ -298,6 +349,7 @@ def summarize_trades(trades, initial_balance=10000, save_plot_path=None):
 
     if save_plot_path:
         import matplotlib.pyplot as plt
+
         plt.figure(figsize=(8, 4))
         plt.plot(equity, linewidth=2)
         plt.title("Equity Curve")
@@ -309,10 +361,10 @@ def summarize_trades(trades, initial_balance=10000, save_plot_path=None):
         plt.close()
 
     return {
-        'final_balance': final_balance,
-        'total_trades': total_trades,
-        'win_rate': win_rate,
-        'equity_curve': equity
+        "final_balance": final_balance,
+        "total_trades": total_trades,
+        "win_rate": win_rate,
+        "equity_curve": equity,
     }
 
 
@@ -320,11 +372,13 @@ def expected_value(prob_long, avg_gain, avg_loss, fee_bps=1.5, slippage_bps=2.0)
     costs = (fee_bps + slippage_bps) * 1e-4
     return prob_long * avg_gain - (1.0 - prob_long) * avg_loss - costs
 
+
 # --- injected minimal helpers ---
 
+
 def add_features(df):
-    import numpy as np
     import pandas as pd
+
     d = df.copy()
 
     if not isinstance(d.index, pd.DatetimeIndex):
@@ -336,7 +390,7 @@ def add_features(df):
     d.index = d.index.tz_localize(None)
     d.index.name = "Date"
 
-    for col in ["Open","High","Low","Close","Volume"]:
+    for col in ["Open", "High", "Low", "Close", "Volume"]:
         if col in d.columns:
             d[col] = pd.to_numeric(d[col], errors="coerce")
 
@@ -345,41 +399,58 @@ def add_features(df):
     d["Return_Lag3"] = d["Close"].pct_change(3)
     d["Return_Lag5"] = d["Close"].pct_change(5)
 
-    low14  = d["Low"].rolling(14).min()
+    low14 = d["Low"].rolling(14).min()
     high14 = d["High"].rolling(14).max()
     d["Stoch_K"] = 100 * ((d["Close"] - low14) / ((high14 - low14) + 1e-9))
 
     hl = (d["High"] - d["Low"]).abs()
     hc = (d["High"] - d["Close"].shift()).abs()
-    lc = (d["Low"]  - d["Close"].shift()).abs()
+    lc = (d["Low"] - d["Close"].shift()).abs()
     tr = pd.concat([hl, hc, lc], axis=1).max(axis=1)
-    d["ATR_14"] = tr.ewm(alpha=1/14, adjust=False).mean()
+    d["ATR_14"] = tr.ewm(alpha=1 / 14, adjust=False).mean()
     d["Dist_High20_ATR"] = (d["Close"] - d["High"].rolling(20).max()) / (d["ATR_14"] + 1e-9)
 
-    d["ZMomentum"] = (d["Close"] - d["Close"].rolling(10).mean()) / (d["Close"].rolling(10).std() + 1e-9)
+    d["ZMomentum"] = (d["Close"] - d["Close"].rolling(10).mean()) / (
+        d["Close"].rolling(10).std() + 1e-9
+    )
     d["Acceleration"] = (d["Close"] - d["Close"].shift(10)).diff()
     d["Gap_Pct"] = (d["Open"] - d["Close"].shift()) / (d["Close"].shift() + 1e-9)
 
     try:
         from external_signals import add_external_signals as _add_ext
+
         d = _add_ext(d)
     except Exception:
         pass
 
     feature_cols = [
-        "ZMomentum","Acceleration",
-        "Return_Lag1","Return_Lag3","Return_Lag5","Daily_Return",
-        "Stoch_K","Gap_Pct","Dist_High20_ATR","ATR_14",
-        "VIX","Sector_MedianRet_20","Sector_Dispersion_20",
-        "Credit_Spread_20","TNX_Change_20","DXY_Change_20",
-        "News_Sent_Z20","Reddit_Sent_Z20",
+        "ZMomentum",
+        "Acceleration",
+        "Return_Lag1",
+        "Return_Lag3",
+        "Return_Lag5",
+        "Daily_Return",
+        "Stoch_K",
+        "Gap_Pct",
+        "Dist_High20_ATR",
+        "ATR_14",
+        "VIX",
+        "Sector_MedianRet_20",
+        "Sector_Dispersion_20",
+        "Credit_Spread_20",
+        "TNX_Change_20",
+        "DXY_Change_20",
+        "News_Sent_Z20",
+        "Reddit_Sent_Z20",
     ]
     feature_cols = [c for c in feature_cols if c in d.columns]
     feature_cols = list(dict.fromkeys(feature_cols))
     return d, feature_cols
 
+
 def finalize_features(df, feature_cols):
     import numpy as np
+
     out = df.copy()
     for c in feature_cols:
         if c not in out.columns:
@@ -389,10 +460,14 @@ def finalize_features(df, feature_cols):
     out = out.fillna(out.median(numeric_only=True))
     return out
 
+
 # --- injected missing helpers (safe) ---
 
+
 def send_telegram_alert(text, token=None, chat_id=None):
-    import os, json
+    import json
+    import os
+
     try:
         import requests
     except Exception:
@@ -419,6 +494,7 @@ def send_telegram_alert(text, token=None, chat_id=None):
         print(f"⚠️ Telegram exception: {e}")
         return False
 
+
 def notify_user(prediction, crash_conf, spike_conf):
     try:
         label = "TRADE" if str(prediction) == "1" else "NO-TRADE"
@@ -426,7 +502,9 @@ def notify_user(prediction, crash_conf, spike_conf):
     except Exception:
         print("[notify] event")
 
+
 # === Forward-returns labeling & safety helpers =====================================
+
 
 def add_forward_returns_and_labels(
     df: pd.DataFrame,
@@ -453,7 +531,7 @@ def add_forward_returns_and_labels(
     d[price_col] = pd.to_numeric(d[price_col], errors="coerce")
     cost = (float(fee_bps) + float(slippage_bps)) * 1e-4  # per round-trip, conservative
 
-    d["fwd_price"]   = d[price_col].shift(-int(horizon))
+    d["fwd_price"] = d[price_col].shift(-int(horizon))
     d["fwd_ret_raw"] = (d["fwd_price"] / d[price_col]) - 1.0
     # Subtract costs on both sides (entry/exit) once; adjust if model fills separately
     d["fwd_ret_net"] = d["fwd_ret_raw"] - cost
@@ -496,7 +574,6 @@ def compute_sample_weights(
     scale = 0.01
     w = 1.0 + (pos / scale) ** float(power)
 
-
     w = np.clip(w, float(min_weight), float(max_weight))
     return w
 
@@ -512,8 +589,14 @@ def ensure_no_future_leakage(
     Will raise if obviously leaky columns are present.
     """
     blacklist = {
-        "y", "fwd_price", "fwd_ret_raw", "fwd_ret_net",
-        horizon_col, "horizon", "future_return", "future_price"
+        "y",
+        "fwd_price",
+        "fwd_ret_raw",
+        "fwd_ret_net",
+        horizon_col,
+        "horizon",
+        "future_return",
+        "future_price",
     }
     feats = set(map(str, feature_cols))
     leaks = feats & blacklist
@@ -543,18 +626,21 @@ def label_events_triple_barrier(
     out = df.copy()
     out["Event"] = 0
     return out
+
+
 # ================================================================================
 
 # --- SPY data loader ---
-#import pandas as pd, os
-#DATA_DIR = "data"
-#CSV_PATH = os.path.join(DATA_DIR, "SPY.csv")
+# import pandas as pd, os
+# DATA_DIR = "data"
+# CSV_PATH = os.path.join(DATA_DIR, "SPY.csv")
+
 
 # === Canonical SPY loader =====================
 def load_SPY_data() -> pd.DataFrame:
     # read header once to decide the columns to parse
     header = pd.read_csv(CSV_PATH, nrows=1, low_memory=False)
-    want = ["Date","Open","High","Low","Close","Adj Close","Volume"]
+    want = ["Date", "Open", "High", "Low", "Close", "Adj Close", "Volume"]
     usecols = [c for c in want if c in header.columns]
 
     df = pd.read_csv(
@@ -565,11 +651,9 @@ def load_SPY_data() -> pd.DataFrame:
     )
 
     df = df.dropna(subset=["Date"])
-    df = (df.sort_values("Date")
-            .drop_duplicates(subset=["Date"], keep="last")
-            .set_index("Date"))
+    df = df.sort_values("Date").drop_duplicates(subset=["Date"], keep="last").set_index("Date")
 
-    # basic sanity checks 
+    # basic sanity checks
     if not isinstance(df.index, pd.DatetimeIndex):
         raise AssertionError("SPY loader: index is not DatetimeIndex")
     if df.index.tz is not None:
@@ -577,13 +661,14 @@ def load_SPY_data() -> pd.DataFrame:
     if "Open" not in df.columns or "Close" not in df.columns:
         raise AssertionError("SPY loader: missing required OHLC columns")
 
-    for c in ["Open","High","Low","Close","Adj Close","Volume"]:
+    for c in ["Open", "High", "Low", "Close", "Adj Close", "Volume"]:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce")
 
-    df = df.dropna(subset=["Open","High","Low","Close"])
+    df = df.dropna(subset=["Open", "High", "Low", "Close"])
     df = df[~df.index.duplicated(keep="last")].sort_index()
     return df
+
 
 # =======================================================================
 
@@ -591,6 +676,7 @@ def load_SPY_data() -> pd.DataFrame:
 # =========================
 # Canonical loader + helpers
 # =========================
+
 
 def safe_read_csv(path: str, **kwargs):
     """
@@ -600,6 +686,7 @@ def safe_read_csv(path: str, **kwargs):
     - Returns empty DataFrame on failure (with a warning)
     """
     import pandas as pd
+
     try:
         kw = dict(kwargs)
         if "parse_dates" not in kw and "Date" in pd.read_csv(path, nrows=1).columns:
@@ -630,7 +717,7 @@ def add_forward_returns_and_labels(
     if price_col not in out.columns:
         raise RuntimeError(f"add_forward_returns_and_labels: missing price_col '{price_col}'")
 
-    out["fwd_price"]   = out[price_col].shift(-horizon)
+    out["fwd_price"] = out[price_col].shift(-horizon)
     out["fwd_ret_raw"] = out["fwd_price"] / out[price_col] - 1.0
 
     # simple round-trip costs
@@ -664,9 +751,12 @@ def compute_sample_weights(
     Bounded in [min_weight, max_weight].
     """
     import numpy as _np
+
     dfx = df_labeled
     if "fwd_ret_net" not in dfx.columns:
-        raise RuntimeError("compute_sample_weights: missing fwd_ret_net (call add_forward_returns_and_labels first)")
+        raise RuntimeError(
+            "compute_sample_weights: missing fwd_ret_net (call add_forward_returns_and_labels first)"
+        )
 
     mag = _np.abs(_np.asarray(dfx["fwd_ret_net"].fillna(0.0)))
     if power != 1.0:
@@ -708,7 +798,3 @@ def ensure_no_future_leakage(
     missing_targets = [c for c in target_cols if c not in df.columns]
     if missing_targets:
         raise RuntimeError(f"Missing target columns: {missing_targets}")
-    
-
-
-

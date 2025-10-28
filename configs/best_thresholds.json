@@ -1,0 +1,11 @@
+{
+  "confidence_thresh": null,
+  "crash_thresh": null,
+  "spike_thresh": null,
+  "meta": {
+    "objective": "avg_dollar_return",
+    "min_trades": 20,
+    "window_days": 3650,
+    "timestamp": "2025-10-27T14:38:55"
+  }
+}

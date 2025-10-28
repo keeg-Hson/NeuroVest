@@ -1,19 +1,23 @@
-#threshold_sweep.py
-import pandas as pd
-import numpy as np
+# threshold_sweep.py
 import json
 import os
-from backtest import run_backtest
-import seaborn as sns
-import matplotlib.pyplot as plt
 import subprocess
+import sys
 
-#auto update SPY data before anything else
-subprocess.run(["python3", "update_spy_data.py"])
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+
+from backtest import run_backtest
+
+# auto update SPY data before anything else
+subprocess.run([sys.executable, "update_spy_data.py"], check=True)
 
 
 # ensure configs folder exists
 os.makedirs("configs", exist_ok=True)
+
 
 # Define threshold sweep function
 def sweep_thresholds(crash_thresh_list, spike_thresh_list, confidence_thresh_list):
@@ -22,7 +26,9 @@ def sweep_thresholds(crash_thresh_list, spike_thresh_list, confidence_thresh_lis
     for crash in crash_thresh_list:
         for spike in spike_thresh_list:
             for conf in confidence_thresh_list:
-                print(f"\n🚦 Testing thresholds — Crash: {crash}, Spike: {spike}, Confidence: {conf}")
+                print(
+                    f"\n🚦 Testing thresholds — Crash: {crash}, Spike: {spike}, Confidence: {conf}"
+                )
 
                 trades, metrics, _ = run_backtest(
                     crash_thresh=crash,
@@ -34,11 +40,12 @@ def sweep_thresholds(crash_thresh_list, spike_thresh_list, confidence_thresh_lis
                     "crash_thresh": crash,
                     "spike_thresh": spike,
                     "confidence_thresh": conf,
-                    **metrics
+                    **metrics,
                 }
                 results.append(result)
 
     return pd.DataFrame(results)
+
 
 if __name__ == "__main__":
     # Ranges (probabilities)
@@ -63,7 +70,6 @@ if __name__ == "__main__":
     # Pick best
     best = df_sweep.sort_values("composite_score", ascending=False).head(1).iloc[0]
 
-
     # canonical file
     df_sweep["score"] = df_sweep.get("avg_return", 0.0)  # or compute avg_dollar like in runner
     df_sweep.to_csv("logs/threshold_search.csv", index=False)
@@ -74,7 +80,7 @@ if __name__ == "__main__":
     best_config = {
         "crash_thresh": float(best["crash_thresh"]),
         "spike_thresh": float(best["spike_thresh"]),
-        "confidence_thresh": float(best["confidence_thresh"])
+        "confidence_thresh": float(best["confidence_thresh"]),
     }
     with open("configs/best_thresholds.json", "w") as f:
         json.dump(best_config, f, indent=4)
@@ -86,16 +92,16 @@ if __name__ == "__main__":
         print("\n🏆 Top Composite Thresholds:")
         print(df_sweep.sort_values("composite_score", ascending=False).head(5))
     except KeyError:
-        print("\nℹ️ 'composite_score' missing — likely no valid rows. Check logs/threshold_sweep_results.csv")
-
+        print(
+            "\nℹ️ 'composite_score' missing — likely no valid rows. Check logs/threshold_sweep_results.csv"
+        )
 
     # Optional: Heatmap Visuals (aggregated over confidence threshold)
-    df_avg = df_sweep.groupby(["crash_thresh", "spike_thresh"]).agg({
-        "total_return": "mean",
-        "win_rate": "mean",
-        "profit_factor": "mean",
-        "trades": "sum"
-    }).reset_index()
+    df_avg = (
+        df_sweep.groupby(["crash_thresh", "spike_thresh"])
+        .agg({"total_return": "mean", "win_rate": "mean", "profit_factor": "mean", "trades": "sum"})
+        .reset_index()
+    )
 
     fig, (ax1, ax2, ax3, ax4) = plt.subplots(1, 4, figsize=(28, 6))
 
@@ -108,7 +114,9 @@ if __name__ == "__main__":
     ax2.set_title("Avg Win Rate by Crash/Spike")
 
     df_avg["profit_factor_plot"] = df_avg["profit_factor"].replace(np.inf, 10)
-    pivot_pf = df_avg.pivot(index="crash_thresh", columns="spike_thresh", values="profit_factor_plot")
+    pivot_pf = df_avg.pivot(
+        index="crash_thresh", columns="spike_thresh", values="profit_factor_plot"
+    )
     sns.heatmap(pivot_pf, annot=True, fmt=".2f", cmap="magma", ax=ax3)
     ax3.set_title("Avg Profit Factor")
 
