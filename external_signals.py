@@ -257,7 +257,7 @@ def _read_csv_maybe(path: str, index_is_date: bool = True) -> pd.DataFrame | Non
         return _finalize(df1)
 
     except Exception as e:
-        warnings.warn(f"[external_signals] Failed to read {path}: {e}")
+        warnings.warn(f"[external_signals] Failed to read {path}: {e}", stacklevel=2)
         return None
 
 

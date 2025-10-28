@@ -181,7 +181,7 @@ def step_refresh_data(use_subprocess: bool = False) -> StepResult:
             seconds=time.time() - start,
             extra={"prices": updated_prices, "signals": updated_signals},
         )
-    except Exception:
+    except Exception as e:
         LOGGER.exception("%s failed", name)
 
     if not (updated_prices or updated_signals):
