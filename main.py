@@ -51,6 +51,9 @@ df = load_SPY_data()
 from utils import load_SPY_data
 
 df = load_SPY_data()
+from utils import load_SPY_data
+
+df = load_SPY_data()
 df = label_events_future_window(df, window=3)
 from utils import load_SPY_data
 
