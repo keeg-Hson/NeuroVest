@@ -1,7 +1,7 @@
-from contextlib import suppress
 # --- predict.py (clean forward_returns-first) ---
 import json
 import os
+from contextlib import suppress
 
 import joblib
 import numpy as np
@@ -155,12 +155,11 @@ def live_predict(feature_df: pd.DataFrame, raw_df: pd.DataFrame):
 
     # thresholds
     t = 0.5
-    pos_enc = 1
     try:
         with open(THRESH_PATH) as fh:
             thr = json.load(fh)
         t = float(thr.get("threshold", 0.5))
-        pos_enc = int(thr.get("pos_enc", 1))
+        int(thr.get("pos_enc", 1))
     except Exception as e:
         print(f"⚠️ Thresholds load issue ({THRESH_PATH}): {e}")
 
@@ -194,7 +193,7 @@ def live_predict(feature_df: pd.DataFrame, raw_df: pd.DataFrame):
     avg_loss = PREDICT_CFG.get("avg_loss", 0.0030)
     fee_bps = PREDICT_CFG.get("fee_bps", 1.5)
     slip_bps = PREDICT_CFG.get("slippage_bps", 2.0)
-    EV = expected_value(winner_prob, avg_gain, avg_loss, fee_bps, slip_bps)
+    expected_value(winner_prob, avg_gain, avg_loss, fee_bps, slip_bps)
 
     # Pretty print + log
     if PREDICT_VARIANT == "forward_returns":

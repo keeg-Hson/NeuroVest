@@ -992,7 +992,7 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     try:
         proba = best_model.predict_proba(X)
         print("\n🎯 Average Precision (PR-AUC) per class (original labels):")
-        for i, cls_enc in enumerate(cls_order_enc):
+        for i, _cls_enc in enumerate(cls_order_enc):
             cls_orig = cls_order_orig[i]
             ap = average_precision_score((y_true_orig == cls_orig).astype(int), proba[:, i])
             print(f"AP (class={cls_orig}): {ap:.4f}")
