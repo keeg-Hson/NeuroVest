@@ -1,9 +1,11 @@
 # top_config_runner.py
 
 import pandas as pd
+
 from trade_executor import simulate_trade_execution
 
 LEADERBOARD_PATH = "logs/threshold_leaderboard.csv"
+
 
 def run_best_config():
     # Load leaderboard
@@ -28,8 +30,9 @@ def run_best_config():
         signal_log_path="logs/daily_predictions.csv",
         min_spike_conf=best_spike,
         min_crash_conf=best_crash,
-        use_momentum=use_momentum
+        use_momentum=use_momentum,
     )
+
 
 if __name__ == "__main__":
     run_best_config()

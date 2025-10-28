@@ -46,15 +46,13 @@ import datetime as dt
 import importlib
 import json
 import logging
-import os
 import subprocess
 import sys
 import time
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
-import inspect
-
+from typing import Any
 
 # --------------------------------------------------------------------------------------
 # Logging setup
@@ -62,6 +60,7 @@ import inspect
 ROOT = Path(__file__).resolve().parent
 LOG_DIR = ROOT / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+
 
 def _make_logger() -> logging.Logger:
     ts = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -84,7 +83,9 @@ def _make_logger() -> logging.Logger:
     logger.info("Logging to %s", log_path)
     return logger
 
+
 LOGGER = _make_logger()
+
 
 # --------------------------------------------------------------------------------------
 # Utilities
@@ -94,8 +95,8 @@ class StepResult:
     name: str
     ok: bool
     seconds: float
-    extra: Optional[Dict[str, Any]] = None
-    error: Optional[str] = None
+    extra: dict[str, Any] | None = None
+    error: str | None = None
 
 
 def _import_module(module_name: str):
@@ -106,7 +107,7 @@ def _import_module(module_name: str):
         return None
 
 
-def _find_callable(mod, candidates: Iterable[str]) -> Optional[Callable]:
+def _find_callable(mod, candidates: Iterable[str]) -> Callable | None:
     if mod is None:
         return None
     for name in candidates:
@@ -116,7 +117,7 @@ def _find_callable(mod, candidates: Iterable[str]) -> Optional[Callable]:
     return None
 
 
-def _call_subprocess(py_module: str, args: Optional[List[str]] = None) -> Tuple[bool, str]:
+def _call_subprocess(py_module: str, args: list[str] | None = None) -> tuple[bool, str]:
     """Fallback: execute a python module as a script using sys.executable -m."""
     args = args or []
     cmd = [sys.executable, "-m", py_module] + args
@@ -141,6 +142,7 @@ def _call_subprocess(py_module: str, args: Optional[List[str]] = None) -> Tuple[
 # Pipeline Steps
 # --------------------------------------------------------------------------------------
 
+
 def step_refresh_data(use_subprocess: bool = False) -> StepResult:
     start = time.time()
     name = "Refresh data (prices + external signals)"
@@ -149,7 +151,9 @@ def step_refresh_data(use_subprocess: bool = False) -> StepResult:
         utils_mod = _import_module("utils")
         updated_prices = False
         if utils_mod:
-            update_fn = _find_callable(utils_mod, ["update_spy_data", "refresh_prices", "update_yfinance_data"]) 
+            update_fn = _find_callable(
+                utils_mod, ["update_spy_data", "refresh_prices", "update_yfinance_data"]
+            )
             if update_fn:
                 LOGGER.info("Updating price data via utils.%s()", update_fn.__name__)
                 update_fn()
@@ -159,9 +163,11 @@ def step_refresh_data(use_subprocess: bool = False) -> StepResult:
         ext_mod = _import_module("external_signals")
         updated_signals = False
         if ext_mod:
-            ext_fn = _find_callable(ext_mod, ["refresh_all", "update_all", "main"]) 
+            ext_fn = _find_callable(ext_mod, ["refresh_all", "update_all", "main"])
             if ext_fn and not use_subprocess:
-                LOGGER.info("Refreshing external signals via external_signals.%s()", ext_fn.__name__)
+                LOGGER.info(
+                    "Refreshing external signals via external_signals.%s()", ext_fn.__name__
+                )
                 ext_fn()
                 updated_signals = True
             elif use_subprocess:
@@ -169,10 +175,15 @@ def step_refresh_data(use_subprocess: bool = False) -> StepResult:
                 updated_signals = ok
 
         ok = updated_prices or updated_signals
-        return StepResult(name, ok=ok, seconds=time.time() - start, extra={"prices": updated_prices, "signals": updated_signals})
-    except Exception as e:
+        return StepResult(
+            name,
+            ok=ok,
+            seconds=time.time() - start,
+            extra={"prices": updated_prices, "signals": updated_signals},
+        )
+    except Exception:
         LOGGER.exception("%s failed", name)
-        
+
     if not (updated_prices or updated_signals):
         # Try legacy script as a fallback
         LOGGER.info("No refresh functions found; falling back to update_spy_data module")
@@ -192,7 +203,9 @@ def step_select_top_signals(use_subprocess: bool = False) -> StepResult:
             if fn:
                 LOGGER.info("Selecting top signals via select_top_signals.%s()", fn.__name__)
                 result = fn()
-                return StepResult(name, ok=True, seconds=time.time() - start, extra={"result": str(result)[:300]})
+                return StepResult(
+                    name, ok=True, seconds=time.time() - start, extra={"result": str(result)[:300]}
+                )
         # Fallback
         ok, out = _call_subprocess("select_top_signals")
         return StepResult(name, ok=ok, seconds=time.time() - start, extra={"stdout": out})
@@ -201,7 +214,7 @@ def step_select_top_signals(use_subprocess: bool = False) -> StepResult:
         return StepResult(name, ok=False, seconds=time.time() - start, error=str(e))
 
 
-def step_train(models: List[str], use_subprocess: bool = False, fast: bool = False) -> StepResult:
+def step_train(models: list[str], use_subprocess: bool = False, fast: bool = False) -> StepResult:
     start = time.time()
     name = f"Train models ({', '.join(models)})"
     try:
@@ -212,13 +225,17 @@ def step_train(models: List[str], use_subprocess: bool = False, fast: bool = Fal
             if fn:
                 LOGGER.info("Training via train.%s(models=%s, fast=%s)", fn.__name__, models, fast)
                 result = fn(models=models, fast=fast) if fn.__code__.co_argcount else fn()
-                return StepResult(name, ok=True, seconds=time.time() - start, extra={"result": str(result)[:300]})
+                return StepResult(
+                    name, ok=True, seconds=time.time() - start, extra={"result": str(result)[:300]}
+                )
         # Fallback
         args = ["--models", *models]
         if fast:
             args.append("--fast")
         ok, out = _call_subprocess("train", args)
-        return StepResult(name, ok=ok, seconds=time.time() - start, extra={"stdout": out, **payload})
+        return StepResult(
+            name, ok=ok, seconds=time.time() - start, extra={"stdout": out, **payload}
+        )
     except Exception as e:
         LOGGER.exception("%s failed", name)
         return StepResult(name, ok=False, seconds=time.time() - start, error=str(e))
@@ -234,7 +251,9 @@ def step_analyze_signals(use_subprocess: bool = False) -> StepResult:
             if fn:
                 LOGGER.info("Generating analysis via analyze_signals.%s()", fn.__name__)
                 result = fn()
-                return StepResult(name, ok=True, seconds=time.time() - start, extra={"result": str(result)[:300]})
+                return StepResult(
+                    name, ok=True, seconds=time.time() - start, extra={"result": str(result)[:300]}
+                )
         ok, out = _call_subprocess("analyze_signals")
         return StepResult(name, ok=ok, seconds=time.time() - start, extra={"stdout": out})
     except Exception as e:
@@ -252,7 +271,9 @@ def step_predict(use_subprocess: bool = False) -> StepResult:
             if fn:
                 LOGGER.info("Running predictions via predict.%s()", fn.__name__)
                 result = fn()
-                return StepResult(name, ok=True, seconds=time.time() - start, extra={"result": str(result)[:300]})
+                return StepResult(
+                    name, ok=True, seconds=time.time() - start, extra={"result": str(result)[:300]}
+                )
         ok, out = _call_subprocess("predict")
         return StepResult(name, ok=ok, seconds=time.time() - start, extra={"stdout": out})
     except Exception as e:
@@ -260,8 +281,13 @@ def step_predict(use_subprocess: bool = False) -> StepResult:
         return StepResult(name, ok=False, seconds=time.time() - start, error=str(e))
 
 
-def step_backtest(window_days: Optional[int], use_subprocess: bool = False,
-                  auto_thresholds: bool = False, min_trades: int = 20, objective: str = "avg_dollar_return") -> StepResult:
+def step_backtest(
+    window_days: int | None,
+    use_subprocess: bool = False,
+    auto_thresholds: bool = False,
+    min_trades: int = 20,
+    objective: str = "avg_dollar_return",
+) -> StepResult:
     start = time.time()
     name = "Backtest"
     try:
@@ -276,39 +302,53 @@ def step_backtest(window_days: Optional[int], use_subprocess: bool = False,
                 )
                 LOGGER.info("Best thresholds: confidence=%s crash=%s spike=%s", conf, crash, spike)
                 fn = _find_callable(mod, ["run_backtest", "main", "run"])
-                result = fn(window_days=window_days,
-                            confidence_thresh=conf,
-                            crash_thresh=crash,
-                            spike_thresh=spike)
-                return StepResult(name, ok=True, seconds=time.time() - start,
-                                  extra={"result": str(result)[:300],
-                                         "confidence_thresh": conf,
-                                         "crash_thresh": crash,
-                                         "spike_thresh": spike,
-                                         "best_metrics": best_metrics})
+                result = fn(
+                    window_days=window_days,
+                    confidence_thresh=conf,
+                    crash_thresh=crash,
+                    spike_thresh=spike,
+                )
+                return StepResult(
+                    name,
+                    ok=True,
+                    seconds=time.time() - start,
+                    extra={
+                        "result": str(result)[:300],
+                        "confidence_thresh": conf,
+                        "crash_thresh": crash,
+                        "spike_thresh": spike,
+                        "best_metrics": best_metrics,
+                    },
+                )
             # No auto-tune: fall back to normal call
             fn = _find_callable(mod, ["run_backtest", "main", "run"])
             if fn:
                 result = fn(window_days=window_days)
-                return StepResult(name, ok=True, seconds=time.time() - start, extra={"result": str(result)[:300]})
+                return StepResult(
+                    name, ok=True, seconds=time.time() - start, extra={"result": str(result)[:300]}
+                )
         # Fallback to subprocess if import path fails
         args = []
         if window_days:
             args += ["--window-days", str(window_days)]
         ok, out = _call_subprocess("backtest", args)
-        return StepResult(name, ok=ok, seconds=time.time() - start, extra={"stdout": out, "window_days": window_days})
+        return StepResult(
+            name,
+            ok=ok,
+            seconds=time.time() - start,
+            extra={"stdout": out, "window_days": window_days},
+        )
     except Exception as e:
         LOGGER.exception("%s failed", name)
         return StepResult(name, ok=False, seconds=time.time() - start, error=str(e))
-
-
 
 
 # --------------------------------------------------------------------------------------
 # CLI + Main
 # --------------------------------------------------------------------------------------
 
-def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Run the full Market Trading Bot pipeline.")
 
     group = p.add_mutually_exclusive_group(required=False)
@@ -320,24 +360,52 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     p.add_argument("--skip-analyze", action="store_true", help="Skip signal analysis plots.")
     p.add_argument("--skip-backtest", action="store_true", help="Skip backtest.")
 
-    p.add_argument("--models", nargs="+", default=["xgb"], help="Models to train: xgb lgbm rf (space-separated).")
-    p.add_argument("--fast", action="store_true", help="Faster runs (e.g., fewer CV folds, smaller grids).")
-    p.add_argument("--use-subprocess", action="store_true", help="Invoke submodules via subprocess instead of import.")
-    p.add_argument("--backtest-window", type=int, default=None, help="Limit backtest to N most recent days.")
+    p.add_argument(
+        "--models",
+        nargs="+",
+        default=["xgb"],
+        help="Models to train: xgb lgbm rf (space-separated).",
+    )
+    p.add_argument(
+        "--fast", action="store_true", help="Faster runs (e.g., fewer CV folds, smaller grids)."
+    )
+    p.add_argument(
+        "--use-subprocess",
+        action="store_true",
+        help="Invoke submodules via subprocess instead of import.",
+    )
+    p.add_argument(
+        "--backtest-window", type=int, default=None, help="Limit backtest to N most recent days."
+    )
 
-    p.add_argument("--confidence-thresh", type=float, default=None, help="Pre-filter: min of Crash_Conf or Spike_Conf (None disables)")
-    p.add_argument("--crash-thresh", type=float, default=None, help="Explicit threshold for crash class (1)")
-    p.add_argument("--spike-thresh", type=float, default=None, help="Explicit threshold for spike class (2)")
+    p.add_argument(
+        "--confidence-thresh",
+        type=float,
+        default=None,
+        help="Pre-filter: min of Crash_Conf or Spike_Conf (None disables)",
+    )
+    p.add_argument(
+        "--crash-thresh", type=float, default=None, help="Explicit threshold for crash class (1)"
+    )
+    p.add_argument(
+        "--spike-thresh", type=float, default=None, help="Explicit threshold for spike class (2)"
+    )
 
-    p.add_argument("--auto-thresholds", action="store_true",
-               help="Sweep thresholds and use the best by avg dollar profit.")
-    p.add_argument("--min-trades", type=int, default=20,
-                help="Min trades required during threshold tuning.")
-    p.add_argument("--objective", type=str, default="avg_dollar_return",
-                choices=["avg_dollar_return", "total_profit", "win_rate", "profit_factor"],
-                help="Objective to maximize during threshold tuning.")
-
-
+    p.add_argument(
+        "--auto-thresholds",
+        action="store_true",
+        help="Sweep thresholds and use the best by avg dollar profit.",
+    )
+    p.add_argument(
+        "--min-trades", type=int, default=20, help="Min trades required during threshold tuning."
+    )
+    p.add_argument(
+        "--objective",
+        type=str,
+        default="avg_dollar_return",
+        choices=["avg_dollar_return", "total_profit", "win_rate", "profit_factor"],
+        help="Objective to maximize during threshold tuning.",
+    )
 
     args = p.parse_args(argv)
     if not (args.all or args.predict_only):
@@ -345,11 +413,11 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     return args
 
 
-def main(argv: Optional[List[str]] = None) -> int:
+def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     LOGGER.info("Run config: %s", json.dumps(vars(args), indent=2))
 
-    results: List[StepResult] = []
+    results: list[StepResult] = []
 
     # 1) Refresh data
     if args.all and not args.skip_refresh and not args.predict_only:
@@ -361,7 +429,9 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # 3) Train (scaling + TS CV + early stopping assumed inside train.py)
     if args.all and not args.skip_train and not args.predict_only:
-        results.append(step_train(models=args.models, use_subprocess=args.use_subprocess, fast=args.fast))
+        results.append(
+            step_train(models=args.models, use_subprocess=args.use_subprocess, fast=args.fast)
+        )
 
     # 4) Analyze signals
     if args.all and not args.skip_analyze and not args.predict_only:
@@ -372,13 +442,15 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     # 6) Backtest
     if (args.all and not args.skip_backtest) and not args.predict_only:
-        results.append(step_backtest(window_days=args.backtest_window,
-                                    use_subprocess=args.use_subprocess,
-                                    auto_thresholds=args.auto_thresholds,
-                                    min_trades=args.min_trades,
-                                    objective=args.objective))
-
-
+        results.append(
+            step_backtest(
+                window_days=args.backtest_window,
+                use_subprocess=args.use_subprocess,
+                auto_thresholds=args.auto_thresholds,
+                min_trades=args.min_trades,
+                objective=args.objective,
+            )
+        )
 
     # Summary
     LOGGER.info("\n==== PIPELINE SUMMARY ====")
@@ -388,7 +460,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         if r.error:
             LOGGER.info("   Error: %s", r.error)
         if r.extra:
-            LOGGER.info("   Extra: %s", {k: (str(v)[:120] + ("…" if len(str(v)) > 120 else "")) for k, v in r.extra.items()})
+            LOGGER.info(
+                "   Extra: %s",
+                {
+                    k: (str(v)[:120] + ("…" if len(str(v)) > 120 else ""))
+                    for k, v in r.extra.items()
+                },
+            )
 
     all_ok = all(r.ok for r in results)
     LOGGER.info("%s All pipeline steps complete.", "✅" if all_ok else "⚠️")

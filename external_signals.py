@@ -5,15 +5,15 @@ from dotenv import load_dotenv
 
 load_dotenv(".env", override=True)
 
-def _flag(name, default="0"):
-    return str(os.getenv(name, default)).strip().lower() in {"1","true","yes","on"}
 
+def _flag(name, default="0"):
+    return str(os.getenv(name, default)).strip().lower() in {"1", "true", "yes", "on"}
 
 
 import os
 import warnings
-from pathlib import Path
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -22,6 +22,7 @@ import requests
 # Try to use TextBlob, but don't require it
 try:
     from textblob import TextBlob
+
     _HAS_TEXTBLOB = True
 except Exception:
     _HAS_TEXTBLOB = False
@@ -36,9 +37,9 @@ OFFLINE = os.getenv("OFFLINE_MODE", "0").lower() in {"1", "true", "yes", "on"}
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
 NEWS_BASE_URL = "https://newsapi.org/v2/everything"
 
-REDDIT_CLIENT_ID     = os.getenv("REDDIT_CLIENT_ID")
+REDDIT_CLIENT_ID = os.getenv("REDDIT_CLIENT_ID")
 REDDIT_CLIENT_SECRET = os.getenv("REDDIT_CLIENT_SECRET")
-REDDIT_USER_AGENT    = os.getenv("REDDIT_USER_AGENT") or "market-bot/0.1 by <you>"
+REDDIT_USER_AGENT = os.getenv("REDDIT_USER_AGENT") or "market-bot/0.1 by <you>"
 
 FRED_API_KEY = os.getenv("FRED_API_KEY")  # optional for pandas_datareader; helps with rate limits
 
@@ -47,8 +48,9 @@ CACHE_DIR = Path("data_cache")
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 # Sentiment caches
-CACHE_NEWS_SENT   = CACHE_DIR / "news_sent.csv"
+CACHE_NEWS_SENT = CACHE_DIR / "news_sent.csv"
 CACHE_REDDIT_SENT = CACHE_DIR / "reddit_sent.csv"
+
 
 def _load_daily_sent(cache_path: Path, col_name: str) -> pd.DataFrame:
     """Load cached daily sentiment as Date-indexed DF with one column."""
@@ -69,6 +71,7 @@ def _load_daily_sent(cache_path: Path, col_name: str) -> pd.DataFrame:
     except Exception:
         return pd.DataFrame(columns=[col_name])
 
+
 def _save_daily_sent(cache_path: Path, df: pd.DataFrame):
     """Save Date-indexed DF with one column back to CSV."""
     if df.empty:
@@ -77,6 +80,7 @@ def _save_daily_sent(cache_path: Path, df: pd.DataFrame):
     out = out.reset_index()
     out = out.rename(columns={"index": "Date"})
     out.to_csv(cache_path, index=False)
+
 
 def _merge_sent_cache(cache_path: Path, new_df: pd.DataFrame, col_name: str) -> pd.DataFrame:
     """Concatenate cached + new, group by date, mean, and persist."""
@@ -96,10 +100,10 @@ def _merge_sent_cache(cache_path: Path, new_df: pd.DataFrame, col_name: str) -> 
     return merged
 
 
-
 # -----------------------------
 # General helpers
 # -----------------------------
+
 
 def _find_csv_anywhere(filename: str, roots: list[str] = [".", "data", "data/etfs"]) -> str | None:
     target = filename.lower()
@@ -120,11 +124,11 @@ def _find_csv_anywhere(filename: str, roots: list[str] = [".", "data", "data/etf
     return None
 
 
-
 def _ensure_unique_sorted_index(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     out = out[~out.index.duplicated(keep="last")]
     return out.sort_index()
+
 
 def _ensure_dt_index(df: pd.DataFrame) -> pd.DataFrame:
     """Ensure DatetimeIndex, unique, sorted; keep your behavior."""
@@ -139,6 +143,7 @@ def _ensure_dt_index(df: pd.DataFrame) -> pd.DataFrame:
     out = out[out.index.notna()]
     return _ensure_unique_sorted_index(out)
 
+
 def _read_csv_maybe(path: str, index_is_date: bool = True) -> pd.DataFrame | None:
     """
     Robust CSV reader for Yahoo-style files (and similar two-row headers where
@@ -148,7 +153,19 @@ def _read_csv_maybe(path: str, index_is_date: bool = True) -> pd.DataFrame | Non
     if not os.path.exists(path):
         return None
 
-    FIELD_NAMES = {"adj close","adjusted close","close","open","high","low","volume","date","closeprice","last","last price"}
+    FIELD_NAMES = {
+        "adj close",
+        "adjusted close",
+        "close",
+        "open",
+        "high",
+        "low",
+        "volume",
+        "date",
+        "closeprice",
+        "last",
+        "last price",
+    }
 
     def _finalize(df: pd.DataFrame) -> pd.DataFrame:
         # --- PROMOTE DATE-LIKE COLUMN IF NEEDED ---
@@ -166,7 +183,6 @@ def _read_csv_maybe(path: str, index_is_date: bool = True) -> pd.DataFrame | Non
                 except Exception:
                     pass
 
-
         # If a Date column exists, prefer it as index
         if "Date" in df.columns:
             with warnings.catch_warnings():
@@ -179,7 +195,6 @@ def _read_csv_maybe(path: str, index_is_date: bool = True) -> pd.DataFrame | Non
                 df.index = pd.to_datetime(df.index, errors="coerce")
         df = df[df.index.notna()]
         return df.sort_index()
-
 
     try:
         # First try normal single-header read
@@ -235,7 +250,8 @@ def _read_csv_maybe(path: str, index_is_date: bool = True) -> pd.DataFrame | Non
         seen = set()
         for c in df1.columns:
             if c not in seen:
-                keep_order.append(c); seen.add(c)
+                keep_order.append(c)
+                seen.add(c)
         df1 = df1.loc[:, keep_order]
 
         return _finalize(df1)
@@ -245,13 +261,25 @@ def _read_csv_maybe(path: str, index_is_date: bool = True) -> pd.DataFrame | Non
         return None
 
 
-
-def _pick_price_series(df_like: pd.DataFrame | None, prefer_name: str | None = None) -> pd.Series | None:
+def _pick_price_series(
+    df_like: pd.DataFrame | None, prefer_name: str | None = None
+) -> pd.Series | None:
     if df_like is None or len(df_like) == 0:
         return None
     candidates = [
-        "Adj Close","AdjClose","Adjusted Close","Close","close","CLOSE",
-        "Value","Price","ClosePrice","Last","Last Price","Close*","Adj Close*"
+        "Adj Close",
+        "AdjClose",
+        "Adjusted Close",
+        "Close",
+        "close",
+        "CLOSE",
+        "Value",
+        "Price",
+        "ClosePrice",
+        "Last",
+        "Last Price",
+        "Close*",
+        "Adj Close*",
     ]
     for col in candidates:
         if col in df_like.columns:
@@ -281,10 +309,12 @@ def _pct_change(s: pd.Series | None, n: int) -> pd.Series | None:
 
 
 def _zscore(s: pd.Series | None, win: int = 20) -> pd.Series | None:
-    if s is None: return None
+    if s is None:
+        return None
     m = s.rolling(win).mean()
     sd = s.rolling(win).std()
     return (s - m) / (sd + 1e-9)
+
 
 def _join_series(df: pd.DataFrame, s: pd.Series | None, col_name: str) -> pd.DataFrame:
     out = df.copy()
@@ -295,12 +325,14 @@ def _join_series(df: pd.DataFrame, s: pd.Series | None, col_name: str) -> pd.Dat
     s = s.loc[~s.index.duplicated()].sort_index()
     return out.join(s.rename(col_name), how="left")
 
+
 def _lag_joined_columns(df: pd.DataFrame, cols: list[str], n: int = 1) -> pd.DataFrame:
     out = df.copy()
     for c in cols:
         if c in out.columns:
             out[c] = out[c].shift(n)
     return out
+
 
 def _polarity(text: str) -> float:
     if not text:
@@ -312,9 +344,6 @@ def _polarity(text: str) -> float:
             return 0.0
     # Fallback: naive neutral
     return 0.0
-
-
-
 
 
 # -----------------------------
@@ -329,6 +358,7 @@ def _fetch_from_fred(series_id: str, start: datetime | None = None) -> pd.DataFr
     if OFFLINE:
         return pd.DataFrame()
     from pandas_datareader import data as pdr
+
     kwargs = {"start": start} if start else {}
     # If you want to pass an API key, pandas_datareader supports it via environment too.
     df = pdr.DataReader(series_id, "fred", **kwargs)  # raises on network error
@@ -340,6 +370,7 @@ def _fetch_from_fred(series_id: str, start: datetime | None = None) -> pd.DataFr
         df = df.rename(columns={c0: "value"})
     df.index = pd.to_datetime(df.index, errors="coerce")
     return df
+
 
 def fetch_fred_cached(series_id: str, start: datetime | None = None) -> pd.DataFrame:
     """
@@ -385,7 +416,7 @@ def fetch_fred_macro_signals() -> pd.DataFrame:
     frames = []
     for name, sid in series_ids.items():
         try:
-            df = fetch_fred_cached(sid)           # -> index=Date, col='value'
+            df = fetch_fred_cached(sid)  # -> index=Date, col='value'
             if df.empty:
                 raise RuntimeError("empty")
             df = df.rename(columns={"value": name})
@@ -405,13 +436,15 @@ def fetch_fred_macro_signals() -> pd.DataFrame:
 # -----------------------------
 # NewsAPI + sentiment
 # -----------------------------
-def fetch_news_sentiment(topic: str = "stock market", days: int = 7, page_size: int = 50) -> pd.DataFrame:
+def fetch_news_sentiment(
+    topic: str = "stock market", days: int = 7, page_size: int = 50
+) -> pd.DataFrame:
     if OFFLINE or not NEWS_API_KEY:
         # return whatever we've cached so far, if anything
         return _load_daily_sent(CACHE_NEWS_SENT, "News_Sentiment")
 
     from_date = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
-    to_date   = datetime.utcnow().strftime("%Y-%m-%d")
+    to_date = datetime.utcnow().strftime("%Y-%m-%d")
     params = {
         "q": topic,
         "from": from_date,
@@ -429,8 +462,13 @@ def fetch_news_sentiment(topic: str = "stock market", days: int = 7, page_size: 
             print("❌ NewsAPI 426: plan limit — falling back to top-headlines.")
             r2 = requests.get(
                 "https://newsapi.org/v2/top-headlines",
-                params={"category": "business", "language": "en", "pageSize": page_size, "apiKey": NEWS_API_KEY},
-                timeout=15
+                params={
+                    "category": "business",
+                    "language": "en",
+                    "pageSize": page_size,
+                    "apiKey": NEWS_API_KEY,
+                },
+                timeout=15,
             )
             r2.raise_for_status()
             articles = r2.json().get("articles", [])
@@ -450,7 +488,7 @@ def fetch_news_sentiment(topic: str = "stock market", days: int = 7, page_size: 
     for a in articles or []:
         date = (a.get("publishedAt") or "")[:10]
         text = f"{a.get('title') or ''} {a.get('description') or ''}".strip()
-        pol  = _polarity(text)
+        pol = _polarity(text)
         if date:
             rows.append({"Date": date, "News_Sentiment": pol})
 
@@ -466,18 +504,16 @@ def fetch_news_sentiment(topic: str = "stock market", days: int = 7, page_size: 
     return merged
 
 
-
-
-
-
 # -----------------------------
 # Reddit (PRAW) + sentiment
 # -----------------------------
-def fetch_reddit_sentiment(subreddit: str = "stocks", days: int = 7, limit: int = 100) -> pd.DataFrame:
+def fetch_reddit_sentiment(
+    subreddit: str = "stocks", days: int = 7, limit: int = 100
+) -> pd.DataFrame:
     # If offline or creds missing, return cache only
     rid = os.getenv("REDDIT_CLIENT_ID")
     sec = os.getenv("REDDIT_CLIENT_SECRET")
-    ua  = os.getenv("REDDIT_USER_AGENT")
+    ua = os.getenv("REDDIT_USER_AGENT")
     if OFFLINE or not (rid and sec and ua):
         if OFFLINE:
             print("⚠️ Reddit offline — using cached sentiment only.")
@@ -487,6 +523,7 @@ def fetch_reddit_sentiment(subreddit: str = "stocks", days: int = 7, limit: int 
 
     try:
         import praw
+
         usr = os.getenv("REDDIT_USERNAME")
         pwd = os.getenv("REDDIT_PASSWORD")
         kwargs = dict(client_id=rid, client_secret=sec, user_agent=ua, check_for_async=False)
@@ -514,7 +551,7 @@ def fetch_reddit_sentiment(subreddit: str = "stocks", days: int = 7, limit: int 
                 continue
             date = datetime.utcfromtimestamp(subm.created_utc).date()
             text = f"{subm.title} {getattr(subm, 'selftext', '') or ''}".strip()
-            pol  = _polarity(text)
+            pol = _polarity(text)
             rows.append({"Date": pd.to_datetime(date), "Reddit_Sentiment": pol})
     except Exception as e:
         print(f"❌ Reddit fetch failed: {e}")
@@ -528,10 +565,6 @@ def fetch_reddit_sentiment(subreddit: str = "stocks", days: int = 7, limit: int 
     # Merge with cache and persist
     merged = _merge_sent_cache(CACHE_REDDIT_SENT, df_new, "Reddit_Sentiment")
     return merged
-
-
-   
-
 
 
 # -----------------------------
@@ -575,7 +608,7 @@ def add_external_signals(df: pd.DataFrame) -> pd.DataFrame:
 
     # ---- Sector breadth proxies ----
     candidate_dirs = ["data/etfs", "data", "."]
-    sector_tickers = ["XLF","XLK","XLE","XLI","XLV","XLY","XLP","XLU","XLB","XLRE"]
+    sector_tickers = ["XLF", "XLK", "XLE", "XLI", "XLV", "XLY", "XLP", "XLU", "XLB", "XLRE"]
     sector_series = []
     missing = []
 
@@ -602,19 +635,22 @@ def add_external_signals(df: pd.DataFrame) -> pd.DataFrame:
 
         s = _pick_price_series(df_csv, prefer_name=t)
         if s is None:
-            print(f"[extsig] {t}: no numeric close-like column -> {csv_path}; cols={list(df_csv.columns)[:8]}")
+            print(
+                f"[extsig] {t}: no numeric close-like column -> {csv_path}; cols={list(df_csv.columns)[:8]}"
+            )
             continue
 
         s = _clean_series_index(s).rename(t)
         sector_series.append(s)
 
     # one concise summary line
-    print("[extsig] sector tickers loaded:", len(sector_series), [getattr(s, "name", "unknown") for s in sector_series][:5])
+    print(
+        "[extsig] sector tickers loaded:",
+        len(sector_series),
+        [getattr(s, "name", "unknown") for s in sector_series][:5],
+    )
     if missing:
         print("[extsig] sector tickers missing (no CSV found):", missing)
-
-
-
 
     # fallback: if tickers already in 'out'
     if not sector_series:
@@ -631,22 +667,27 @@ def add_external_signals(df: pd.DataFrame) -> pd.DataFrame:
         sectors = sectors.astype("float64")
 
         # avoid deprecated default pad-fill; compute clean percentage changes
-        rets_5  = sectors.pct_change(5, fill_method=None)
+        rets_5 = sectors.pct_change(5, fill_method=None)
         rets_20 = sectors.pct_change(20, fill_method=None)
 
-        out["Sector_MedianRet_5"]  = rets_5.median(axis=1)
+        out["Sector_MedianRet_5"] = rets_5.median(axis=1)
         out["Sector_MedianRet_20"] = rets_20.median(axis=1)
-        out["Sector_Dispersion_5"]  = rets_5.std(axis=1)
+        out["Sector_Dispersion_5"] = rets_5.std(axis=1)
         out["Sector_Dispersion_20"] = rets_20.std(axis=1)
 
-
-        print("coverage:",
+        print(
+            "coverage:",
             float(out["Sector_MedianRet_20"].notna().mean()),
-            float(out["Sector_Dispersion_20"].notna().mean()))
-
+            float(out["Sector_Dispersion_20"].notna().mean()),
+        )
 
     else:
-        for c in ["Sector_MedianRet_5","Sector_MedianRet_20","Sector_Dispersion_5","Sector_Dispersion_20"]:
+        for c in [
+            "Sector_MedianRet_5",
+            "Sector_MedianRet_20",
+            "Sector_Dispersion_5",
+            "Sector_Dispersion_20",
+        ]:
             if c not in out.columns:
                 out[c] = np.nan
 
@@ -657,9 +698,9 @@ def add_external_signals(df: pd.DataFrame) -> pd.DataFrame:
     lqd = _pick_price_series(_read_csv_maybe("data/LQD.csv"), "LQD")
     lqd = _clean_series_index(lqd) if lqd is not None else None
 
-    out = _join_series(out, _pct_change(hyg, 5),  "HYG_Ret_5")
+    out = _join_series(out, _pct_change(hyg, 5), "HYG_Ret_5")
     out = _join_series(out, _pct_change(hyg, 20), "HYG_Ret_20")
-    out = _join_series(out, _pct_change(lqd, 5),  "LQD_Ret_5")
+    out = _join_series(out, _pct_change(lqd, 5), "LQD_Ret_5")
     out = _join_series(out, _pct_change(lqd, 20), "LQD_Ret_20")
 
     if "HYG_Ret_20" in out.columns and "LQD_Ret_20" in out.columns:
@@ -674,7 +715,7 @@ def add_external_signals(df: pd.DataFrame) -> pd.DataFrame:
         tnx = _pick_price_series(_read_csv_maybe("data/FRED_DGS10.csv"), "DGS10")
         tnx = _clean_series_index(tnx) if tnx is not None else None
 
-    out = _join_series(out, _pct_change(tnx, 5),  "TNX_Change_5")
+    out = _join_series(out, _pct_change(tnx, 5), "TNX_Change_5")
     out = _join_series(out, _pct_change(tnx, 20), "TNX_Change_20")
 
     # ---- USD (DXY) ----
@@ -685,21 +726,18 @@ def add_external_signals(df: pd.DataFrame) -> pd.DataFrame:
     uup = _pick_price_series(_read_csv_maybe("data/UUP.csv"), "UUP")
     uup = _clean_series_index(uup) if uup is not None else None
 
-    dxy5  = _pct_change(dxy, 5)  if dxy is not None else None
+    dxy5 = _pct_change(dxy, 5) if dxy is not None else None
     dxy20 = _pct_change(dxy, 20) if dxy is not None else None
-    uup5  = _pct_change(uup, 5)  if uup is not None else None
+    uup5 = _pct_change(uup, 5) if uup is not None else None
     uup20 = _pct_change(uup, 20) if uup is not None else None
 
     # Join DXY first, then fill any gaps with UUP
-    out = _join_series(out, dxy5,  "DXY_Change_5")
+    out = _join_series(out, dxy5, "DXY_Change_5")
     out = _join_series(out, dxy20, "DXY_Change_20")
     if uup5 is not None:
         out["DXY_Change_5"] = out["DXY_Change_5"].fillna(uup5)
     if uup20 is not None:
         out["DXY_Change_20"] = out["DXY_Change_20"].fillna(uup20)
-
-
-
 
     # ---- Structured Sentiment Features ----
 
@@ -708,19 +746,18 @@ def add_external_signals(df: pd.DataFrame) -> pd.DataFrame:
     if "Reddit_Sentiment" in out.columns:
         out["Reddit_Sentiment"] = out["Reddit_Sentiment"].fillna(0.0)
 
-
     if "News_Sentiment" in out.columns:
-        out["News_Sent_Z20"]  = _zscore(out["News_Sentiment"], 20)
+        out["News_Sent_Z20"] = _zscore(out["News_Sentiment"], 20)
         out["News_Sent_ROC3"] = out["News_Sentiment"].diff(3)
     else:
-        out["News_Sent_Z20"]  = np.nan
+        out["News_Sent_Z20"] = np.nan
         out["News_Sent_ROC3"] = np.nan
 
     if "Reddit_Sentiment" in out.columns:
-        out["Reddit_Sent_Z20"]  = _zscore(out["Reddit_Sentiment"], 20)
+        out["Reddit_Sent_Z20"] = _zscore(out["Reddit_Sentiment"], 20)
         out["Reddit_Sent_ROC3"] = out["Reddit_Sentiment"].diff(3)
     else:
-        out["Reddit_Sent_Z20"]  = np.nan
+        out["Reddit_Sent_Z20"] = np.nan
         out["Reddit_Sent_ROC3"] = np.nan
 
     # Concordance with next-day return direction
@@ -728,16 +765,18 @@ def add_external_signals(df: pd.DataFrame) -> pd.DataFrame:
         ret_1d_fwd = out["Close"].shift(-1) / out["Close"] - 1.0
         if "News_Sentiment" in out.columns:
             out["News_Sent_Concord"] = (
-                (np.sign(out["News_Sentiment"]) == np.sign(ret_1d_fwd)) &
-                out["News_Sentiment"].notna() & ret_1d_fwd.notna()
+                (np.sign(out["News_Sentiment"]) == np.sign(ret_1d_fwd))
+                & out["News_Sentiment"].notna()
+                & ret_1d_fwd.notna()
             ).astype(int)
         else:
             out["News_Sent_Concord"] = np.nan
 
         if "Reddit_Sentiment" in out.columns:
             out["Reddit_Sent_Concord"] = (
-                (np.sign(out["Reddit_Sentiment"]) == np.sign(ret_1d_fwd)) &
-                out["Reddit_Sentiment"].notna() & ret_1d_fwd.notna()
+                (np.sign(out["Reddit_Sentiment"]) == np.sign(ret_1d_fwd))
+                & out["Reddit_Sentiment"].notna()
+                & ret_1d_fwd.notna()
             ).astype(int)
         else:
             out["Reddit_Sent_Concord"] = np.nan
@@ -747,17 +786,31 @@ def add_external_signals(df: pd.DataFrame) -> pd.DataFrame:
 
     # Lag externals one day so they can't “see the future”
     _lag_cols = [
-        "CPI","Unemployment","InterestRate","YieldCurve","ConsumerSentiment","IndustrialProduction","VIX",
-        "News_Sentiment","Reddit_Sentiment",
-        "Sector_MedianRet_5","Sector_MedianRet_20","Sector_Dispersion_5","Sector_Dispersion_20",
-        "Credit_Spread_20","TNX_Change_20","DXY_Change_20",
-        "News_Sent_Z20","Reddit_Sent_Z20"
+        "CPI",
+        "Unemployment",
+        "InterestRate",
+        "YieldCurve",
+        "ConsumerSentiment",
+        "IndustrialProduction",
+        "VIX",
+        "News_Sentiment",
+        "Reddit_Sentiment",
+        "Sector_MedianRet_5",
+        "Sector_MedianRet_20",
+        "Sector_Dispersion_5",
+        "Sector_Dispersion_20",
+        "Credit_Spread_20",
+        "TNX_Change_20",
+        "DXY_Change_20",
+        "News_Sent_Z20",
+        "Reddit_Sent_Z20",
     ]
     out = _lag_joined_columns(out, _lag_cols, n=1)
 
-    print("sample sector rows:",
-      out[["Sector_MedianRet_20","Sector_Dispersion_20"]].dropna().tail(3).to_dict("records"))
-
+    print(
+        "sample sector rows:",
+        out[["Sector_MedianRet_20", "Sector_Dispersion_20"]].dropna().tail(3).to_dict("records"),
+    )
 
     return out
 
@@ -766,6 +819,7 @@ def add_external_signals(df: pd.DataFrame) -> pd.DataFrame:
 # Optional utilities
 # -----------------------------
 from sklearn.preprocessing import MinMaxScaler
+
 
 def normalize_signals(df: pd.DataFrame, signal_columns: list[str]) -> pd.DataFrame:
     df = df.copy()
@@ -776,6 +830,7 @@ def normalize_signals(df: pd.DataFrame, signal_columns: list[str]) -> pd.DataFra
         else:
             print(f"⚠️ Signal column missing: {col}")
     return df
+
 
 def fill_missing_signals(df: pd.DataFrame, signal_columns: list[str]) -> pd.DataFrame:
     df = df.copy()
@@ -799,24 +854,47 @@ def refresh_all():
 # -----------------------------
 if __name__ == "__main__":
     from utils import load_SPY_data
+
     print("📈 Loading SPY data...")
     base = load_SPY_data()
     print("📡 Adding external signals...")
     out = add_external_signals(base)
 
     must_have = [
-        "Sector_MedianRet_5","Sector_MedianRet_20","Sector_Dispersion_5","Sector_Dispersion_20",
-        "HYG_Ret_5","HYG_Ret_20","LQD_Ret_5","LQD_Ret_20","Credit_Spread_20",
-        "TNX_Change_5","TNX_Change_20","DXY_Change_5","DXY_Change_20",
-        "News_Sentiment","Reddit_Sentiment","News_Sent_Z20","News_Sent_ROC3",
-        "Reddit_Sent_Z20","Reddit_Sent_ROC3","News_Sent_Concord","Reddit_Sent_Concord"
+        "Sector_MedianRet_5",
+        "Sector_MedianRet_20",
+        "Sector_Dispersion_5",
+        "Sector_Dispersion_20",
+        "HYG_Ret_5",
+        "HYG_Ret_20",
+        "LQD_Ret_5",
+        "LQD_Ret_20",
+        "Credit_Spread_20",
+        "TNX_Change_5",
+        "TNX_Change_20",
+        "DXY_Change_5",
+        "DXY_Change_20",
+        "News_Sentiment",
+        "Reddit_Sentiment",
+        "News_Sent_Z20",
+        "News_Sent_ROC3",
+        "Reddit_Sent_Z20",
+        "Reddit_Sent_ROC3",
+        "News_Sent_Concord",
+        "Reddit_Sent_Concord",
     ]
     print("✅ Added columns present:", [c for c in must_have if c in out.columns])
 
     signal_cols = [
-        "CPI","Unemployment","InterestRate","YieldCurve",
-        "ConsumerSentiment","IndustrialProduction","VIX",
-        "News_Sentiment","Reddit_Sentiment"
+        "CPI",
+        "Unemployment",
+        "InterestRate",
+        "YieldCurve",
+        "ConsumerSentiment",
+        "IndustrialProduction",
+        "VIX",
+        "News_Sentiment",
+        "Reddit_Sentiment",
     ]
     out = fill_missing_signals(out, signal_cols)
     out = normalize_signals(out, signal_cols)
