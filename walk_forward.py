@@ -8,8 +8,8 @@ def walk_forward_predict(df, retrain_every=60):
     """
     out = []
     for i in range(400, len(df) - 1, retrain_every):
-        train_df = df.iloc[:i].copy()
-        test_df = df.iloc[i : i + retrain_every].copy()
+        df.iloc[:i].copy()
+        df.iloc[i : i + retrain_every].copy()
         # call existing training function on train_df -> model
         # run predict on test_df -> proba + class
         # append to 'out'

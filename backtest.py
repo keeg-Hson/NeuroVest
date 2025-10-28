@@ -45,9 +45,9 @@ def _git_sha() -> str:
 
 def _to_jsonable(x):
     # make numpy/pandas types JSON-friendly
-    if isinstance(x, (np.floating, np.float32, np.float64)):
+    if isinstance(x, np.floating | np.float32 | np.float64):
         return float(x)
-    if isinstance(x, (np.integer, np.int32, np.int64)):
+    if isinstance(x, np.integer | np.int32 | np.int64):
         return int(x)
     if pd.isna(x):
         return None

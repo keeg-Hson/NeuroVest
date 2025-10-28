@@ -1,6 +1,3 @@
-cp pyproject.toml pyproject.toml.bak
-
-cat > pyproject.toml <<'EOF'
 [project]
 name = "neurovest"
 version = "0.1.0"
@@ -34,18 +31,16 @@ target-version = "py311"
 extend-exclude = ["data", "data_cache", "models", "logs", "outputs"]
 
 [tool.ruff.lint]
-# Start pragmatic: errors, formatting issues, import order, bugbears, modernize, simplification.
+# Pragmatic ruleset. TEMP: ignore E402 in a few legacy files.
 select = ["E", "F", "I", "B", "UP", "SIM"]
-ignore = [
-  "E501",  # line length (Black handles wrapping pragmatically)
-]
-# TEMPORARY: silence E402 on legacy files. Remove after refactors.
-per-file-ignores = {
-  "main.py" = ["E402"],
-  "train.py" = ["E402"],
-  "external_signals.py" = ["E402"],
-  "backtest.py" = ["E402"],
-}
+ignore = ["E501"]
+
+# Use a table form (avoids inline-table parsing errors)
+[tool.ruff.lint.per-file-ignores]
+"main.py" = ["E402"]
+"train.py" = ["E402"]
+"external_signals.py" = ["E402"]
+"backtest.py" = ["E402"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["neurovest"]
@@ -61,4 +56,3 @@ line-ending = "lf"
 addopts = "-q"
 testpaths = ["tests"]
 pythonpath = ["."]
-EOF

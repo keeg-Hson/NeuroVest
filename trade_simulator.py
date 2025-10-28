@@ -23,7 +23,7 @@ def simulate_trades(df, initial_balance=INITIAL_BALANCE, hold_days=HOLD_DAYS):
     entry_date = None
     trades = []
 
-    for i, row in df.iterrows():
+    for _i, row in df.iterrows():
         date = pd.to_datetime(row["Timestamp"])
         prediction = row["Prediction"]
         price = row.get("Close_Price", row.get("Close"))
