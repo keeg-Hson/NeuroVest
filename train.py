@@ -387,7 +387,7 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         df["Close"] = _raw_idxed.reindex(df.index)
     except Exception as _e:
         if "Close" not in df.columns:
-            raise RuntimeError(f"Could not attach Close for labeling: {_e}") from _e from _e
+            raise RuntimeError(f"Could not attach Close for labeling: {_e}") from _e
     df = df.dropna(subset=["Close"])
     # ========================================
 
@@ -1052,7 +1052,7 @@ if __name__ == "__main__":
         import traceback
 
         traceback.print_exc()
-        raise SystemExit(f"[train] hard failure: {e}") from e from e
+        raise SystemExit(f"[train] hard failure: {e}") from e
 
     if success:
         from predict import run_predictions
