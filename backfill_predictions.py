@@ -18,7 +18,7 @@ THRESH_PATH = os.getenv("THRESH_PATH", "models/thresholds_fwd.json")
 
 
 def _required_feature_names():
-    with suppress(Exception):
+    try:
         return pd.read_csv("models/input_features_fwd.txt", header=None)[0].astype(str).tolist()
     except Exception:
         return []
@@ -31,7 +31,9 @@ def _prep(df, req):
             X[c] = np.nan
     X = X[req].replace([np.inf, -np.inf], np.nan)
     try:
-        X = X.interpolate(method="time", limit_direction="both")
+        X = X.interpolate(method=\"time\", limit_direction=\"both\")
+    except Exception:
+        pass
     X = X.fillna(X.median(numeric_only=True))
     return X[req]
 
@@ -72,7 +74,7 @@ for dt in tqdm(feat.index, desc="backfill"):
         )
     )
     # optional: write through your existing logger to keep formats identical
-    with suppress(Exception):
+    try:
         last_bar = spy.loc[dt]
         log_prediction_to_file(
             dt,
