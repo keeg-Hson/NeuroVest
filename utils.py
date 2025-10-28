@@ -217,9 +217,9 @@ def log_prediction_to_file(
             with open(log_path, newline="") as _f:
                 rdr = csv.DictReader(_f)
                 last = None
-                for last in rdr:
+                for _last in rdr:
                     pass
-            if last:
+            if _last:
                 same_date = str(last.get("Date")) == str(row["Date"])
                 same_pred = str(last.get("Prediction")) == str(row["Prediction"])
                 same_close = str(last.get("Close")) == str(row["Close"])
@@ -699,7 +699,7 @@ def safe_read_csv(path: str, **kwargs):
         return pd.DataFrame()
 
 
-def add_forward_returns_and_labels(
+def _add_forward_returns_and_labels_v2(
     df: pd.DataFrame,
     price_col: str = "Close",
     horizon: int = 1,
@@ -739,7 +739,7 @@ def add_forward_returns_and_labels(
     return out
 
 
-def compute_sample_weights(
+def _compute_sample_weights_v2(
     df_labeled: pd.DataFrame,
     min_weight: float = 0.5,
     max_weight: float = 3.0,
@@ -774,7 +774,7 @@ def compute_sample_weights(
     return w
 
 
-def ensure_no_future_leakage(
+def _ensure_no_future_leakage_v2(
     df: pd.DataFrame,
     feature_cols: list[str],
     target_cols: list[str],
