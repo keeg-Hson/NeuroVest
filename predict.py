@@ -1,3 +1,4 @@
+from contextlib import suppress
 # --- predict.py (clean forward_returns-first) ---
 import json
 import os
@@ -66,7 +67,7 @@ def _attach_ohlc(pred_df: pd.DataFrame, raw_df: pd.DataFrame) -> pd.DataFrame:
 
 def _required_feature_names_for_pipeline(model) -> list[str]:
     # Prefer recorded schema file if present
-    try:
+    with suppress(Exception):
         path = (
             "models/input_features_fwd.txt"
             if PREDICT_VARIANT == "forward_returns"
@@ -83,8 +84,6 @@ def _required_feature_names_for_pipeline(model) -> list[str]:
                     seen.add(v)
                     clean.append(v)
             return clean
-    except Exception:
-        pass
     # Fall back to model introspection
     base = getattr(model, "base_estimator", model)
     if hasattr(base, "named_steps") and "kbest" in base.named_steps:
@@ -112,10 +111,8 @@ def _prepare_matrix(feature_df: pd.DataFrame, req_cols: list[str]) -> pd.DataFra
     out = out[req_cols]
     out = out.replace([np.inf, -np.inf], np.nan)
     # time-aware fill if index is time
-    try:
+    with suppress(Exception):
         out = out.interpolate(method="time", limit_direction="both")
-    except Exception:
-        pass
     out = out.fillna(out.median(numeric_only=True))
     return out[req_cols]
 
@@ -151,12 +148,10 @@ def live_predict(feature_df: pd.DataFrame, raw_df: pd.DataFrame):
 
     # label map (optional)
     inv_label_map = {}
-    try:
+    with suppress(Exception):
         with open(LABEL_MAP_PATH) as fh:
             maps = json.load(fh)
         inv_label_map = {int(k): int(v) for k, v in maps.get("inv_label_map", {}).items()}
-    except Exception:
-        pass
 
     # thresholds
     t = 0.5

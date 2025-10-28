@@ -1,3 +1,4 @@
+from contextlib import suppress
 # backfill_predictions.py
 import json
 import os
@@ -17,7 +18,7 @@ THRESH_PATH = os.getenv("THRESH_PATH", "models/thresholds_fwd.json")
 
 
 def _required_feature_names():
-    try:
+    with suppress(Exception):
         return pd.read_csv("models/input_features_fwd.txt", header=None)[0].astype(str).tolist()
     except Exception:
         return []
@@ -31,8 +32,6 @@ def _prep(df, req):
     X = X[req].replace([np.inf, -np.inf], np.nan)
     try:
         X = X.interpolate(method="time", limit_direction="both")
-    except Exception:
-        pass
     X = X.fillna(X.median(numeric_only=True))
     return X[req]
 
@@ -73,7 +72,7 @@ for dt in tqdm(feat.index, desc="backfill"):
         )
     )
     # optional: write through your existing logger to keep formats identical
-    try:
+    with suppress(Exception):
         last_bar = spy.loc[dt]
         log_prediction_to_file(
             dt,
@@ -85,8 +84,6 @@ for dt in tqdm(feat.index, desc="backfill"):
             float(last_bar["High"]),
             float(last_bar["Low"]),
         )
-    except Exception:
-        pass
 
 if rows:
     df = pd.DataFrame(rows).sort_values(["Date", "Timestamp"])

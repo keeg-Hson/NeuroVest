@@ -583,8 +583,8 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         print(f"💾 [FWD] Model saved to {model_path_fwd}")
 
         label_values = sorted(pd.Series(y).unique().tolist())
-        label_map = {int(l): int(l) for l in label_values}
-        inv_label_map = {int(l): int(l) for l in label_values}
+        label_map = {int(label): int(label) for l in label_values}
+        inv_label_map = {int(label): int(label) for l in label_values}
         with open("models/label_map_fwd.json", "w") as f:
             json.dump(
                 {
