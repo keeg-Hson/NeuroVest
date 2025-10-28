@@ -148,7 +148,7 @@ def fetch_ohlcv(
     if "Note" in data:
         print("ERROR: Rate limit hit:", data["Note"])
         return None
-    time_series_key = [k for k in data.keys() if "Time Series" in k]
+    time_series_key = [k for k in data if "Time Series" in k]
     print("DEBUG: using key →", time_series_key)
 
     # DEBUG: check if API response was successful
@@ -161,7 +161,7 @@ def fetch_ohlcv(
         print("ERROR: API rate limit exceeded. Try again later.")
         return None
     # CHECK FOR INVALID/UNEXPECTED RESPONSE FORMAT
-    time_series_key = [k for k in data.keys() if "Time Series" in k]
+    time_series_key = [k for k in data if "Time Series" in k]
     if not time_series_key:
         print("ERROR: Time Series data not found in API response")
         return None
@@ -486,7 +486,7 @@ def daily_job():
     print(f"[Daily Label Counts] {counts}")
 
     # 2) train & live predict
-    model = train_model(df, target="Event")
+    train_model(df, target="Event")
     live_predict(df)
 
     # 3) label the real outcome for this run

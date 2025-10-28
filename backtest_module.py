@@ -60,8 +60,8 @@ def plot_predictions(merged_df, output_path="graphs/prediction_overlay.png"):
 
 
 def evaluate_predictions(pred_df, output_path="logs/model_performance.csv"):
-    true_labels = pred_df["True_Label"]
-    predicted = pred_df["Prediction"]
+    pred_df["True_Label"]
+    pred_df["Prediction"]
 
     # Filter out "none" class if desired
     filtered = pred_df[pred_df["Prediction"] != "none"]

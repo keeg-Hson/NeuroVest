@@ -33,10 +33,10 @@ TRAIN_CFG = {
 
 # ─── Prediction / decision gating ────────────────────────────
 PREDICT_CFG = {
-    "p_min": 0.55,         # minimum probability to consider a trade
-    "ev_min": 0.0005,      # 5 bps minimum expected value
-    "avg_gain": 0.0040,    # 40 bps typical winner magnitude
-    "avg_loss": 0.0030,    # 30 bps typical loser magnitude
+    "p_min": 0.55,  # minimum probability to consider a trade
+    "ev_min": 0.0005,  # 5 bps minimum expected value
+    "avg_gain": 0.0040,  # 40 bps typical winner magnitude
+    "avg_loss": 0.0030,  # 30 bps typical loser magnitude
     "fee_bps": 1.5,
     "slippage_bps": 2.0,
 }

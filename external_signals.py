@@ -10,6 +10,7 @@ def _flag(name, default="0"):
     return str(os.getenv(name, default)).strip().lower() in {"1", "true", "yes", "on"}
 
 
+import contextlib
 import os
 import warnings
 from datetime import datetime, timedelta
@@ -105,7 +106,9 @@ def _merge_sent_cache(cache_path: Path, new_df: pd.DataFrame, col_name: str) -> 
 # -----------------------------
 
 
-def _find_csv_anywhere(filename: str, roots: list[str] = [".", "data", "data/etfs"]) -> str | None:
+def _find_csv_anywhere(filename: str, roots: list[str] = None) -> str | None:
+    if roots is None:
+        roots = [".", "data", "data/etfs"]
     target = filename.lower()
     ticker = target.replace(".csv", "")
     for root in roots:
@@ -390,10 +393,8 @@ def fetch_fred_cached(series_id: str, start: datetime | None = None) -> pd.DataF
             pass
     df = _fetch_from_fred(series_id, start=start)
     df = df.rename_axis("Date")
-    try:
+    with contextlib.suppress(Exception):
         df.to_csv(cache, index_label="DATE")
-    except Exception:
-        pass
     return df
 
 
@@ -532,10 +533,8 @@ def fetch_reddit_sentiment(
             kwargs["password"] = pwd
         reddit = praw.Reddit(**kwargs)
         reddit.read_only = True
-        try:
+        with contextlib.suppress(Exception):
             _ = reddit.auth.scopes()
-        except Exception:
-            pass
     except Exception as e:
         print(f"❌ Reddit client init failed: {e}")
         return _load_daily_sent(CACHE_REDDIT_SENT, "Reddit_Sentiment")
