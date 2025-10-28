@@ -1,0 +1,55 @@
+[project]
+name = "neurovest"
+version = "0.1.0"
+description = "NeuroVest – research pipeline for SPY signals (train, predict, backtest, live)."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Your Name", email = "you@example.com" }]
+license = { text = "MIT" }
+
+# --- Black (formatter) ---
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | __pycache__
+  | data
+  | data_cache
+  | models
+  | logs
+  | outputs
+)/
+'''
+
+# --- Ruff (linter + import sorter) ---
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["data", "data_cache", "models", "logs", "outputs"]
+
+[tool.ruff.lint]
+# Start pragmatic: errors, formatting issues, import order, bugbears, modernize, and a bit of simplification.
+select = ["E", "F", "I", "B", "UP", "SIM"]
+# Ignore common nits you likely don’t care about yet.
+ignore = [
+  "E501",  # line length (Black handles wrapping pragmatically)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["neurovest"]
+combine-as-imports = true
+
+[tool.ruff.format]
+# Let Ruff's formatter mirror Black where possible (we still use Black to be explicit)
+quote-style = "preserve"
+indent-style = "space"
+line-ending = "lf"
+
+# --- Pytest (if/when you add tests) ---
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+pythonpath = ["."]
