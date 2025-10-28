@@ -1,11 +1,13 @@
-#unify_prices.py
+# unify_prices.py
 from pathlib import Path
+
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data"
 OUT_MAIN = DATA / "spy_daily.csv"
-OUT_ALT  = DATA / "SPY.csv"
+OUT_ALT = DATA / "SPY.csv"
+
 
 def _read_one(p: Path) -> pd.DataFrame:
     df = pd.read_csv(p, low_memory=False)
@@ -13,7 +15,7 @@ def _read_one(p: Path) -> pd.DataFrame:
     df = df.loc[:, ~df.columns.duplicated(keep="first")]
 
     # choose a date-like column by priority and coverage
-    candidates = [c for c in df.columns if c.lower() in ("date","datetime","timestamp")]
+    candidates = [c for c in df.columns if c.lower() in ("date", "datetime", "timestamp")]
     if not candidates:
         return pd.DataFrame()
     dcol = max(candidates, key=lambda c: df[c].notna().sum())
@@ -47,12 +49,12 @@ def _read_one(p: Path) -> pd.DataFrame:
         return pd.Series(index=df.index, dtype="float64")
 
     out = pd.DataFrame(index=df.index)
-    out["Open"]      = pick("Open","1. open")
-    out["High"]      = pick("High","2. high")
-    out["Low"]       = pick("Low","3. low")
-    out["Close"]     = pick("Close","4. close","Adj Close","adjclose","close")
-    out["Adj Close"] = pick("Adj Close","adjclose","close")
-    out["Volume"]    = pick("Volume","5. volume","volume")
+    out["Open"] = pick("Open", "1. open")
+    out["High"] = pick("High", "2. high")
+    out["Low"] = pick("Low", "3. low")
+    out["Close"] = pick("Close", "4. close", "Adj Close", "adjclose", "close")
+    out["Adj Close"] = pick("Adj Close", "adjclose", "close")
+    out["Volume"] = pick("Volume", "5. volume", "volume")
     for c in out.columns:
         out[c] = pd.to_numeric(out[c], errors="coerce")
     return out
@@ -73,5 +75,5 @@ if base is None or base.empty:
 
 base = base.sort_index()
 base.to_csv(OUT_MAIN, index_label="Date")
-base.to_csv(OUT_ALT,  index_label="Date")
+base.to_csv(OUT_ALT, index_label="Date")
 print(f"Unified → {base.index.min().date()} → {base.index.max().date()} rows: {len(base)}")

@@ -1,15 +1,13 @@
-from utils import load_SPY_data
 # evaluate.py
-#Model Evaluation + Outcome Labeling
-
-
+# Model Evaluation + Outcome Labeling
 import pandas as pd
-from sklearn.metrics import classification_report, accuracy_score
-import json
-from utils import safe_read_csv
+from sklearn.metrics import classification_report
+
+from utils import load_SPY_data
 
 LABELED_LOG = "logs/labeled_predictions.csv"
 METRIC_OUTPUT_CSV = "logs/model_performance.csv"
+
 
 def label_prediction_outcomes():
     print("🔖 Labeling prediction outcomes...")
@@ -20,7 +18,7 @@ def label_prediction_outcomes():
 
         spy["Date"] = pd.to_datetime(spy["Date"])
 
-        #align formats
+        # align formats
         pred["Date"] = pred["Timestamp"].dt.date
         spy["Date"] = spy["Date"].dt.date
 
@@ -29,7 +27,7 @@ def label_prediction_outcomes():
         if "4. close" not in merged.columns:
             raise KeyError("'4. close' column missing from SPY data.")
 
-        #create 'Actual_Event': 1 if tomorrow’s return > 0.5%, else 0
+        # create 'Actual_Event': 1 if tomorrow’s return > 0.5%, else 0
         merged["next_close"] = merged["4. close"].shift(-1)
         merged["return_tomorrow"] = (merged["next_close"] - merged["4. close"]) / merged["4. close"]
         merged["Actual_Event"] = (merged["return_tomorrow"] > 0.005).astype(int)
@@ -54,6 +52,7 @@ def label_prediction_outcomes():
     except Exception as e:
         print(f"[❌] Failed to label outcomes: {e}")
 
+
 def evaluate_predictions():
     print("📊 Evaluating classification metrics...")
     try:
@@ -68,22 +67,22 @@ def evaluate_predictions():
         correct = (df["Prediction"] == df["Actual_Event"]).sum()
         accuracy = correct / total
 
-        print(f"\n📊 Evaluation Report:")
+        print("\n📊 Evaluation Report:")
         print(f"Total evaluated: {total}")
         print(f"Accuracy: {accuracy:.2%}")
 
-        #get full classification metrics
+        # get full classification metrics
         clf_report = classification_report(
             df["Actual_Event"],
             df["Prediction"],
             output_dict=True,
-            zero_division=0  #prevent errors when division by zero
+            zero_division=0,  # prevent errors when division by zero
         )
 
         print("\n🔍 Classification Report:")
         print(pd.DataFrame(clf_report).transpose())
 
-        #save report to CSV
+        # save report to CSV
         pd.DataFrame(clf_report).transpose().to_csv(METRIC_OUTPUT_CSV)
         print(f"\n💾 Saved detailed report to {METRIC_OUTPUT_CSV}")
 
@@ -91,6 +90,7 @@ def evaluate_predictions():
         print("[❌] Labeled predictions file not found. Run labeling first.")
     except Exception as e:
         print(f"[⚠️] Evaluation failed: {e}")
+
 
 if __name__ == "__main__":
     label_prediction_outcomes()

@@ -1,48 +1,47 @@
 # train.py
 from dotenv import load_dotenv
+
 load_dotenv(".env", override=True)
 
+import json
 import os
+import socket
 import warnings
 from datetime import datetime
-import json
-from sklearn.model_selection import GridSearchCV
-from sklearn.model_selection import cross_val_predict
-from sklearn.metrics import f1_score, precision_score, recall_score
 
 import joblib
 import pandas as pd
-
 import xgboost as xgb
-from xgboost import XGBClassifier
-
-from sklearn.feature_selection import SelectKBest, f_classif, VarianceThreshold
-
 from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline
-
-from sklearn.metrics import (
-    accuracy_score, precision_score, recall_score, f1_score,
-    classification_report, confusion_matrix, average_precision_score
-)
-
+from sklearn.feature_selection import SelectKBest, VarianceThreshold, f_classif
 from sklearn.impute import SimpleImputer
+from sklearn.metrics import (
+    accuracy_score,
+    average_precision_score,
+    classification_report,
+    confusion_matrix,
+    f1_score,
+    precision_score,
+    recall_score,
+)
+from sklearn.model_selection import GridSearchCV
+from xgboost import XGBClassifier
 
-import os, socket
 socket.setdefaulttimeout(float(os.getenv("NET_TIMEOUT", 3)))
 
+import numpy as np
+from sklearn.model_selection import BaseCrossValidator
+
+from config import TRAIN_CFG
 from utils import (
-    load_SPY_data,
     add_features,
-    finalize_features,
     add_forward_returns_and_labels,
     compute_sample_weights,
     ensure_no_future_leakage,
+    finalize_features,
+    load_SPY_data,
 )
-from config import TRAIN_CFG
-
-from sklearn.model_selection import BaseCrossValidator
-import numpy as np
 
 # === GLOBAL: forward-looking feature blacklist (never in model inputs) =========
 FWD_BLACKLIST = {"y", "fwd_price", "fwd_ret_raw", "fwd_ret_net", "horizon_forward"}
@@ -51,23 +50,30 @@ FWD_BLACKLIST = {"y", "fwd_price", "fwd_ret_raw", "fwd_ret_net", "horizon_forwar
 if os.getenv("TRAIN_USE_FORWARD_RETURNS", "").strip() in {"1", "true", "True"}:
     TRAIN_CFG["use_forward_returns"] = True
 
+
 # === Public entry points expected by run_all.py ======================================
 def train_model(models=None, fast=False):
     df = load_SPY_data()
     return train_best_xgboost_model(df)
 
+
 def run(models=None, fast=False):
     return train_model(models=models, fast=fast)
+
 
 def main(models=None, fast=False):
     ok = train_model(models=models, fast=fast)
     return 0 if ok else 1
+
+
 # =====================================================================================
 
 # --- tolerate unknown CLI args when invoked like: python -m train --models xgb
 import sys
+
 if len(sys.argv) > 1:
     sys.argv = sys.argv[:1]
+
 
 class PurgedWalkForwardSplit(BaseCrossValidator):
     def __init__(self, n_splits=5, min_train_size=250, test_size=None, embargo=3):
@@ -124,10 +130,10 @@ class PurgedWalkForwardSplit(BaseCrossValidator):
             return self._count_possible_splits(len(X))
         return self.n_splits
 
+
 # Quiet warnings
 warnings.filterwarnings(
-    "ignore",
-    message=r"\[.*\] WARNING: .*Parameters: { \"use_label_encoder\" } are not used\."
+    "ignore", message=r"\[.*\] WARNING: .*Parameters: { \"use_label_encoder\" } are not used\."
 )
 xgb.set_config(verbosity=0)
 
@@ -135,6 +141,7 @@ xgb.set_config(verbosity=0)
 # Output dirs
 os.makedirs("logs", exist_ok=True)
 os.makedirs("models", exist_ok=True)
+
 
 def _build_adaptive_cv(n_rows: int) -> BaseCrossValidator:
     min_train = max(200, int(0.2 * n_rows))
@@ -149,6 +156,7 @@ def _build_adaptive_cv(n_rows: int) -> BaseCrossValidator:
         embargo=embargo,
     )
 
+
 class SingleFoldTimeSplit(BaseCrossValidator):
     def __init__(self, min_train_size=50, test_size=10, embargo=0):
         self.min_train_size = int(min_train_size)
@@ -161,7 +169,7 @@ class SingleFoldTimeSplit(BaseCrossValidator):
             return
         train_end = max(self.min_train_size, n - self.test_size - self.embargo)
         train_idx = np.arange(0, train_end)
-        test_idx  = np.arange(train_end + self.embargo, n)
+        test_idx = np.arange(train_end + self.embargo, n)
         if len(test_idx) > 0 and len(train_idx) >= self.min_train_size:
             yield (train_idx, test_idx)
 
@@ -171,11 +179,13 @@ class SingleFoldTimeSplit(BaseCrossValidator):
         n = len(X)
         return 1 if n >= self.min_train_size + self.test_size else 0
 
+
 def _iter_splits(cv, n_rows):
     if hasattr(cv, "split"):
         yield from cv.split(np.arange(n_rows))
     else:
         yield from cv
+
 
 def _n_splits(cv, n_rows):
     if hasattr(cv, "get_n_splits"):
@@ -187,6 +197,7 @@ def _n_splits(cv, n_rows):
         return sum(1 for _ in _iter_splits(cv, n_rows))
     except Exception:
         return 0
+
 
 def _cv_or_holdout(n_rows, embargo=2, min_train_floor=30):
     cv = _build_adaptive_cv(n_rows)
@@ -202,6 +213,7 @@ def _cv_or_holdout(n_rows, embargo=2, min_train_floor=30):
         return [(tr, te)]
     return []
 
+
 def _min_minority_per_fold(y: pd.Series, cv) -> int:
     min_count = np.inf
     n = len(y)
@@ -212,6 +224,7 @@ def _min_minority_per_fold(y: pd.Series, cv) -> int:
         min_count = min(min_count, int(vc.min()))
     return int(min_count if min_count != np.inf else 0)
 
+
 def _safe_smote_from_fold(y: pd.Series, cv: BaseCrossValidator):
     m = _min_minority_per_fold(y, cv)
     if m < 2:
@@ -221,7 +234,9 @@ def _safe_smote_from_fold(y: pd.Series, cv: BaseCrossValidator):
     print(f"ℹ️ SMOTE enabled with k_neighbors={k} (min minority per fold={m}).")
     return True, SMOTE(random_state=42, k_neighbors=k)
 
+
 from sklearn.base import clone
+
 
 def pick_threshold_from_oof(pipe, X, y, cv, pos_label=1):
     """
@@ -264,12 +279,12 @@ def pick_threshold_from_oof(pipe, X, y, cv, pos_label=1):
     best_t, best_f1, best_prec, best_rec = 0.50, -1.0, 0.0, 0.0
     for t_ in ts:
         y_hat = (p >= t_).astype(int)
-        f1  = f1_score(y_pos, y_hat, zero_division=0)
+        f1 = f1_score(y_pos, y_hat, zero_division=0)
         if f1 > best_f1:
-            best_f1  = f1
-            best_t   = t_
+            best_f1 = f1
+            best_t = t_
             best_prec = precision_score(y_pos, y_hat, zero_division=0)
-            best_rec  = recall_score(y_pos, y_hat, zero_division=0)
+            best_rec = recall_score(y_pos, y_hat, zero_division=0)
 
     return best_t, {
         "precision": float(best_prec),
@@ -280,14 +295,13 @@ def pick_threshold_from_oof(pipe, X, y, cv, pos_label=1):
     }
 
 
-
 def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     print("\n📊 Generating features...")
     df, all_feature_cols = add_features(df)
 
     # Read top signals (optional)
     try:
-        with open("logs/top_signals.txt", "r") as f:
+        with open("logs/top_signals.txt") as f:
             raw_top = [
                 line.strip().split(",")[0]
                 for line in f.readlines()
@@ -310,23 +324,40 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     print(f"🧪 Using top correlated signals only: {feature_cols}")
 
     forced_externals = [
-        "Sector_MedianRet_20", "Sector_Dispersion_20",
-        "Credit_Spread_20", "TNX_Change_20", "DXY_Change_20",
-        "News_Sent_Z20", "Reddit_Sent_Z20",
+        "Sector_MedianRet_20",
+        "Sector_Dispersion_20",
+        "Credit_Spread_20",
+        "TNX_Change_20",
+        "DXY_Change_20",
+        "News_Sent_Z20",
+        "Reddit_Sent_Z20",
     ]
-    forced_available = [c for c in forced_externals if c in df.columns and df[c].notna().sum() >= FORCE_MIN_ROWS]
+    forced_available = [
+        c for c in forced_externals if c in df.columns and df[c].notna().sum() >= FORCE_MIN_ROWS
+    ]
 
     if not feature_cols:
         print("⚠️ No top_signals survived coverage filter — fallback to all_feature_cols + forced.")
-        feature_cols = [c for c in all_feature_cols if c in df.columns and df[c].notna().sum() >= MIN_VALID_ROWS]
+        feature_cols = [
+            c for c in all_feature_cols if c in df.columns and df[c].notna().sum() >= MIN_VALID_ROWS
+        ]
 
     feature_cols = feature_cols + [c for c in forced_available if c not in feature_cols]
 
     if not feature_cols:
         minimal_base = [
-            "Daily_Return", "Return_Lag1", "Return_Lag3", "Return_Lag5",
-            "ZMomentum", "RSI", "MACD", "MACD_Signal", "Stoch_K", "Stoch_D",
-            "Gap_Pct", "Acceleration",
+            "Daily_Return",
+            "Return_Lag1",
+            "Return_Lag3",
+            "Return_Lag5",
+            "ZMomentum",
+            "RSI",
+            "MACD",
+            "MACD_Signal",
+            "Stoch_K",
+            "Stoch_D",
+            "Gap_Pct",
+            "Acceleration",
         ]
         feature_cols = [c for c in minimal_base if c in df.columns and df[c].notna().sum() >= 5]
 
@@ -338,13 +369,16 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
 
     feature_cols = list(dict.fromkeys(feature_cols))
     print(f"➕ Force-available externals: {forced_available}")
-    print(f"🧪 Final candidate features ({len(feature_cols)}): {feature_cols[:20]}{'...' if len(feature_cols) > 20 else ''}")
+    print(
+        f"🧪 Final candidate features ({len(feature_cols)}): {feature_cols[:20]}{'...' if len(feature_cols) > 20 else ''}"
+    )
 
     # CLEAN features BEFORE labeling/splitting
     df = finalize_features(df, feature_cols)
 
     # === Ensure Close exists for labeling ===
     import pandas as _pd
+
     try:
         _raw = load_SPY_data()
         _raw_idxed = _raw["Close"].astype(float)
@@ -366,7 +400,7 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
 
         df = add_forward_returns_and_labels(
             df,
-            price_col=TRAIN_CFG["price_col"],   # "Close"
+            price_col=TRAIN_CFG["price_col"],  # "Close"
             horizon=TRAIN_CFG["horizon"],
             fee_bps=TRAIN_CFG["fee_bps"],
             slippage_bps=TRAIN_CFG["slippage_bps"],
@@ -381,7 +415,7 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             return [c for c in names if c not in FWD_BLACKLIST]
 
         try:
-            with open(INPUT_SCHEMA_FPATH, "r") as f:
+            with open(INPUT_SCHEMA_FPATH) as f:
                 input_cols = _clean_names([line.strip() for line in f if line.strip()])
                 print(f"📄 Loaded prior input schema (cleaned) with {len(input_cols)} cols.")
         except Exception:
@@ -410,8 +444,10 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             raise RuntimeError(f"Leaky features detected in X: {set(X.columns) & FWD_BLACKLIST}")
 
         if len(X) < 2:
-            raise RuntimeError(f"Not enough rows to train after NaN-filtering (have {len(X)}). "
-                               f"Check SPY.csv length and NaNs in selected features.")
+            raise RuntimeError(
+                f"Not enough rows to train after NaN-filtering (have {len(X)}). "
+                f"Check SPY.csv length and NaNs in selected features."
+            )
 
         ensure_no_future_leakage(df, list(X.columns), ["y"], horizon_col="horizon_forward")
 
@@ -483,7 +519,6 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
                 "clf__colsample_bytree": [0.8, 1.0],
             }
 
-
         sample_weight_profit = compute_sample_weights(
             df,
             min_weight=TRAIN_CFG["min_weight"],
@@ -511,12 +546,14 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         best_model = grid_search.best_estimator_
 
         from sklearn.utils.class_weight import compute_sample_weight as _csw
+
         y_pred0 = best_model.predict(X)
         w_miss = 1.0 + 2.0 * (y_pred0 != y).astype(float)
-        w_bal  = _csw(class_weight="balanced", y=y)
+        w_bal = _csw(class_weight="balanced", y=y)
         w_final = w_miss * w_bal * sample_weight_profit
 
         from copy import deepcopy
+
         best_model_wn = deepcopy(best_model)
         if hasattr(best_model_wn, "steps"):
             steps_map = dict(best_model_wn.steps)
@@ -526,6 +563,7 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         best_model_wn.fit(X, y, **{"clf__sample_weight": w_final})
 
         from sklearn.calibration import CalibratedClassifierCV
+
         try:
             cal = CalibratedClassifierCV(best_model_wn, cv=3, method="isotonic")
             cal.fit(X, y)
@@ -538,7 +576,9 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
 
         MODEL_DIR = "models"
         os.makedirs(MODEL_DIR, exist_ok=True)
-        model_path_fwd = os.getenv("MODEL_PATH_FWD", os.path.join(MODEL_DIR, "market_crash_model_fwd.pkl"))
+        model_path_fwd = os.getenv(
+            "MODEL_PATH_FWD", os.path.join(MODEL_DIR, "market_crash_model_fwd.pkl")
+        )
         joblib.dump(best_model, model_path_fwd)
         print(f"💾 [FWD] Model saved to {model_path_fwd}")
 
@@ -546,8 +586,14 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         label_map = {int(l): int(l) for l in label_values}
         inv_label_map = {int(l): int(l) for l in label_values}
         with open("models/label_map_fwd.json", "w") as f:
-            json.dump({"label_map": {str(k): int(v) for k, v in label_map.items()},
-                       "inv_label_map": {str(k): int(v) for k, v in inv_label_map.items()}}, f, indent=2)
+            json.dump(
+                {
+                    "label_map": {str(k): int(v) for k, v in label_map.items()},
+                    "inv_label_map": {str(k): int(v) for k, v in inv_label_map.items()},
+                },
+                f,
+                indent=2,
+            )
         print("💾 [FWD] Label maps → models/label_map_fwd.json")
 
         try:
@@ -556,7 +602,13 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             t_star, metr = pick_threshold_from_oof(best_pipe_for_oof, X, y, tscv_local, pos_label=1)
         except Exception as e:
             print(f"⚠️ [FWD] OOF threshold selection failed ({e}) — falling back to 0.50.")
-            t_star, metr = 0.50, {"precision": 0.0, "recall": 0.0, "f1": 0.0, "proba_col_index": 1, "pos_enc": 1}
+            t_star, metr = 0.50, {
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1": 0.0,
+                "proba_col_index": 1,
+                "pos_enc": 1,
+            }
 
         thr_payload = {
             "pos_orig": 1,
@@ -576,9 +628,10 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             f"R_oof={thr_payload['recall_oof']:.3f}, F1_oof={thr_payload['f1_oof']:.3f})"
         )
 
-
         print("✅ [FWD] Forward-returns training completed.")
-        print("ℹ️ To use this model in predict.py, set MODEL_PATH to 'models/market_crash_model_fwd.pkl' and load thresholds from 'models/thresholds_fwd.json'.")
+        print(
+            "ℹ️ To use this model in predict.py, set MODEL_PATH to 'models/market_crash_model_fwd.pkl' and load thresholds from 'models/thresholds_fwd.json'."
+        )
         return True
 
     # -------- Triple-barrier branch (unchanged) --------
@@ -590,7 +643,11 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
 
     df = label_events_triple_barrier(df, vol_col="ATR_14", pt_mult=1.0, sl_mult=1.0, t_max=10)
 
-    print((df if "Date" in df.columns else df.reset_index().rename(columns={"index":"Date"}))[["Date","Close","Event"]].tail(15))
+    print(
+        (df if "Date" in df.columns else df.reset_index().rename(columns={"index": "Date"}))[
+            ["Date", "Close", "Event"]
+        ].tail(15)
+    )
     print("\n📊 Distribution of Event labels (incl. NaNs):")
     print(df["Event"].value_counts(dropna=False))
     print("\n📊 Number of unique Events:")
@@ -611,8 +668,10 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         print("⚠️ Triple-barrier produced 0 usable rows — falling back to forward-returns.")
         os.environ["TRAIN_USE_FORWARD_RETURNS"] = "1"
         from config import TRAIN_CFG as _TC
+
         _TC["use_forward_returns"] = True
         from train import train_best_xgboost_model as _tbxm
+
         return _tbxm(load_SPY_data())
 
     print(f"\n🧹 Rows remaining after dropna: {len(df)}")
@@ -623,10 +682,12 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     df = df[df["Event"] != 0].copy()
 
     try:
-        with open("models/input_features.txt", "r") as f:
+        with open("models/input_features.txt") as f:
             input_cols = [line.strip() for line in f if line.strip()]
     except Exception as e:
-        print(f"⚠️ models/input_features.txt missing or unreadable ({e}); using available columns as-is.")
+        print(
+            f"⚠️ models/input_features.txt missing or unreadable ({e}); using available columns as-is."
+        )
         input_cols = [c for c in df.columns if c not in ("Event",)]
 
     for c in input_cols:
@@ -637,7 +698,9 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     y_orig = df["Event"]
 
     os.makedirs("models", exist_ok=True)
-    pd.Series(list(X.columns), dtype=str).to_csv("models/input_features.txt", index=False, header=False)
+    pd.Series(list(X.columns), dtype=str).to_csv(
+        "models/input_features.txt", index=False, header=False
+    )
     print("💾 Input feature columns saved to models/input_features.txt")
 
     label_values = sorted(y_orig.unique())
@@ -655,8 +718,14 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     print(y.value_counts())
 
     with open("models/label_map.json", "w") as f:
-        json.dump({"label_map": {str(k): int(v) for k, v in label_map.items()},
-                   "inv_label_map": {str(k): int(v) for k, v in inv_label_map.items()}}, f, indent=2)
+        json.dump(
+            {
+                "label_map": {str(k): int(v) for k, v in label_map.items()},
+                "inv_label_map": {str(k): int(v) for k, v in inv_label_map.items()},
+            },
+            f,
+            indent=2,
+        )
     print("💾 Saved label maps to models/label_map.json")
 
     MODEL_DIR = "models"
@@ -692,7 +761,7 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         use_smote, smote_step = (False, "passthrough")
 
     n_classes = int(y.nunique())
-    is_binary = (n_classes == 2)
+    is_binary = n_classes == 2
 
     xgb_common = dict(
         random_state=42,
@@ -765,12 +834,14 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     best_model = grid_search.best_estimator_
 
     from sklearn.utils.class_weight import compute_sample_weight
+
     y_pred0 = best_model.predict(X)
     w_miss = 1.0 + 2.0 * (y_pred0 != y).astype(float)
-    w_bal  = compute_sample_weight(class_weight="balanced", y=y)
+    w_bal = compute_sample_weight(class_weight="balanced", y=y)
     w = w_miss * w_bal
 
     from copy import deepcopy
+
     best_model_wn = deepcopy(best_model)
     if hasattr(best_model_wn, "steps"):
         steps = dict(best_model_wn.steps)
@@ -781,6 +852,7 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     pipe_for_introspection = best_model_wn
 
     from sklearn.calibration import CalibratedClassifierCV
+
     try:
         cal = CalibratedClassifierCV(best_model_wn, cv=3, method="isotonic")
         cal.fit(X, y)
@@ -794,21 +866,25 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
 
     # Importance export (shap or permutation)
     try:
-        import shap
         import numpy as _np
+        import shap
 
         shap_est = None
         shap_X = None
 
         base_est = getattr(best_model, "base_estimator", None) or best_model
         if hasattr(base_est, "named_steps"):
-            kb  = base_est.named_steps.get("kbest", None)
+            kb = base_est.named_steps.get("kbest", None)
             clf = base_est.named_steps.get("clf", None)
             if kb is not None and hasattr(kb, "transform"):
                 shap_X = kb.transform(X)
                 try:
                     mask = kb.get_support()
-                    feat_names = list(np.array(list(X.columns))[mask]) if hasattr(mask, "__len__") and len(mask) == X.shape[1] else list(X.columns)
+                    feat_names = (
+                        list(np.array(list(X.columns))[mask])
+                        if hasattr(mask, "__len__") and len(mask) == X.shape[1]
+                        else list(X.columns)
+                    )
                 except Exception:
                     feat_names = list(X.columns)
             else:
@@ -837,7 +913,9 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             shap_abs = _np.abs(shap_vals)
 
         mean_abs = shap_abs.mean(axis=0)
-        shap_df = pd.DataFrame({"feature": feat_names, "mean_abs_shap": mean_abs}).sort_values("mean_abs_shap", ascending=False)
+        shap_df = pd.DataFrame({"feature": feat_names, "mean_abs_shap": mean_abs}).sort_values(
+            "mean_abs_shap", ascending=False
+        )
         shap_df.to_csv("logs/shap_importance.csv", index=False)
         print("💾 Wrote SHAP importances → logs/shap_importance.csv")
 
@@ -845,9 +923,12 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         print("ℹ️ SHAP not installed — falling back to permutation importance.")
         try:
             from sklearn.inspection import permutation_importance
+
             pi = permutation_importance(best_model, X, y, n_repeats=5, random_state=42, n_jobs=-1)
             mean_abs = np.abs(pi.importances_mean)
-            shap_df = pd.DataFrame({"feature": list(X.columns), "mean_abs_shap": mean_abs}).sort_values("mean_abs_shap", ascending=False)
+            shap_df = pd.DataFrame(
+                {"feature": list(X.columns), "mean_abs_shap": mean_abs}
+            ).sort_values("mean_abs_shap", ascending=False)
             shap_df.to_csv("logs/shap_importance.csv", index=False)
             print("💾 Wrote permutation importance → logs/shap_importance.csv")
         except Exception as e2:
@@ -857,7 +938,7 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
 
     selected_cols = list(X.columns)
     try:
-        inspector = pipe_for_introspection if 'pipe_for_introspection' in locals() else None
+        inspector = pipe_for_introspection if "pipe_for_introspection" in locals() else None
         if inspector is not None and hasattr(inspector, "named_steps"):
             kb = inspector.named_steps.get("kbest", None)
             if kb is not None and hasattr(kb, "get_support"):
@@ -870,8 +951,12 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         print(f"⚠️ Could not extract KBest-selected columns ({e}); using all input columns.")
 
     os.makedirs("models", exist_ok=True)
-    pd.Series(selected_cols, dtype=str).to_csv("models/selected_features.txt", index=False, header=False)
-    print(f"💾 Selected feature columns saved to models/selected_features.txt ({len(selected_cols)} cols)")
+    pd.Series(selected_cols, dtype=str).to_csv(
+        "models/selected_features.txt", index=False, header=False
+    )
+    print(
+        f"💾 Selected feature columns saved to models/selected_features.txt ({len(selected_cols)} cols)"
+    )
 
     y_pred = best_model.predict(X)
     print("\n📈 Training Evaluation Metrics (encoded labels 0..K-1):")
@@ -890,8 +975,16 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     print(y_pred_orig.value_counts())
 
     print("\n🧾 Classification report (original labels):")
-    print(classification_report(y_true_orig, y_pred_orig, labels=cls_order_orig,
-                                target_names=target_names, zero_division=0, digits=4))
+    print(
+        classification_report(
+            y_true_orig,
+            y_pred_orig,
+            labels=cls_order_orig,
+            target_names=target_names,
+            zero_division=0,
+            digits=4,
+        )
+    )
 
     print("\n🧩 Confusion matrix (rows=true, cols=pred) — original labels order:")
     print(confusion_matrix(y_true_orig, y_pred_orig, labels=cls_order_orig))
@@ -910,28 +1003,37 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         p_pos = proba[:, col_idx]
         y_pos = (y == pos_enc).astype(int)
         ts = np.linspace(0.05, 0.95, 19)
-        best_t = 0.50; best_f1 = -1.0; best_prec = 0.0; best_rec = 0.0
+        best_t = 0.50
+        best_f1 = -1.0
+        best_prec = 0.0
+        best_rec = 0.0
         for t_ in ts:
             y_hat = (p_pos >= t_).astype(int)
-            f1  = f1_score(y_pos, y_hat, zero_division=0)
+            f1 = f1_score(y_pos, y_hat, zero_division=0)
             if f1 > best_f1:
-                best_f1  = f1
-                best_t   = t_
+                best_f1 = f1
+                best_t = t_
                 best_prec = precision_score(y_pos, y_hat, zero_division=0)
-                best_rec  = recall_score(y_pos, y_hat, zero_division=0)
+                best_rec = recall_score(y_pos, y_hat, zero_division=0)
 
         with open("models/thresholds.json", "w") as f:
-            json.dump({
-                "pos_orig": int(pos_orig),
-                "pos_enc": int(pos_enc),
-                "proba_col_index": int(col_idx),
-                "threshold": float(best_t),
-                "metric": "f1_crash_only",
-                "precision_on_train": float(best_prec),
-                "recall_on_train": float(best_rec),
-                "f1_on_train": float(best_f1),
-            }, f, indent=2)
-        print(f"💾 Saved decision threshold → models/thresholds.json: t={best_t:.3f} (Crash: P={best_prec:.3f}, R={best_rec:.3f}, F1={best_f1:.3f})")
+            json.dump(
+                {
+                    "pos_orig": int(pos_orig),
+                    "pos_enc": int(pos_enc),
+                    "proba_col_index": int(col_idx),
+                    "threshold": float(best_t),
+                    "metric": "f1_crash_only",
+                    "precision_on_train": float(best_prec),
+                    "recall_on_train": float(best_rec),
+                    "f1_on_train": float(best_f1),
+                },
+                f,
+                indent=2,
+            )
+        print(
+            f"💾 Saved decision threshold → models/thresholds.json: t={best_t:.3f} (Crash: P={best_prec:.3f}, R={best_rec:.3f}, F1={best_f1:.3f})"
+        )
     except Exception as e:
         print(f"⚠️ AP (per-class) skipped: {e}")
 
@@ -940,6 +1042,7 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     print("📊 Grid search results saved to logs/gridsearch_xgb_results.csv")
     return True
 
+
 if __name__ == "__main__":
     print("📥 Loading SPY data...")
     df = load_SPY_data()
@@ -947,9 +1050,11 @@ if __name__ == "__main__":
         success = train_best_xgboost_model(df)
     except Exception as e:
         import traceback
+
         traceback.print_exc()
         raise SystemExit(f"[train] hard failure: {e}")
 
     if success:
         from predict import run_predictions
+
         run_predictions()
