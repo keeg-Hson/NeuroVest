@@ -28,7 +28,7 @@ exclude = '''
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-extend-exclude = ["data", "data_cache", "models", "logs", "outputs"]
+extend-exclude = ["data", "data_cache", "models", "logs", "outputs", "backups"]
 
 [tool.ruff.lint]
 # Pragmatic ruleset. TEMP: ignore E402 in a few legacy files.
@@ -56,3 +56,4 @@ line-ending = "lf"
 addopts = "-q"
 testpaths = ["tests"]
 pythonpath = ["."]
+"utils.py" = ["E402"]
