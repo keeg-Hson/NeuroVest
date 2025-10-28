@@ -1,3 +1,6 @@
+cp pyproject.toml pyproject.toml.bak
+
+cat > pyproject.toml <<'EOF'
 [project]
 name = "neurovest"
 version = "0.1.0"
@@ -31,38 +34,12 @@ target-version = "py311"
 extend-exclude = ["data", "data_cache", "models", "logs", "outputs"]
 
 [tool.ruff.lint]
-# Start pragmatic: errors, formatting issues, import order, bugbears, modernize, and a bit of simplification.
+# Start pragmatic: errors, formatting issues, import order, bugbears, modernize, simplification.
 select = ["E", "F", "I", "B", "UP", "SIM"]
-# Ignore common nits you likely don’t care about yet.
 ignore = [
   "E501",  # line length (Black handles wrapping pragmatically)
 ]
-
-[tool.ruff.lint.isort]
-known-first-party = ["neurovest"]
-combine-as-imports = true
-
-[tool.ruff.format]
-# Let Ruff's formatter mirror Black where possible (we still use Black to be explicit)
-quote-style = "preserve"
-indent-style = "space"
-line-ending = "lf"
-
-# --- Pytest (if/when you add tests) ---
-[tool.pytest.ini_options]
-addopts = "-q"
-testpaths = ["tests"]
-pythonpath = ["."]
-
-
-#nyehh
-[tool.ruff]
-target-version = "py311"
-
-[tool.ruff.lint]
-select = ["E","F","B","UP","SIM"]
-ignore = []
-# Temporarily silence import-ordering for specific legacy files:
+# TEMPORARY: silence E402 on legacy files. Remove after refactors.
 per-file-ignores = {
   "main.py" = ["E402"],
   "train.py" = ["E402"],
@@ -70,3 +47,18 @@ per-file-ignores = {
   "backtest.py" = ["E402"],
 }
 
+[tool.ruff.lint.isort]
+known-first-party = ["neurovest"]
+combine-as-imports = true
+
+[tool.ruff.format]
+quote-style = "preserve"
+indent-style = "space"
+line-ending = "lf"
+
+# --- Pytest ---
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+pythonpath = ["."]
+EOF
