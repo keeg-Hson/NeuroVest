@@ -489,7 +489,7 @@ def _print_pretty(report: Report) -> None:
         for d in r.details[:8]:
             print(f"   - {d}")
         if len(r.details) > 8:
-            print(f"   … ({len(r.details)-8} more)")
+            print(f"   … ({len(r.details) - 8} more)")
         if r.citations:
             # unique, compact
             cites = list(dict.fromkeys(r.citations))[:6]

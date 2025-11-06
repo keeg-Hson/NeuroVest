@@ -716,7 +716,7 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     spw = max(1.0, neg / max(1, pos))
     print(f"🔧 scale_pos_weight for XGB: {spw:.2f}")
 
-    print(f"🔤 Label encoding map: {label_map} (train on 0..{y.nunique()-1})")
+    print(f"🔤 Label encoding map: {label_map} (train on 0..{y.nunique() - 1})")
     print("\n📊 Encoded class distribution (0..K-1):")
     print(y.value_counts())
 
