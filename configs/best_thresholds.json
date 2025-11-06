@@ -3,9 +3,9 @@
   "crash_thresh": null,
   "spike_thresh": null,
   "meta": {
-    "objective": "avg_dollar_return",
-    "min_trades": 20,
-    "window_days": 3650,
-    "timestamp": "2025-10-27T14:38:55"
+    "objective": "profit_factor",
+    "min_trades": 30,
+    "window_days": null,
+    "timestamp": "2025-11-05T23:59:56"
   }
 }

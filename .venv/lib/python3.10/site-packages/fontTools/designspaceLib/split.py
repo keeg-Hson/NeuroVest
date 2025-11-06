@@ -33,9 +33,7 @@ from fontTools.designspaceLib.types import (
 
 LOGGER = logging.getLogger(__name__)
 
-MakeInstanceFilenameCallable = Callable[
-    [DesignSpaceDocument, InstanceDescriptor, StatNames], str
-]
+MakeInstanceFilenameCallable = Callable[[DesignSpaceDocument, InstanceDescriptor, StatNames], str]
 
 
 def defaultMakeInstanceFilename(
@@ -104,8 +102,7 @@ def splitInterpolable(
     valueCombinations = itertools.product(*[axis.values for axis in discreteAxes])
     for values in valueCombinations:
         discreteUserLocation = {
-            discreteAxis.name: value
-            for discreteAxis, value in zip(discreteAxes, values)
+            discreteAxis.name: value for discreteAxis, value in zip(discreteAxes, values)
         }
         subDoc = _extractSubSpace(
             doc,
@@ -283,9 +280,7 @@ def _extractSubSpace(
                 path=source.path,
                 font=source.font,
                 name=source.name,
-                designLocation=_filterLocation(
-                    userRegion, maybeExpandDesignLocation(source)
-                ),
+                designLocation=_filterLocation(userRegion, maybeExpandDesignLocation(source)),
                 layerName=source.layerName,
                 familyName=source.familyName,
                 styleName=source.styleName,
@@ -331,31 +326,23 @@ def _extractSubSpace(
             styleName = instance.styleName or statNames.styleNames.get("en")
             subDoc.addInstance(
                 InstanceDescriptor(
-                    filename=instance.filename
-                    or makeInstanceFilename(doc, instance, statNames),
+                    filename=instance.filename or makeInstanceFilename(doc, instance, statNames),
                     path=instance.path,
                     font=instance.font,
                     name=instance.name or f"{familyName} {styleName}",
                     userLocation={} if expandLocations else instance.userLocation,
-                    designLocation=_filterLocation(
-                        userRegion, maybeExpandDesignLocation(instance)
-                    ),
+                    designLocation=_filterLocation(userRegion, maybeExpandDesignLocation(instance)),
                     familyName=familyName,
                     styleName=styleName,
-                    postScriptFontName=instance.postScriptFontName
-                    or statNames.postScriptFontName,
+                    postScriptFontName=instance.postScriptFontName or statNames.postScriptFontName,
                     styleMapFamilyName=instance.styleMapFamilyName
                     or statNames.styleMapFamilyNames.get("en"),
-                    styleMapStyleName=instance.styleMapStyleName
-                    or statNames.styleMapStyleName,
-                    localisedFamilyName=instance.localisedFamilyName
-                    or statNames.familyNames,
-                    localisedStyleName=instance.localisedStyleName
-                    or statNames.styleNames,
+                    styleMapStyleName=instance.styleMapStyleName or statNames.styleMapStyleName,
+                    localisedFamilyName=instance.localisedFamilyName or statNames.familyNames,
+                    localisedStyleName=instance.localisedStyleName or statNames.styleNames,
                     localisedStyleMapFamilyName=instance.localisedStyleMapFamilyName
                     or statNames.styleMapFamilyNames,
-                    localisedStyleMapStyleName=instance.localisedStyleMapStyleName
-                    or {},
+                    localisedStyleMapStyleName=instance.localisedStyleMapStyleName or {},
                     lib=instance.lib,
                 )
             )
@@ -367,9 +354,7 @@ def _extractSubSpace(
                     font=instance.font,
                     name=instance.name,
                     userLocation={} if expandLocations else instance.userLocation,
-                    designLocation=_filterLocation(
-                        userRegion, maybeExpandDesignLocation(instance)
-                    ),
+                    designLocation=_filterLocation(userRegion, maybeExpandDesignLocation(instance)),
                     familyName=instance.familyName,
                     styleName=instance.styleName,
                     postScriptFontName=instance.postScriptFontName,
@@ -419,9 +404,7 @@ def _subsetRulesBasedOnConditions(
     #       - (C-AR-none) else, whole conditionset can be discarded
     newRules: List[RuleDescriptor] = []
     for rule in rules:
-        newRule: RuleDescriptor = RuleDescriptor(
-            name=rule.name, conditionSets=[], subs=rule.subs
-        )
+        newRule: RuleDescriptor = RuleDescriptor(name=rule.name, conditionSets=[], subs=rule.subs)
         for conditionset in rule.conditionSets:
             cs = _conditionSetFrom(conditionset)
             newConditionset: List[Dict[str, Any]] = []

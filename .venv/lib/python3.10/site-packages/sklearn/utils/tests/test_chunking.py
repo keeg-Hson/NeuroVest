@@ -53,9 +53,7 @@ def test_get_chunk_n_rows_warns():
     working_memory = 1
     expected = 1
 
-    warn_msg = (
-        "Could not adhere to working_memory config. Currently 1MiB, 2MiB required."
-    )
+    warn_msg = "Could not adhere to working_memory config. Currently 1MiB, 2MiB required."
     with pytest.warns(UserWarning, match=warn_msg):
         actual = get_chunk_n_rows(
             row_bytes=row_bytes,

@@ -29,9 +29,7 @@ from sklearn.utils._testing import _convert_container
 @pytest.mark.parametrize("n_jobs", [1, 2])
 @pytest.mark.parametrize("max_samples", [0.5, 1.0])
 @pytest.mark.parametrize("sample_weight", [None, "ones"])
-def test_permutation_importance_correlated_feature_regression(
-    n_jobs, max_samples, sample_weight
-):
+def test_permutation_importance_correlated_feature_regression(n_jobs, max_samples, sample_weight):
     # Make sure that feature highly correlated to the target have a higher
     # importance
     rng = np.random.RandomState(42)
@@ -66,9 +64,7 @@ def test_permutation_importance_correlated_feature_regression(
 
 @pytest.mark.parametrize("n_jobs", [1, 2])
 @pytest.mark.parametrize("max_samples", [0.5, 1.0])
-def test_permutation_importance_correlated_feature_regression_pandas(
-    n_jobs, max_samples
-):
+def test_permutation_importance_correlated_feature_regression_pandas(n_jobs, max_samples):
     pd = pytest.importorskip("pandas")
 
     # Make sure that feature highly correlated to the target have a higher
@@ -138,9 +134,7 @@ def test_robustness_to_high_cardinality_noisy_feature(n_jobs, max_samples, seed=
     # Split the dataset to be able to evaluate on a held-out test set. The
     # Test size should be large enough for importance measurements to be
     # stable:
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.5, random_state=rng
-    )
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.5, random_state=rng)
     clf = RandomForestClassifier(n_estimators=5, random_state=rng)
     clf.fit(X_train, y_train)
 
@@ -249,12 +243,8 @@ def test_permutation_importance_linear_regresssion():
 
     # this relationship can be computed in closed form
     expected_importances = 2 * lr.coef_**2
-    results = permutation_importance(
-        lr, X, y, n_repeats=50, scoring="neg_mean_squared_error"
-    )
-    assert_allclose(
-        expected_importances, results.importances_mean, rtol=1e-1, atol=1e-6
-    )
+    results = permutation_importance(lr, X, y, n_repeats=50, scoring="neg_mean_squared_error")
+    assert_allclose(expected_importances, results.importances_mean, rtol=1e-1, atol=1e-6)
 
 
 @pytest.mark.parametrize("max_samples", [500, 1.0])
@@ -281,21 +271,15 @@ def test_permutation_importance_equivalence_sequential_parallel(max_samples):
     # ('loky' or 'multiprocessing') depending on the joblib version:
 
     # process-based parallelism (by default):
-    importance_processes = permutation_importance(
-        lr, X, y, n_repeats=5, random_state=0, n_jobs=2
-    )
-    assert_allclose(
-        importance_processes["importances"], importance_sequential["importances"]
-    )
+    importance_processes = permutation_importance(lr, X, y, n_repeats=5, random_state=0, n_jobs=2)
+    assert_allclose(importance_processes["importances"], importance_sequential["importances"])
 
     # thread-based parallelism:
     with parallel_backend("threading"):
         importance_threading = permutation_importance(
             lr, X, y, n_repeats=5, random_state=0, n_jobs=2
         )
-    assert_allclose(
-        importance_threading["importances"], importance_sequential["importances"]
-    )
+    assert_allclose(importance_threading["importances"], importance_sequential["importances"])
 
 
 @pytest.mark.parametrize("n_jobs", [None, 1, 2])
@@ -363,9 +347,7 @@ def test_permutation_importance_equivalence_array_dataframe(n_jobs, max_samples)
         n_jobs=n_jobs,
         max_samples=max_samples,
     )
-    assert_allclose(
-        importance_array["importances"], importance_dataframe["importances"]
-    )
+    assert_allclose(importance_array["importances"], importance_dataframe["importances"])
 
 
 @pytest.mark.parametrize("input_type", ["array", "dataframe"])
@@ -373,9 +355,7 @@ def test_permutation_importance_large_memmaped_data(input_type):
     # Smoke, non-regression test for:
     # https://github.com/scikit-learn/scikit-learn/issues/15810
     n_samples, n_features = int(5e4), 4
-    X, y = make_classification(
-        n_samples=n_samples, n_features=n_features, random_state=0
-    )
+    X, y = make_classification(n_samples=n_samples, n_features=n_features, random_state=0)
     assert X.nbytes > 1e6  # trigger joblib memmaping
 
     X = _convert_container(X, input_type)

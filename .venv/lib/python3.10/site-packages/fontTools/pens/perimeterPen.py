@@ -31,9 +31,7 @@ class PerimeterPen(BasePen):
             self._addCubicQuadrature if tolerance >= 0.0015 else self._addCubicRecursive
         )
         self._addQuadratic = (
-            self._addQuadraticQuadrature
-            if tolerance >= 0.00075
-            else self._addQuadraticExact
+            self._addQuadraticQuadrature if tolerance >= 0.00075 else self._addQuadraticExact
         )
 
     def _moveTo(self, p0):

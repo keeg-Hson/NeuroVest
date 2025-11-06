@@ -31,9 +31,7 @@ X_toy = np.arange(9).reshape((3, 3))
 def test_polars_indexing():
     """Check _safe_indexing for polars as expected."""
     pl = pytest.importorskip("polars", minversion="0.18.2")
-    df = pl.DataFrame(
-        {"a": [1, 2, 3, 4], "b": [4, 5, 6, 8], "c": [1, 4, 1, 10]}, orient="row"
-    )
+    df = pl.DataFrame({"a": [1, 2, 3, 4], "b": [4, 5, 6, 8], "c": [1, 4, 1, 10]}, orient="row")
 
     from polars.testing import assert_frame_equal
 
@@ -127,9 +125,7 @@ def test_determine_key_type_array_api(array_namespace, device, dtype_name):
                 _determine_key_type(complex_array_key)
 
 
-@pytest.mark.parametrize(
-    "array_type", ["list", "array", "sparse", "dataframe", "polars"]
-)
+@pytest.mark.parametrize("array_type", ["list", "array", "sparse", "dataframe", "polars"])
 @pytest.mark.parametrize("indices_type", ["list", "tuple", "array", "series", "slice"])
 def test_safe_indexing_2d_container_axis_0(array_type, indices_type):
     indices = [1, 2]
@@ -138,9 +134,7 @@ def test_safe_indexing_2d_container_axis_0(array_type, indices_type):
     array = _convert_container([[1, 2, 3], [4, 5, 6], [7, 8, 9]], array_type)
     indices = _convert_container(indices, indices_type)
     subset = _safe_indexing(array, indices, axis=0)
-    assert_allclose_dense_sparse(
-        subset, _convert_container([[4, 5, 6], [7, 8, 9]], array_type)
-    )
+    assert_allclose_dense_sparse(subset, _convert_container([[4, 5, 6], [7, 8, 9]], array_type))
 
 
 @pytest.mark.parametrize("array_type", ["list", "array", "series", "polars_series"])
@@ -166,15 +160,11 @@ def test_safe_indexing_2d_container_axis_1(array_type, indices_type, indices):
         indices_converted[1] += 1
 
     columns_name = ["col_0", "col_1", "col_2"]
-    array = _convert_container(
-        [[1, 2, 3], [4, 5, 6], [7, 8, 9]], array_type, columns_name
-    )
+    array = _convert_container([[1, 2, 3], [4, 5, 6], [7, 8, 9]], array_type, columns_name)
     indices_converted = _convert_container(indices_converted, indices_type)
 
     if isinstance(indices[0], str) and array_type not in ("dataframe", "polars"):
-        err_msg = (
-            "Specifying the columns using strings is only supported for dataframes"
-        )
+        err_msg = "Specifying the columns using strings is only supported for dataframes"
         with pytest.raises(ValueError, match=err_msg):
             _safe_indexing(array, indices_converted, axis=1)
     else:
@@ -224,16 +214,12 @@ def test_safe_indexing_1d_container_mask(array_type, indices_type):
 )
 def test_safe_indexing_2d_mask(array_type, indices_type, axis, expected_subset):
     columns_name = ["col_0", "col_1", "col_2"]
-    array = _convert_container(
-        [[1, 2, 3], [4, 5, 6], [7, 8, 9]], array_type, columns_name
-    )
+    array = _convert_container([[1, 2, 3], [4, 5, 6], [7, 8, 9]], array_type, columns_name)
     indices = [False, True, True]
     indices = _convert_container(indices, indices_type)
 
     subset = _safe_indexing(array, indices, axis=axis)
-    assert_allclose_dense_sparse(
-        subset, _convert_container(expected_subset, array_type)
-    )
+    assert_allclose_dense_sparse(subset, _convert_container(expected_subset, array_type))
 
 
 @pytest.mark.parametrize(
@@ -274,14 +260,10 @@ def test_safe_indexing_1d_scalar(array_type):
 @pytest.mark.parametrize("indices", [2, "col_2"])
 def test_safe_indexing_2d_scalar_axis_1(array_type, expected_output_type, indices):
     columns_name = ["col_0", "col_1", "col_2"]
-    array = _convert_container(
-        [[1, 2, 3], [4, 5, 6], [7, 8, 9]], array_type, columns_name
-    )
+    array = _convert_container([[1, 2, 3], [4, 5, 6], [7, 8, 9]], array_type, columns_name)
 
     if isinstance(indices, str) and array_type not in ("dataframe", "polars"):
-        err_msg = (
-            "Specifying the columns using strings is only supported for dataframes"
-        )
+        err_msg = "Specifying the columns using strings is only supported for dataframes"
         with pytest.raises(ValueError, match=err_msg):
             _safe_indexing(array, indices, axis=1)
     else:
@@ -388,9 +370,7 @@ def test_safe_assign(array_type):
     _safe_assign(X, values, row_indexer=row_indexer)
 
     assigned_portion = _safe_indexing(X, row_indexer, axis=0)
-    assert_allclose_dense_sparse(
-        assigned_portion, _convert_container(values, array_type)
-    )
+    assert_allclose_dense_sparse(assigned_portion, _convert_container(values, array_type))
 
     column_indexer = [1, 2]
     values = rng.randn(X_array.shape[0], len(column_indexer))
@@ -398,9 +378,7 @@ def test_safe_assign(array_type):
     _safe_assign(X, values, column_indexer=column_indexer)
 
     assigned_portion = _safe_indexing(X, column_indexer, axis=1)
-    assert_allclose_dense_sparse(
-        assigned_portion, _convert_container(values, array_type)
-    )
+    assert_allclose_dense_sparse(assigned_portion, _convert_container(values, array_type))
 
     row_indexer, column_indexer = None, None
     values = rng.randn(*X.shape)
@@ -518,20 +496,14 @@ def test_resample_stratified_replace():
     X = rng.normal(size=(n_samples, 1))
     y = rng.randint(0, 2, size=n_samples)
 
-    X_replace, _ = resample(
-        X, y, replace=True, n_samples=50, random_state=rng, stratify=y
-    )
-    X_no_replace, _ = resample(
-        X, y, replace=False, n_samples=50, random_state=rng, stratify=y
-    )
+    X_replace, _ = resample(X, y, replace=True, n_samples=50, random_state=rng, stratify=y)
+    X_no_replace, _ = resample(X, y, replace=False, n_samples=50, random_state=rng, stratify=y)
     assert np.unique(X_replace).shape[0] < 50
     assert np.unique(X_no_replace).shape[0] == 50
 
     # make sure n_samples can be greater than X.shape[0] if we sample with
     # replacement
-    X_replace, _ = resample(
-        X, y, replace=True, n_samples=1000, random_state=rng, stratify=y
-    )
+    X_replace, _ = resample(X, y, replace=True, n_samples=1000, random_state=rng, stratify=y)
     assert X_replace.shape[0] == 1000
     assert np.unique(X_replace).shape[0] == 100
 

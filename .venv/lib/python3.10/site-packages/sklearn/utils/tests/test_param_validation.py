@@ -406,10 +406,7 @@ def test_generate_valid_param(constraint):
         ("array-like", [[1, 2], [3, 4]]),
         ("array-like", np.array([[1, 2], [3, 4]])),
         ("sparse matrix", csr_matrix([[1, 2], [3, 4]])),
-        *[
-            ("sparse matrix", container([[1, 2], [3, 4]]))
-            for container in CSR_CONTAINERS
-        ],
+        *[("sparse matrix", container([[1, 2], [3, 4]])) for container in CSR_CONTAINERS],
         ("random_state", 0),
         ("random_state", np.random.RandomState(0)),
         ("random_state", None),
@@ -470,35 +467,23 @@ def test_make_constraint_unknown():
 
 def test_validate_params():
     """Check that validate_params works no matter how the arguments are passed"""
-    with pytest.raises(
-        InvalidParameterError, match="The 'a' parameter of _func must be"
-    ):
+    with pytest.raises(InvalidParameterError, match="The 'a' parameter of _func must be"):
         _func("wrong", c=1)
 
-    with pytest.raises(
-        InvalidParameterError, match="The 'b' parameter of _func must be"
-    ):
+    with pytest.raises(InvalidParameterError, match="The 'b' parameter of _func must be"):
         _func(*[1, "wrong"], c=1)
 
-    with pytest.raises(
-        InvalidParameterError, match="The 'c' parameter of _func must be"
-    ):
+    with pytest.raises(InvalidParameterError, match="The 'c' parameter of _func must be"):
         _func(1, **{"c": "wrong"})
 
-    with pytest.raises(
-        InvalidParameterError, match="The 'd' parameter of _func must be"
-    ):
+    with pytest.raises(InvalidParameterError, match="The 'd' parameter of _func must be"):
         _func(1, c=1, d="wrong")
 
     # check in the presence of extra positional and keyword args
-    with pytest.raises(
-        InvalidParameterError, match="The 'b' parameter of _func must be"
-    ):
+    with pytest.raises(InvalidParameterError, match="The 'b' parameter of _func must be"):
         _func(0, *["wrong", 2, 3], c=4, **{"e": 5})
 
-    with pytest.raises(
-        InvalidParameterError, match="The 'c' parameter of _func must be"
-    ):
+    with pytest.raises(InvalidParameterError, match="The 'c' parameter of _func must be"):
         _func(0, *[1, 2, 3], c="four", **{"e": 5})
 
 
@@ -523,17 +508,13 @@ def test_decorate_validated_function():
 
     # outer decorator does not interfere with validation
     with pytest.warns(FutureWarning, match="Function _func is deprecated"):
-        with pytest.raises(
-            InvalidParameterError, match=r"The 'c' parameter of _func must be"
-        ):
+        with pytest.raises(InvalidParameterError, match=r"The 'c' parameter of _func must be"):
             decorated_function(1, 2, c="wrong")
 
 
 def test_validate_params_method():
     """Check that validate_params works with methods"""
-    with pytest.raises(
-        InvalidParameterError, match="The 'a' parameter of _Class._method must be"
-    ):
+    with pytest.raises(InvalidParameterError, match="The 'a' parameter of _Class._method must be"):
         _Class()._method("wrong")
 
     # validated method can be decorated
@@ -550,9 +531,7 @@ def test_validate_params_estimator():
     # no validation in init
     est = _Estimator("wrong")
 
-    with pytest.raises(
-        InvalidParameterError, match="The 'a' parameter of _Estimator must be"
-    ):
+    with pytest.raises(InvalidParameterError, match="The 'a' parameter of _Estimator must be"):
         est.fit()
 
 
@@ -565,9 +544,7 @@ def test_stroptions_deprecated_subset():
 def test_hidden_constraint():
     """Check that internal constraints are not exposed in the error message."""
 
-    @validate_params(
-        {"param": [Hidden(list), dict]}, prefer_skip_nested_validation=True
-    )
+    @validate_params({"param": [Hidden(list), dict]}, prefer_skip_nested_validation=True)
     def f(param):
         pass
 
@@ -575,9 +552,7 @@ def test_hidden_constraint():
     f({"a": 1, "b": 2, "c": 3})
     f([1, 2, 3])
 
-    with pytest.raises(
-        InvalidParameterError, match="The 'param' parameter"
-    ) as exc_info:
+    with pytest.raises(InvalidParameterError, match="The 'param' parameter") as exc_info:
         f(param="bad")
 
     # the list option is not exposed in the error message
@@ -600,9 +575,7 @@ def test_hidden_stroptions():
     f("auto")
     f("warn")
 
-    with pytest.raises(
-        InvalidParameterError, match="The 'param' parameter"
-    ) as exc_info:
+    with pytest.raises(InvalidParameterError, match="The 'param' parameter") as exc_info:
         f(param="bad")
 
     # the "warn" option is not exposed in the error message
@@ -773,9 +746,7 @@ def test_skip_nested_validation_and_config_context(
 ):
     """Check interaction between global skip and local skip."""
 
-    @validate_params(
-        {"a": [int]}, prefer_skip_nested_validation=prefer_skip_nested_validation
-    )
+    @validate_params({"a": [int]}, prefer_skip_nested_validation=prefer_skip_nested_validation)
     def g(a):
         return get_config()["skip_parameter_validation"]
 

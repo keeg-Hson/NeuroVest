@@ -111,30 +111,20 @@ def iup_contour(deltas: _DeltaOrNoneSegment, coords: _PointSegment) -> _DeltaSeg
     if start != 0:
         # Initial segment that wraps around
         i1, i2, ri1, ri2 = 0, start, start, indices[-1]
-        out.extend(
-            iup_segment(
-                coords[i1:i2], coords[ri1], deltas[ri1], coords[ri2], deltas[ri2]
-            )
-        )
+        out.extend(iup_segment(coords[i1:i2], coords[ri1], deltas[ri1], coords[ri2], deltas[ri2]))
     out.append(deltas[start])
     for end in it:
         if end - start > 1:
             i1, i2, ri1, ri2 = start + 1, end, start, end
             out.extend(
-                iup_segment(
-                    coords[i1:i2], coords[ri1], deltas[ri1], coords[ri2], deltas[ri2]
-                )
+                iup_segment(coords[i1:i2], coords[ri1], deltas[ri1], coords[ri2], deltas[ri2])
             )
         out.append(deltas[end])
         start = end
     if start != n - 1:
         # Final segment that wraps around
         i1, i2, ri1, ri2 = start + 1, n, start, indices[0]
-        out.extend(
-            iup_segment(
-                coords[i1:i2], coords[ri1], deltas[ri1], coords[ri2], deltas[ri2]
-            )
-        )
+        out.extend(iup_segment(coords[i1:i2], coords[ri1], deltas[ri1], coords[ri2], deltas[ri2]))
 
     assert len(deltas) == len(out), (len(deltas), len(out))
     return out
@@ -193,10 +183,7 @@ def can_iup_in_between(
     interp = iup_segment(coords[i + 1 : j], coords[i], deltas[i], coords[j], deltas[j])
     deltas = deltas[i + 1 : j]
 
-    return all(
-        abs(complex(x - p, y - q)) <= tolerance
-        for (x, y), (p, q) in zip(deltas, interp)
-    )
+    return all(abs(complex(x - p, y - q)) <= tolerance for (x, y), (p, q) in zip(deltas, interp))
 
 
 @cython.locals(
@@ -480,9 +467,7 @@ def iup_delta_optimize(
     out = []
     start = 0
     for end in ends:
-        contour = iup_contour_optimize(
-            deltas[start : end + 1], coords[start : end + 1], tolerance
-        )
+        contour = iup_contour_optimize(deltas[start : end + 1], coords[start : end + 1], tolerance)
         assert len(contour) == end - start + 1
         out.extend(contour)
         start = end + 1

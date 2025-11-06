@@ -256,9 +256,7 @@ class Cluster:
             # uint16	glyphArray[glyphCount]	Array of glyph IDs — in numerical order
             + sum(len(self.ctx.all_class1[i]) for i in self.indices) * 2
         )
-        ranges = sorted(
-            chain.from_iterable(self.ctx.all_class1_data[i][0] for i in self.indices)
-        )
+        ranges = sorted(chain.from_iterable(self.ctx.all_class1_data[i][0] for i in self.indices))
         merged_range_count = 0
         last = None
         for start, end in ranges:
@@ -311,22 +309,15 @@ def cluster_pairs_by_class2_coverage_custom_cost(
 
     # Use Python's big ints for binary vectors representing each line
     lines = [
-        sum(
-            1 << i if (class1, class2) in pairs else 0
-            for i, class2 in enumerate(all_class2)
-        )
+        sum(1 << i if (class1, class2) in pairs else 0 for i, class2 in enumerate(all_class2))
         for class1 in all_class1
     ]
 
     # Map glyph names to ids and work with ints throughout for ClassDef formats
     name_to_id = font.getReverseGlyphMap()
     # Each entry in the arrays below is (range_count, min_glyph_id, max_glyph_id)
-    all_class1_data = [
-        _getClassRanges(name_to_id[name] for name in cls) for cls in all_class1
-    ]
-    all_class2_data = [
-        _getClassRanges(name_to_id[name] for name in cls) for cls in all_class2
-    ]
+    all_class1_data = [_getClassRanges(name_to_id[name] for name in cls) for cls in all_class1]
+    all_class2_data = [_getClassRanges(name_to_id[name] for name in cls) for cls in all_class2]
 
     format1 = 0
     format2 = 0

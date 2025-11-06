@@ -49,9 +49,7 @@ def test_learning_curve_display_default_usage(pyplot, data):
     estimator = DecisionTreeClassifier(random_state=0)
 
     train_sizes = [0.3, 0.6, 0.9]
-    display = LearningCurveDisplay.from_estimator(
-        estimator, X, y, train_sizes=train_sizes
-    )
+    display = LearningCurveDisplay.from_estimator(estimator, X, y, train_sizes=train_sizes)
 
     import matplotlib as mpl
 
@@ -164,9 +162,7 @@ def test_curve_display_negate_score(pyplot, data, CurveDisplay, specific_params)
     assert (display.lines_[0].get_data()[1] < 0).all()
 
 
-@pytest.mark.parametrize(
-    "score_name, ylabel", [(None, "Score"), ("Accuracy", "Accuracy")]
-)
+@pytest.mark.parametrize("score_name, ylabel", [(None, "Score"), ("Accuracy", "Accuracy")])
 @pytest.mark.parametrize(
     "CurveDisplay, specific_params",
     [
@@ -174,24 +170,18 @@ def test_curve_display_negate_score(pyplot, data, CurveDisplay, specific_params)
         (LearningCurveDisplay, {"train_sizes": [0.3, 0.6, 0.9]}),
     ],
 )
-def test_curve_display_score_name(
-    pyplot, data, score_name, ylabel, CurveDisplay, specific_params
-):
+def test_curve_display_score_name(pyplot, data, score_name, ylabel, CurveDisplay, specific_params):
     """Check that we can overwrite the default score name shown on the y-axis."""
     X, y = data
     estimator = DecisionTreeClassifier(random_state=0)
 
-    display = CurveDisplay.from_estimator(
-        estimator, X, y, **specific_params, score_name=score_name
-    )
+    display = CurveDisplay.from_estimator(estimator, X, y, **specific_params, score_name=score_name)
 
     assert display.ax_.get_ylabel() == ylabel
     X, y = data
     estimator = DecisionTreeClassifier(max_depth=1, random_state=0)
 
-    display = CurveDisplay.from_estimator(
-        estimator, X, y, **specific_params, score_name=score_name
-    )
+    display = CurveDisplay.from_estimator(estimator, X, y, **specific_params, score_name=score_name)
 
     assert display.score_name == ylabel
 
@@ -401,9 +391,7 @@ def test_validation_curve_display_score_type(pyplot, data, std_display_style):
         (LearningCurveDisplay, {"train_sizes": np.logspace(-1, 0, num=5)}, "log"),
     ],
 )
-def test_curve_display_xscale_auto(
-    pyplot, data, CurveDisplay, specific_params, expected_xscale
-):
+def test_curve_display_xscale_auto(pyplot, data, CurveDisplay, specific_params, expected_xscale):
     """Check the behaviour of the x-axis scaling depending on the data provided."""
     X, y = data
     estimator = DecisionTreeClassifier(random_state=0)

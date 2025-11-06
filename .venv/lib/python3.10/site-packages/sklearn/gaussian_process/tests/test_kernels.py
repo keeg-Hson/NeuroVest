@@ -106,9 +106,7 @@ def test_kernel_theta(kernel):
     theta_vars = map(
         lambda s: s[0 : -len("_bounds")], filter(lambda s: s.endswith("_bounds"), args)
     )
-    assert set(hyperparameter.name for hyperparameter in kernel.hyperparameters) == set(
-        theta_vars
-    )
+    assert set(hyperparameter.name for hyperparameter in kernel.hyperparameters) == set(theta_vars)
 
     # Check that values returned in theta are consistent with
     # hyperparameter values (being their logarithms)
@@ -198,9 +196,7 @@ def test_kernel_anisotropic():
     assert_array_equal(kernel.k2.length_scale, [1.0, 4.0])
 
 
-@pytest.mark.parametrize(
-    "kernel", [kernel for kernel in kernels if kernel.is_stationary()]
-)
+@pytest.mark.parametrize("kernel", [kernel for kernel in kernels if kernel.is_stationary()])
 def test_kernel_stationary(kernel):
     # Test stationarity of kernels.
     K = kernel(X, X + 1)
@@ -346,9 +342,7 @@ def test_set_get_params(kernel):
             )
             index += size
         else:
-            assert_almost_equal(
-                np.exp(kernel.theta[index]), params[hyperparameter.name]
-            )
+            assert_almost_equal(np.exp(kernel.theta[index]), params[hyperparameter.name])
             index += 1
     # Test set_params()
     index = 0
@@ -360,9 +354,7 @@ def test_set_get_params(kernel):
         size = hyperparameter.n_elements
         if size > 1:  # anisotropic kernels
             kernel.set_params(**{hyperparameter.name: [value] * size})
-            assert_almost_equal(
-                np.exp(kernel.theta[index : index + size]), [value] * size
-            )
+            assert_almost_equal(np.exp(kernel.theta[index : index + size]), [value] * size)
             index += size
         else:
             kernel.set_params(**{hyperparameter.name: value})

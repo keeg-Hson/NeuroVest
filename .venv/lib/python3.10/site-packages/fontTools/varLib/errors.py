@@ -39,9 +39,7 @@ class VarLibMergeError(VarLibError):
     @property
     def offender(self):
         if "expected" in self.cause and "got" in self.cause:
-            index = [x == self.cause["expected"] for x in self.cause["got"]].index(
-                False
-            )
+            index = [x == self.cause["expected"] for x in self.cause["got"]].index(False)
             master_name = self._master_name(index)
             if "location" in self.cause:
                 master_name = f"{master_name} ({self.cause['location']})"
@@ -87,17 +85,14 @@ class ShouldBeConstant(VarLibMergeError):
             ttf
             for ttf in self.merger.ttfs
             if self.stack[-1] in ttf
-            and ttf[self.stack[-1]].table.FeatureList.FeatureCount
-            == self.cause["expected"]
+            and ttf[self.stack[-1]].table.FeatureList.FeatureCount == self.cause["expected"]
         )
 
         good_features = [
-            x.FeatureTag
-            for x in good_ttf[self.stack[-1]].table.FeatureList.FeatureRecord
+            x.FeatureTag for x in good_ttf[self.stack[-1]].table.FeatureList.FeatureRecord
         ]
         bad_features = [
-            x.FeatureTag
-            for x in bad_ttf[self.stack[-1]].table.FeatureList.FeatureRecord
+            x.FeatureTag for x in bad_ttf[self.stack[-1]].table.FeatureList.FeatureRecord
         ]
         return basic_message + (
             "\nIncompatible features between masters.\n"

@@ -60,9 +60,7 @@ def test_get_response_values_regressor(return_response_method_used):
     ["predict", "decision_function", ["decision_function", "predict"]],
 )
 @pytest.mark.parametrize("return_response_method_used", [True, False])
-def test_get_response_values_outlier_detection(
-    response_method, return_response_method_used
-):
+def test_get_response_values_outlier_detection(response_method, return_response_method_used):
     """Check the behaviour of `_get_response_values` with outlier detector."""
     X, y = make_classification(n_samples=50, random_state=0)
     outlier_detector = IsolationForest(random_state=0).fit(X, y)
@@ -113,10 +111,7 @@ def test_get_response_values_classifier_inconsistent_y_pred_for_binary_proba(
     y_single_class = np.zeros_like(y_two_class)
     classifier = DecisionTreeClassifier().fit(X, y_single_class)
 
-    err_msg = (
-        r"Got predict_proba of shape \(10, 1\), but need classifier with "
-        r"two classes"
-    )
+    err_msg = r"Got predict_proba of shape \(10, 1\), but need classifier with " r"two classes"
     with pytest.raises(ValueError, match=err_msg):
         _get_response_values(classifier, X, response_method=response_method)
 
@@ -309,9 +304,7 @@ def test_get_response_values_multiclass(estimator, response_method):
     It should return the predictions untouched.
     """
     estimator.fit(X, y)
-    predictions, pos_label = _get_response_values(
-        estimator, X, response_method=response_method
-    )
+    predictions, pos_label = _get_response_values(estimator, X, response_method=response_method)
 
     assert pos_label is None
     assert predictions.shape == (X.shape[0], len(estimator.classes_))
@@ -348,16 +341,12 @@ def test_get_response_values_with_response_list():
     assert response_method == "decision_function"
 
 
-@pytest.mark.parametrize(
-    "response_method", ["predict_proba", "decision_function", "predict"]
-)
+@pytest.mark.parametrize("response_method", ["predict_proba", "decision_function", "predict"])
 def test_get_response_values_multilabel_indicator(response_method):
     X, Y = make_multilabel_classification(random_state=0)
     estimator = ClassifierChain(LogisticRegression()).fit(X, Y)
 
-    y_pred, pos_label = _get_response_values(
-        estimator, X, response_method=response_method
-    )
+    y_pred, pos_label = _get_response_values(estimator, X, response_method=response_method)
     assert pos_label is None
     assert y_pred.shape == Y.shape
 

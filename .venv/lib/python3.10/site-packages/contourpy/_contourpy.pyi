@@ -20,9 +20,18 @@ FillReturn_OuterCode: TypeAlias = tuple[list[PointArray], list[CodeArray]]
 FillReturn_OuterOffset: TypeAlias = tuple[list[PointArray], list[OffsetArray]]
 FillReturn_ChunkCombinedCode: TypeAlias = tuple[list[PointArray | None], list[CodeArray | None]]
 FillReturn_ChunkCombinedOffset: TypeAlias = tuple[list[PointArray | None], list[OffsetArray | None]]
-FillReturn_ChunkCombinedCodeOffset: TypeAlias = tuple[list[PointArray | None], list[CodeArray | None], list[OffsetArray | None]]
-FillReturn_ChunkCombinedOffsetOffset: TypeAlias = tuple[list[PointArray | None], list[OffsetArray | None], list[OffsetArray | None]]
-FillReturn_Chunk: TypeAlias = FillReturn_ChunkCombinedCode | FillReturn_ChunkCombinedOffset | FillReturn_ChunkCombinedCodeOffset | FillReturn_ChunkCombinedOffsetOffset
+FillReturn_ChunkCombinedCodeOffset: TypeAlias = tuple[
+    list[PointArray | None], list[CodeArray | None], list[OffsetArray | None]
+]
+FillReturn_ChunkCombinedOffsetOffset: TypeAlias = tuple[
+    list[PointArray | None], list[OffsetArray | None], list[OffsetArray | None]
+]
+FillReturn_Chunk: TypeAlias = (
+    FillReturn_ChunkCombinedCode
+    | FillReturn_ChunkCombinedOffset
+    | FillReturn_ChunkCombinedCodeOffset
+    | FillReturn_ChunkCombinedOffsetOffset
+)
 FillReturn: TypeAlias = FillReturn_OuterCode | FillReturn_OuterOffset | FillReturn_Chunk
 
 # Types returned from lines()
@@ -31,9 +40,10 @@ LineReturn_SeparateCode: TypeAlias = tuple[list[PointArray], list[CodeArray]]
 LineReturn_ChunkCombinedCode: TypeAlias = tuple[list[PointArray | None], list[CodeArray | None]]
 LineReturn_ChunkCombinedOffset: TypeAlias = tuple[list[PointArray | None], list[OffsetArray | None]]
 LineReturn_ChunkCombinedNan: TypeAlias = tuple[list[PointArray | None]]
-LineReturn_Chunk: TypeAlias = LineReturn_ChunkCombinedCode | LineReturn_ChunkCombinedOffset | LineReturn_ChunkCombinedNan
+LineReturn_Chunk: TypeAlias = (
+    LineReturn_ChunkCombinedCode | LineReturn_ChunkCombinedOffset | LineReturn_ChunkCombinedNan
+)
 LineReturn: TypeAlias = LineReturn_Separate | LineReturn_SeparateCode | LineReturn_Chunk
-
 
 NDEBUG: int
 __version__: str

@@ -70,14 +70,10 @@ def test_from_estimator_not_fitted(pyplot):
 def test_prediction_error_display(pyplot, regressor_fitted, class_method, kind):
     """Check the default behaviour of the display."""
     if class_method == "from_estimator":
-        display = PredictionErrorDisplay.from_estimator(
-            regressor_fitted, X, y, kind=kind
-        )
+        display = PredictionErrorDisplay.from_estimator(regressor_fitted, X, y, kind=kind)
     else:
         y_pred = regressor_fitted.predict(X)
-        display = PredictionErrorDisplay.from_predictions(
-            y_true=y, y_pred=y_pred, kind=kind
-        )
+        display = PredictionErrorDisplay.from_predictions(y_true=y, y_pred=y_pred, kind=kind)
 
     if kind == "actual_vs_predicted":
         assert_allclose(display.line_.get_xdata(), display.line_.get_ydata())
@@ -102,9 +98,7 @@ def test_plot_prediction_error_subsample(
 ):
     """Check the behaviour of `subsample`."""
     if class_method == "from_estimator":
-        display = PredictionErrorDisplay.from_estimator(
-            regressor_fitted, X, y, subsample=subsample
-        )
+        display = PredictionErrorDisplay.from_estimator(regressor_fitted, X, y, subsample=subsample)
     else:
         y_pred = regressor_fitted.predict(X)
         display = PredictionErrorDisplay.from_predictions(
@@ -121,9 +115,7 @@ def test_plot_prediction_error_ax(pyplot, regressor_fitted, class_method):
         display = PredictionErrorDisplay.from_estimator(regressor_fitted, X, y, ax=ax)
     else:
         y_pred = regressor_fitted.predict(X)
-        display = PredictionErrorDisplay.from_predictions(
-            y_true=y, y_pred=y_pred, ax=ax
-        )
+        display = PredictionErrorDisplay.from_predictions(y_true=y, y_pred=y_pred, ax=ax)
     assert display.ax_ is ax
 
 
@@ -136,14 +128,10 @@ def test_prediction_error_custom_artist(pyplot, regressor_fitted, class_method):
         "line_kwargs": {"color": "black"},
     }
     if class_method == "from_estimator":
-        display = PredictionErrorDisplay.from_estimator(
-            regressor_fitted, X, y, **extra_params
-        )
+        display = PredictionErrorDisplay.from_estimator(regressor_fitted, X, y, **extra_params)
     else:
         y_pred = regressor_fitted.predict(X)
-        display = PredictionErrorDisplay.from_predictions(
-            y_true=y, y_pred=y_pred, **extra_params
-        )
+        display = PredictionErrorDisplay.from_predictions(y_true=y, y_pred=y_pred, **extra_params)
 
     assert display.line_.get_color() == "black"
     assert_allclose(display.scatter_.get_edgecolor(), [[1.0, 0.0, 0.0, 0.8]])

@@ -212,7 +212,8 @@ def contour_generator(
 
     # Check arguments: chunk_size, chunk_count and total_chunk_count.
     y_chunk_size, x_chunk_size = calc_chunk_sizes(
-        chunk_size, chunk_count, total_chunk_count, ny, nx)
+        chunk_size, chunk_count, total_chunk_count, ny, nx
+    )
 
     cls = _class_lookup[name]
 

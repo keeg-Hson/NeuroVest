@@ -728,8 +728,9 @@ def run_backtest(
                     sig == 1 and pred_map.get(bar_date, 0) == 2
                 )
                 if opp:
-                    tag, px = "OPP", (
-                        float(bar["Open"]) if pd.notna(bar.get("Open")) else float(bar["Close"])
+                    tag, px = (
+                        "OPP",
+                        (float(bar["Open"]) if pd.notna(bar.get("Open")) else float(bar["Close"])),
                     )
 
             # 3) dynamic trail after progress

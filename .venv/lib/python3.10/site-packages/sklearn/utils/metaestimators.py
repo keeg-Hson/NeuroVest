@@ -90,9 +90,7 @@ class _BaseComposition(BaseEstimator, metaclass=ABCMeta):
             )
         invalid_names = [name for name in names if "__" in name]
         if invalid_names:
-            raise ValueError(
-                "Estimator names must not contain __: got {0!r}".format(invalid_names)
-            )
+            raise ValueError("Estimator names must not contain __: got {0!r}".format(invalid_names))
 
 
 def _safe_split(estimator, X, y, indices, train_indices=None):

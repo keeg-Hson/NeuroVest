@@ -68,9 +68,7 @@ def test_lle_simple_grid(global_dtype):
         clf.set_params(eigen_solver=solver)
         clf.fit(X)
         assert clf.embedding_.shape[1] == n_components
-        reconstruction_error = (
-            linalg.norm(np.dot(N, clf.embedding_) - clf.embedding_, "fro") ** 2
-        )
+        reconstruction_error = linalg.norm(np.dot(N, clf.embedding_) - clf.embedding_, "fro") ** 2
 
         assert reconstruction_error < tol
         assert_allclose(clf.reconstruction_error_, reconstruction_error, atol=1e-1)
@@ -104,14 +102,11 @@ def test_lle_manifold(global_dtype, method, solver):
     clf.set_params(eigen_solver=solver)
     clf.fit(X)
     assert clf.embedding_.shape[1] == n_components
-    reconstruction_error = (
-        linalg.norm(np.dot(N, clf.embedding_) - clf.embedding_, "fro") ** 2
-    )
+    reconstruction_error = linalg.norm(np.dot(N, clf.embedding_) - clf.embedding_, "fro") ** 2
     details = "solver: %s, method: %s" % (solver, method)
     assert reconstruction_error < tol, details
     assert (
-        np.abs(clf.reconstruction_error_ - reconstruction_error)
-        < tol * reconstruction_error
+        np.abs(clf.reconstruction_error_ - reconstruction_error) < tol * reconstruction_error
     ), details
 
 
@@ -166,6 +161,4 @@ def test_get_feature_names_out():
     iso = manifold.LocallyLinearEmbedding(n_components=n_components)
     iso.fit(X)
     names = iso.get_feature_names_out()
-    assert_array_equal(
-        [f"locallylinearembedding{i}" for i in range(n_components)], names
-    )
+    assert_array_equal([f"locallylinearembedding{i}" for i in range(n_components)], names)

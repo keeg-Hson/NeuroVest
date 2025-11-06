@@ -50,10 +50,7 @@ def test_correct_shapes_gram():
 
 def test_n_nonzero_coefs():
     assert np.count_nonzero(orthogonal_mp(X, y[:, 0], n_nonzero_coefs=5)) <= 5
-    assert (
-        np.count_nonzero(orthogonal_mp(X, y[:, 0], n_nonzero_coefs=5, precompute=True))
-        <= 5
-    )
+    assert np.count_nonzero(orthogonal_mp(X, y[:, 0], n_nonzero_coefs=5, precompute=True)) <= 5
 
 
 def test_tol():
@@ -232,9 +229,7 @@ def test_omp_cv():
     ompcv.fit(X, y_)
     assert ompcv.n_nonzero_coefs_ == n_nonzero_coefs
     assert_array_almost_equal(ompcv.coef_, gamma_)
-    omp = OrthogonalMatchingPursuit(
-        fit_intercept=False, n_nonzero_coefs=ompcv.n_nonzero_coefs_
-    )
+    omp = OrthogonalMatchingPursuit(fit_intercept=False, n_nonzero_coefs=ompcv.n_nonzero_coefs_)
     omp.fit(X, y_)
     assert_array_almost_equal(ompcv.coef_, omp.coef_)
 
@@ -256,18 +251,12 @@ def test_omp_reaches_least_squares():
 @pytest.mark.parametrize("data_type", (np.float32, np.float64))
 def test_omp_gram_dtype_match(data_type):
     # verify matching input data type and output data type
-    coef = orthogonal_mp_gram(
-        G.astype(data_type), Xy.astype(data_type), n_nonzero_coefs=5
-    )
+    coef = orthogonal_mp_gram(G.astype(data_type), Xy.astype(data_type), n_nonzero_coefs=5)
     assert coef.dtype == data_type
 
 
 def test_omp_gram_numerical_consistency():
     # verify numericaly consistency among np.float32 and np.float64
-    coef_32 = orthogonal_mp_gram(
-        G.astype(np.float32), Xy.astype(np.float32), n_nonzero_coefs=5
-    )
-    coef_64 = orthogonal_mp_gram(
-        G.astype(np.float32), Xy.astype(np.float64), n_nonzero_coefs=5
-    )
+    coef_32 = orthogonal_mp_gram(G.astype(np.float32), Xy.astype(np.float32), n_nonzero_coefs=5)
+    coef_64 = orthogonal_mp_gram(G.astype(np.float32), Xy.astype(np.float64), n_nonzero_coefs=5)
     assert_allclose(coef_32, coef_64)

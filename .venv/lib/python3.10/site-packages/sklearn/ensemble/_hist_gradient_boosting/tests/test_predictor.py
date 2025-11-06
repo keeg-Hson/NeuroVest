@@ -27,9 +27,7 @@ n_threads = _openmp_effective_n_threads()
 
 @pytest.mark.parametrize("n_bins", [200, 256])
 def test_regression_dataset(n_bins):
-    X, y = make_regression(
-        n_samples=500, n_features=10, n_informative=5, random_state=42
-    )
+    X, y = make_regression(n_samples=500, n_features=10, n_informative=5, random_state=42)
     X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
 
     mapper = _BinMapper(n_bins=n_bins, random_state=42)
@@ -147,9 +145,7 @@ def test_categorical_predictor(bins_go_left, expected_predictions):
     for go_left in bins_go_left:
         set_bitset_memoryview(binned_cat_bitsets[0], go_left)
 
-    set_raw_bitset_from_binned_bitset(
-        raw_categorical_bitsets[0], binned_cat_bitsets[0], categories
-    )
+    set_raw_bitset_from_binned_bitset(raw_categorical_bitsets[0], binned_cat_bitsets[0], categories)
 
     predictor = TreePredictor(nodes, binned_cat_bitsets, raw_categorical_bitsets)
 

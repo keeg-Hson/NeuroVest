@@ -1,246 +1,287 @@
-# --- predict.py (clean forward_returns-first) ---
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
 import json
-import os
-from contextlib import suppress
+from pathlib import Path
 
 import joblib
 import numpy as np
 import pandas as pd
-from dotenv import load_dotenv
 
-from config import PREDICT_CFG
-from utils import (
-    add_features,
-    expected_value,
-    finalize_features,
-    in_human_speak,
-    load_SPY_data as load_data,
-    log_prediction_to_file,
-)
-
-load_dotenv()
-
-PREDICT_VARIANT = os.getenv("PREDICT_VARIANT", "forward_returns").strip().lower()
-if PREDICT_VARIANT not in {"forward_returns", "crash_spike"}:
-    raise ValueError(f"Unknown PREDICT_VARIANT={PREDICT_VARIANT}")
-
-# Artifacts (env override allowed)
-if PREDICT_VARIANT == "forward_returns":
-    MODEL_PATH = os.getenv("MODEL_PATH", "models/market_crash_model_fwd.pkl")
-    THRESH_PATH = os.getenv("THRESH_PATH", "models/thresholds_fwd.json")
-    LABEL_MAP_PATH = os.getenv("LABEL_MAP_PATH", "models/label_map_fwd.json")
-    PROBA_COL = 1  # proba of class=1 (Trade)
-else:
-    MODEL_PATH = os.getenv("MODEL_PATH", "models/market_crash_model.pkl")
-    THRESH_PATH = os.getenv("THRESH_PATH", "models/thresholds.json")
-    LABEL_MAP_PATH = os.getenv("LABEL_MAP_PATH", "models/label_map.json")
-    PROBA_COL = 1  # adjust if your crash idx differs
-
-FWD_BLACKLIST = {"y", "fwd_price", "fwd_ret_raw", "fwd_ret_net", "horizon_forward"}
-GLOBAL_MIN_CONF = float(os.getenv("GLOBAL_MIN_CONF", "0.65"))
+from config import LOGS_DIR, MODELS_DIR, PREDICT_CFG, SPY_DAILY_CSV
 
 
-def _ensure_time_index(df: pd.DataFrame) -> pd.DataFrame:
-    out = df.copy()
-    if not isinstance(out.index, pd.DatetimeIndex):
-        if "Date" in out.columns:
-            out.index = pd.to_datetime(out["Date"], errors="coerce")
-        elif "Timestamp" in out.columns:
-            out.index = pd.to_datetime(out["Timestamp"], errors="coerce")
-        else:
-            out.index = pd.to_datetime(out.index, errors="coerce")
-    return out[out.index.notna()]
+# -----------------------------------------------------------------------------
+# Feature engineering (MUST match train_from_labels.py)
+# -----------------------------------------------------------------------------
+def _nv_simple_features(raw_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Minimal daily features matching the trainer:
+    ret_1, ret_5, sma_5, sma_20, vol_10, rsi14 (0-100 scale).
+    """
+    df = raw_df.copy()
 
+    # Date
+    if "Date" not in df.columns:
+        for c in list(df.columns)[:5]:
+            if str(c).lower() == "date":
+                df = df.rename(columns={c: "Date"})
+                break
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    df = df.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
 
-def _attach_ohlc(pred_df: pd.DataFrame, raw_df: pd.DataFrame) -> pd.DataFrame:
-    out = pred_df.copy()
-    raw = _ensure_time_index(raw_df.copy())
-    for col in ["Close", "Open", "High", "Low", "Volume"]:
-        if col not in out.columns and col in raw.columns:
-            out[col] = raw[col].reindex(out.index)
-    if "Date" not in out.columns:
-        out["Date"] = (
-            out.index.tz_localize(None) if isinstance(out.index, pd.DatetimeIndex) else pd.NaT
-        )
+    # Price column — prefer Close/AdjClose (exact names first)
+    cands = [c for c in df.columns if str(c).lower() in ("close", "adjclose", "adj close")]
+    if not cands:
+        cands = [c for c in df.columns if "close" in str(c).lower()]
+    if not cands:
+        raise SystemExit("No price column found (Close/AdjClose).")
+    px = df[cands[0]].astype(float)
+
+    out = pd.DataFrame({"Date": df["Date"]})
+
+    # Match trainer's formulas & warning-safe fill_method=None
+    out["ret_1"] = px.pct_change(1, fill_method=None)
+    out["ret_5"] = px.pct_change(5, fill_method=None)
+    out["sma_5"] = px.rolling(5, min_periods=5).mean() / px - 1.0
+    out["sma_20"] = px.rolling(20, min_periods=20).mean() / px - 1.0
+    out["vol_10"] = px.pct_change(fill_method=None).rolling(10, min_periods=10).std()
+
+    d = px.diff()
+    up = d.clip(lower=0.0).rolling(14, min_periods=14).mean()
+    down = (-d.clip(upper=0.0)).rolling(14, min_periods=14).mean().replace(0, 1e-12)
+    rs = up / down
+    out["rsi14"] = 100.0 - (100.0 / (1.0 + rs))  # 0–100, like trainer
+
     return out
 
 
-def _required_feature_names_for_pipeline(model) -> list[str]:
-    # Prefer recorded schema file if present
-    with suppress(Exception):
-        path = (
-            "models/input_features_fwd.txt"
-            if PREDICT_VARIANT == "forward_returns"
-            else "models/input_features.txt"
-        )
-        if os.path.exists(path):
-            vals = pd.read_csv(path, header=None)[0].astype(str).str.strip().tolist()
-            vals = [v for v in vals if v and v not in FWD_BLACKLIST and not v.startswith("fwd_")]
-            # de-dup while preserving order
-            seen = set()
-            clean = []
-            for v in vals:
-                if v not in seen:
-                    seen.add(v)
-                    clean.append(v)
-            return clean
-    # Fall back to model introspection
-    base = getattr(model, "base_estimator", model)
-    if hasattr(base, "named_steps") and "kbest" in base.named_steps:
-        kb = base.named_steps["kbest"]
-        if hasattr(kb, "feature_names_in_"):
-            return [
-                c
-                for c in kb.feature_names_in_
-                if c not in FWD_BLACKLIST and not str(c).startswith("fwd_")
-            ]
-    if hasattr(base, "feature_names_in_"):
-        return [
-            c
-            for c in base.feature_names_in_
-            if c not in FWD_BLACKLIST and not str(c).startswith("fwd_")
-        ]
-    return []
+def _load_model_and_features(path: Path):
+    obj = joblib.load(path)
+    # Newer save format: dict with model + features
+    if isinstance(obj, dict) and "model" in obj:
+        return obj["model"], list(obj.get("features", []))
+    # Legacy: bare estimator
+    return obj, []
 
 
-def _prepare_matrix(feature_df: pd.DataFrame, req_cols: list[str]) -> pd.DataFrame:
-    out = feature_df.copy()
-    for c in req_cols:
-        if c not in out.columns:
-            out[c] = np.nan
-    out = out[req_cols]
-    out = out.replace([np.inf, -np.inf], np.nan)
-    # time-aware fill if index is time
-    with suppress(Exception):
-        out = out.interpolate(method="time", limit_direction="both")
-    out = out.fillna(out.median(numeric_only=True))
-    return out[req_cols]
+def _align_features(feat_df: pd.DataFrame, saved_feats: list[str]) -> pd.DataFrame:
+    """
+    Ensure columns/ordering match the training schema.
+    Missing features get 0.0; extras are dropped.
+    Keeps Date column if present.
+    """
+    df = feat_df.copy()
+    if not saved_feats:
+        # Fallback: keep numeric cols only (drop Date)
+        return df.drop(columns=["Date"], errors="ignore").select_dtypes(include=[np.number])
+
+    for c in saved_feats:
+        if c not in df.columns:
+            df[c] = 0.0
+
+    cols = (["Date"] + saved_feats) if "Date" in df.columns else saved_feats
+    return df[cols]
 
 
-def live_predict(feature_df: pd.DataFrame, raw_df: pd.DataFrame):
-    feature_df = _ensure_time_index(feature_df)
-    raw_df = _ensure_time_index(raw_df)
+# -----------------------------------------------------------------------------
+# Scoring
+# -----------------------------------------------------------------------------
+def _score_latest(model, X: pd.DataFrame) -> tuple[int, float, pd.Timestamp]:
+    # Grab last row, drop Date, cast to float
+    X_last = X.tail(1).drop(columns=["Date"], errors="ignore").astype(float)
 
-    if not os.path.exists(MODEL_PATH):
-        print(f"❌ Model file not found: {MODEL_PATH}")
-        return None
+    # Predict probability for class 1 (long)
+    if hasattr(model, "predict_proba"):
+        class_probs = model.predict_proba(X_last)[0]
+        classes_enc = list(getattr(model, "classes_", [0, 1]))
+        proba_map = {int(k): float(v) for k, v in zip(classes_enc, class_probs, strict=False)}
+        p1 = proba_map.get(1, class_probs[-1])
+    else:
+        # if no proba, degrade gracefully using class label as a pseudo-prob
+        pred_plain = int(model.predict(X_last)[0])
+        p1 = 0.7 if pred_plain == 1 else 0.3
 
-    model = joblib.load(MODEL_PATH)
+    thresholds = _load_thresholds()
+    decision = 1 if p1 >= float(thresholds.get("p_min", 0.55)) else 0
 
-    req = _required_feature_names_for_pipeline(model)
-    print(f"🧱 Required input schema (pre-KBest): {req}")
-    if not req:
-        print("⚠️ No usable feature columns found for the model.")
-        return None
+    # Timestamp
+    ts = None
+    if "Date" in X.columns and X["Date"].notna().any():
+        ts = pd.to_datetime(X["Date"].dropna().iloc[-1])
+    else:
+        ts = pd.Timestamp("now").normalize()
 
-    X_all = _prepare_matrix(feature_df, req)
-    X_last = X_all.iloc[[-1]]
-    if X_last.empty:
-        print("⚠️ No features for latest row.")
-        return None
+    return decision, p1, ts
 
-    # prices for log
-    raw_last = raw_df.iloc[-1] if len(raw_df) else pd.Series(dtype=float)
-    close_px = float(raw_last.get("Close", np.nan))
-    open_px = float(raw_last.get("Open", np.nan))
-    high_px = float(raw_last.get("High", np.nan))
-    low_px = float(raw_last.get("Low", np.nan))
 
-    # label map (optional)
-    inv_label_map = {}
-    with suppress(Exception):
-        with open(LABEL_MAP_PATH) as fh:
-            maps = json.load(fh)
-        inv_label_map = {int(k): int(v) for k, v in maps.get("inv_label_map", {}).items()}
-
-    # thresholds
-    t = 0.5
+def _load_thresholds() -> dict:
     try:
-        with open(THRESH_PATH) as fh:
-            thr = json.load(fh)
-        t = float(thr.get("threshold", 0.5))
-        int(thr.get("pos_enc", 1))
-    except Exception as e:
-        print(f"⚠️ Thresholds load issue ({THRESH_PATH}): {e}")
+        with open(MODELS_DIR / "thresholds.json") as f:
+            return json.load(f)
+    except Exception:
+        return {
+            "p_min": float(PREDICT_CFG.get("p_min", 0.55)),
+            "ev_min": float(PREDICT_CFG.get("ev_min", 0.0005)),
+        }
 
-    # predict proba on last row
-    class_probs = model.predict_proba(X_last)[0]  # shape (n_classes,)
-    classes_enc = list(getattr(model, "classes_", [0, 1]))
 
-    if PREDICT_VARIANT == "crash_spike":
-        # map 2-class to {1=Crash, 2=Spike}
-        proba_by_orig = {}
-        for j, enc_lab in enumerate(classes_enc):
-            orig = inv_label_map.get(enc_lab, enc_lab)
-            proba_by_orig[int(orig)] = float(class_probs[j])
-        crash_conf = proba_by_orig.get(1, float(class_probs[0]))
-        spike_conf = proba_by_orig.get(2, float(class_probs[1] if len(class_probs) > 1 else 0.0))
-        winner_is_crash = crash_conf >= spike_conf
-        winner_prob = crash_conf if winner_is_crash else spike_conf
-        prediction = 1 if winner_is_crash else 2
+# -----------------------------------------------------------------------------
+# Logging
+# -----------------------------------------------------------------------------
+def _append_single(decision: int, p1: float, when: pd.Timestamp) -> None:
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    path = LOGS_DIR / "labeled_predictions.csv"
+
+    if path.exists():
+        df = pd.read_csv(path, parse_dates=["Date"])
     else:
-        # forward_returns: {0=No-Trade, 1=Trade}
-        col_idx = PROBA_COL if len(class_probs) > PROBA_COL else -1
-        p_trade = float(class_probs[col_idx])
-        t_eff = max(t, GLOBAL_MIN_CONF)
-        prediction = 1 if p_trade >= t_eff else 0
-        winner_prob = p_trade
-        crash_conf = 0.0
-        spike_conf = p_trade
+        df = pd.DataFrame(columns=["Date", "Label", "Pred", "Prediction", "Proba"])
 
-    # EV (use forward-returns params, harmless for crash/spike)
-    avg_gain = PREDICT_CFG.get("avg_gain", 0.0040)
-    avg_loss = PREDICT_CFG.get("avg_loss", 0.0030)
-    fee_bps = PREDICT_CFG.get("fee_bps", 1.5)
-    slip_bps = PREDICT_CFG.get("slippage_bps", 2.0)
-    expected_value(winner_prob, avg_gain, avg_loss, fee_bps, slip_bps)
-
-    # Pretty print + log
-    if PREDICT_VARIANT == "forward_returns":
-        human = "TRADE" if prediction == 1 else "NO-TRADE"
-        if winner_prob < GLOBAL_MIN_CONF:
-            print("⚠️ Low-confidence prediction — consider ignoring this signal.")
-        print(f"🔮 Prediction (forward-returns): {prediction}  ({human})")
-        print(f"📊 Probabilities: Trade={winner_prob:.4f}, No-Trade={1.0-winner_prob:.4f}")
+    # Update/append
+    row_mask = df["Date"] == when
+    if row_mask.any():
+        df.loc[row_mask, ["Pred", "Prediction", "Proba"]] = [decision, decision, p1]
     else:
-        print(f"🔮 Prediction (crash/spike): {prediction} ({in_human_speak(prediction)})")
-        print(f"📊 Crash={crash_conf:.4f} | Spike={spike_conf:.4f}")
+        df = pd.concat(
+            [
+                df,
+                pd.DataFrame(
+                    [
+                        {
+                            "Date": when,
+                            "Label": pd.NA,
+                            "Pred": decision,  # legacy field some tools expect
+                            "Prediction": decision,  # canonical name going forward
+                            "Proba": p1,
+                        }
+                    ]
+                ),
+            ],
+            ignore_index=True,
+        )
 
-    # compose a 1-row frame for saving/returning
-    last_idx = feature_df.index[-1]
-    out = pd.DataFrame(index=[last_idx])
-    out["Prediction"] = prediction
-    out["Crash_Conf"] = crash_conf
-    out["Spike_Conf"] = spike_conf
-    out["Confidence"] = max(crash_conf, spike_conf, winner_prob)
-    out = _attach_ohlc(out, raw_df)
+    df = df.sort_values("Date").reset_index(drop=True)
+    df.to_csv(path, index=False)
+    print(f"[predict] wrote → {path}")
 
-    # timestamp for log writer signature
-    ts = last_idx if isinstance(last_idx, pd.Timestamp) else pd.Timestamp.utcnow()
-    log_prediction_to_file(
-        timestamp=ts,
-        prediction=prediction,
-        crash_conf=crash_conf,
-        spike_conf=spike_conf,
-        close_price=close_px,
-        open_price=open_px,
-        high=high_px,
-        low=low_px,
+
+def _backfill_full(model, saved_feats: list[str]) -> None:
+    """Score all dates and (re)write labeled_predictions.csv, preserving any existing Label values."""
+    LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    out_path = LOGS_DIR / "labeled_predictions.csv"
+
+    # Load raw
+    raw = pd.read_csv(SPY_DAILY_CSV, low_memory=False)
+    raw["Date"] = pd.to_datetime(raw["Date"], errors="coerce")
+    raw = raw.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
+
+    # Build + align
+    feat = _nv_simple_features(raw)
+    X = _align_features(feat, saved_feats)
+
+    # Drop rows with any NaNs in model features (avoid training-time NaN issues)
+    if "Date" in X.columns:
+        full = X.dropna(subset=[c for c in X.columns if c != "Date"]).copy()
+    else:
+        full = X.dropna(axis=0).copy()
+
+    # Score
+    if hasattr(model, "predict_proba"):
+        probs = model.predict_proba(full.drop(columns=["Date"], errors="ignore").astype(float))
+        # Map to class=1
+        classes_enc = list(getattr(model, "classes_", [0, 1]))
+        idx1 = classes_enc.index(1) if 1 in classes_enc else (len(classes_enc) - 1)
+        p1 = probs[:, idx1]
+    else:
+        preds = model.predict(full.drop(columns=["Date"], errors="ignore").astype(float)).astype(
+            int
+        )
+        p1 = preds * 0.7 + (1 - preds) * 0.3
+
+    thresholds = _load_thresholds()
+    pred = (p1 >= float(thresholds.get("p_min", 0.55))).astype(int)
+
+    out = (
+        pd.DataFrame(
+            {
+                "Date": full["Date"],
+                "Prediction": pred,
+                "Pred": pred,  # legacy
+                "Proba": p1,
+            }
+        )
+        .sort_values("Date")
+        .reset_index(drop=True)
     )
-    return out
+
+    # Preserve existing Label if present
+    if out_path.exists():
+        prev = pd.read_csv(out_path, parse_dates=["Date"])
+        out = out.merge(prev[["Date", "Label"]], on="Date", how="left")
+
+    out.to_csv(out_path, index=False)
+    print(
+        f"[backfill] wrote → {out_path}  rows={len(out)}  positives={int(out['Prediction'].sum())}"
+    )
+
+
+# -----------------------------------------------------------------------------
+# Public entry points
+# -----------------------------------------------------------------------------
+def live_predict() -> tuple[int, float, pd.Timestamp]:
+    """Return (decision, p(long=1), timestamp)."""
+    # Load raw SPY prices
+    raw = pd.read_csv(SPY_DAILY_CSV, low_memory=False)
+    raw["Date"] = pd.to_datetime(raw["Date"], errors="coerce")
+    raw = raw.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
+
+    # Build features and align to training schema
+    feat = _nv_simple_features(raw)
+
+    model_path = MODELS_DIR / "market_crash_model.pkl"
+    if not model_path.exists():
+        raise SystemExit(f"Model file not found: {model_path}")
+
+    model, saved_feats = _load_model_and_features(model_path)
+    X = _align_features(feat, saved_feats)
+
+    return _score_latest(model, X)
+
+
+# -----------------------------------------------------------------------------
+# CLI
+# -----------------------------------------------------------------------------
+def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="NeuroVest live prediction / backfill")
+    p.add_argument(
+        "--backfill",
+        action="store_true",
+        help="Score full history and rewrite labeled_predictions.csv",
+    )
+    return p.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = _parse_args(argv)
+
+    model_path = MODELS_DIR / "market_crash_model.pkl"
+    if not model_path.exists():
+        raise SystemExit(f"Model file not found: {model_path}")
+
+    model, saved_feats = _load_model_and_features(model_path)
+
+    if args.backfill:
+        _backfill_full(model, saved_feats)
+        return 0
+
+    # Single live prediction
+    pred, prob, when = live_predict()
+    print(f"[predict] {when.date()}  p(long=1)={prob:.4f}  decision={pred}")
+    _append_single(pred, prob, when)
+    return 0
 
 
 if __name__ == "__main__":
-    print("📥 Loading SPY data...")
-    raw_df = load_data()
-
-    print("🧮 Building features...")
-    feat_df, feat_cols = add_features(raw_df)
-
-    print("🧹 Finalizing features...")
-    feat_df = finalize_features(feat_df, feat_cols)
-    feat_df = _ensure_time_index(feat_df)
-    raw_df = _ensure_time_index(raw_df)
-
-    print("🔮 Running prediction on latest row...")
-    live_predict(feat_df, raw_df)
+    raise SystemExit(main())

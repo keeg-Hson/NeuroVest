@@ -43,9 +43,7 @@ def sanitize_glyph_name(name):
 
 def main(args=None):
     """Build tables from a MS VOLT project into an OTF font"""
-    parser = argparse.ArgumentParser(
-        description="Use fontTools to compile MS VOLT projects."
-    )
+    parser = argparse.ArgumentParser(description="Use fontTools to compile MS VOLT projects.")
     parser.add_argument(
         "input",
         metavar="INPUT",
@@ -104,9 +102,7 @@ def main(args=None):
     levels = ["WARNING", "INFO", "DEBUG"]
     configLogger(level=levels[min(len(levels) - 1, options.verbose)])
 
-    output_font = options.output or Path(
-        makeOutputFileName(options.font or options.input)
-    )
+    output_font = options.output or Path(makeOutputFileName(options.font or options.input))
     log.info(f"Compiling MS VOLT to '{output_font}'")
 
     file_or_path = options.input

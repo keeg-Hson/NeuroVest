@@ -129,9 +129,7 @@ def isotonic_regression(
         warr = np.atleast_1d(weights)
 
         if not (yarr.ndim == warr.ndim == 1 and yarr.shape[0] == warr.shape[0]):
-            raise ValueError(
-                "Input arrays y and w must have one dimension of equal length."
-            )
+            raise ValueError("Input arrays y and w must have one dimension of equal length.")
         if np.any(warr <= 0):
             raise ValueError("Weights w must be strictly positive.")
 
@@ -144,7 +142,7 @@ def isotonic_regression(
     # As information: Due to the pava implementation, after the last block
     # index, there might be smaller numbers appended to r, e.g.
     # r = [0, 10, 8, 7] which in the end should be r = [0, 10].
-    r = r[:b + 1]  # type: ignore[assignment]
+    r = r[: b + 1]  # type: ignore[assignment]
     wx = wx[:b]
     if not increasing:
         x = x[::-1]

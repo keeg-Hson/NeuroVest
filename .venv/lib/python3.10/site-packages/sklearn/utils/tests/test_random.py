@@ -21,9 +21,7 @@ def test_sample_without_replacement_algorithms():
 
     for m in methods:
 
-        def sample_without_replacement_method(
-            n_population, n_samples, random_state=None
-        ):
+        def sample_without_replacement_method(n_population, n_samples, random_state=None):
             return sample_without_replacement(
                 n_population, n_samples, method=m, random_state=random_state
             )
@@ -93,9 +91,7 @@ def check_sample_int_distribution(sample_without_replacement):
 
         output = {}
         for i in range(n_trials):
-            output[frozenset(sample_without_replacement(n_population, n_samples))] = (
-                None
-            )
+            output[frozenset(sample_without_replacement(n_population, n_samples))] = None
 
             if len(output) == n_expected:
                 break
@@ -122,9 +118,7 @@ def test_random_choice_csc(n_samples=10000, random_state=24):
     classes = [[0, 1], [1, 2]]  # test for array-like support
     class_probabilities = [np.array([0.5, 0.5]), np.array([0, 1 / 2, 1 / 2])]
 
-    got = _random_choice_csc(
-        n_samples=n_samples, classes=classes, random_state=random_state
-    )
+    got = _random_choice_csc(n_samples=n_samples, classes=classes, random_state=random_state)
     assert sp.issparse(got)
 
     for k in range(len(classes)):
@@ -140,9 +134,7 @@ def test_random_choice_csc(n_samples=10000, random_state=24):
 
     for k in range(len(classes)):
         p = (
-            np.bincount(
-                got.getcol(k).toarray().ravel(), minlength=len(class_probabilities[k])
-            )
+            np.bincount(got.getcol(k).toarray().ravel(), minlength=len(class_probabilities[k]))
             / n_samples
         )
         assert_array_almost_equal(class_probabilities[k], p, decimal=1)
@@ -151,9 +143,7 @@ def test_random_choice_csc(n_samples=10000, random_state=24):
     classes = [[1], [0]]  # test for array-like support
     class_probabilities = [np.array([0.0, 1.0]), np.array([1.0])]
 
-    got = _random_choice_csc(
-        n_samples=n_samples, classes=classes, random_state=random_state
-    )
+    got = _random_choice_csc(n_samples=n_samples, classes=classes, random_state=random_state)
     assert sp.issparse(got)
 
     for k in range(len(classes)):

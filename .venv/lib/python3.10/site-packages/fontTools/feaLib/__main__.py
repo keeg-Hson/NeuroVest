@@ -16,12 +16,8 @@ def main(args=None):
     parser = argparse.ArgumentParser(
         description="Use fontTools to compile OpenType feature files (*.fea)."
     )
-    parser.add_argument(
-        "input_fea", metavar="FEATURES", help="Path to the feature file"
-    )
-    parser.add_argument(
-        "input_font", metavar="INPUT_FONT", help="Path to the input font"
-    )
+    parser.add_argument("input_fea", metavar="FEATURES", help="Path to the feature file")
+    parser.add_argument("input_font", metavar="INPUT_FONT", help="Path to the input font")
     parser.add_argument(
         "-o",
         "--output",
@@ -50,9 +46,7 @@ def main(args=None):
         action="count",
         default=0,
     )
-    parser.add_argument(
-        "--traceback", help="show traceback for exceptions.", action="store_true"
-    )
+    parser.add_argument("--traceback", help="show traceback for exceptions.", action="store_true")
     options = parser.parse_args(args)
 
     levels = ["WARNING", "INFO", "DEBUG"]
@@ -63,9 +57,7 @@ def main(args=None):
 
     font = TTFont(options.input_font)
     try:
-        addOpenTypeFeatures(
-            font, options.input_fea, tables=options.tables, debug=options.debug
-        )
+        addOpenTypeFeatures(font, options.input_fea, tables=options.tables, debug=options.debug)
     except FeatureLibError as e:
         if options.traceback:
             raise

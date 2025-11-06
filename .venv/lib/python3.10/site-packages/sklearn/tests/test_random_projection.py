@@ -176,9 +176,7 @@ def test_sparse_random_matrix():
     for density in [0.3, 1.0]:
         s = 1 / density
 
-        A = _sparse_random_matrix(
-            n_components, n_features, density=density, random_state=0
-        )
+        A = _sparse_random_matrix(n_components, n_features, density=density, random_state=0)
         A = densify(A)
 
         # Check possible values
@@ -345,9 +343,7 @@ def test_SparseRandomProj_output_representation(coo_container):
 
 
 @pytest.mark.parametrize("coo_container", COO_CONTAINERS)
-def test_correct_RandomProjection_dimensions_embedding(
-    coo_container, global_random_seed
-):
+def test_correct_RandomProjection_dimensions_embedding(coo_container, global_random_seed):
     data = make_sparse_random_data(
         coo_container,
         n_samples,
@@ -398,9 +394,7 @@ def test_correct_RandomProjection_dimensions_embedding(
 
 
 @pytest.mark.parametrize("coo_container", COO_CONTAINERS)
-def test_warning_n_components_greater_than_n_features(
-    coo_container, global_random_seed
-):
+def test_warning_n_components_greater_than_n_features(coo_container, global_random_seed):
     n_features = 20
     n_samples = 5
     n_nonzeros = int(n_features / 4)
@@ -443,9 +437,7 @@ def test_works_with_sparse_data(coo_container, global_random_seed):
     for RandomProjection in all_RandomProjection:
         rp_dense = RandomProjection(n_components=3, random_state=1).fit(dense_data)
         rp_sparse = RandomProjection(n_components=3, random_state=1).fit(sparse_data)
-        assert_array_almost_equal(
-            densify(rp_dense.components_), densify(rp_sparse.components_)
-        )
+        assert_array_almost_equal(densify(rp_dense.components_), densify(rp_sparse.components_))
 
 
 def test_johnson_lindenstrauss_min_dim():
@@ -523,9 +515,7 @@ def test_inverse_transform(
         with warnings.catch_warnings():
             warnings.filterwarnings(
                 "ignore",
-                message=(
-                    "The number of components is higher than the number of features"
-                ),
+                message=("The number of components is higher than the number of features"),
                 category=DataDimensionalityWarning,
             )
             projected = random_projection.fit_transform(X)
@@ -554,9 +544,7 @@ def test_inverse_transform(
         (np.int64, np.float64),
     ),
 )
-def test_random_projection_dtype_match(
-    random_projection_cls, input_dtype, expected_dtype
-):
+def test_random_projection_dtype_match(random_projection_cls, input_dtype, expected_dtype):
     # Verify output matrix dtype
     rng = np.random.RandomState(42)
     X = rng.rand(25, 3000)

@@ -75,9 +75,7 @@ def test_ball_tree_query_metrics(metric, array_type, BallTreeImplementation):
     assert_array_almost_equal(dist1, dist2)
 
 
-@pytest.mark.parametrize(
-    "BallTreeImplementation, decimal_tol", zip(BALL_TREE_CLASSES, [6, 5])
-)
+@pytest.mark.parametrize("BallTreeImplementation, decimal_tol", zip(BALL_TREE_CLASSES, [6, 5]))
 def test_query_haversine(BallTreeImplementation, decimal_tol):
     rng = check_random_state(0)
     X = 2 * np.pi * rng.random_sample((40, 2))

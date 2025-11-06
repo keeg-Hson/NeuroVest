@@ -89,8 +89,6 @@ def round2(number, ndigits=None):
     else:
         exponent = _decimal.Decimal("10") ** (-ndigits)
 
-        d = _decimal.Decimal.from_float(number).quantize(
-            exponent, rounding=_decimal.ROUND_HALF_UP
-        )
+        d = _decimal.Decimal.from_float(number).quantize(exponent, rounding=_decimal.ROUND_HALF_UP)
 
         return float(d)

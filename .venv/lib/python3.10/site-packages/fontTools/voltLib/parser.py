@@ -87,12 +87,8 @@ class Parser(object):
             components = self.expect_number_()
         self.expect_keyword_("END_GLYPH")
         if self.glyphs_.resolve(name) is not None:
-            raise VoltLibError(
-                'Glyph "%s" (gid %i) already defined' % (name, gid), location
-            )
-        def_glyph = ast.GlyphDefinition(
-            name, gid, gunicode, gtype, components, location=location
-        )
+            raise VoltLibError('Glyph "%s" (gid %i) already defined' % (name, gid), location)
+        def_glyph = ast.GlyphDefinition(name, gid, gunicode, gtype, components, location=location)
         self.glyphs_.define(name, def_glyph)
         return def_glyph
 
@@ -106,8 +102,7 @@ class Parser(object):
         self.expect_keyword_("END_GROUP")
         if self.groups_.resolve(name) is not None:
             raise VoltLibError(
-                'Glyph group "%s" already defined, '
-                "group names are case insensitive" % name,
+                'Glyph group "%s" already defined, ' "group names are case insensitive" % name,
                 location,
             )
         def_group = ast.GroupDefinition(name, enum, location=location)
@@ -125,8 +120,7 @@ class Parser(object):
         tag = self.expect_string_()
         if self.scripts_.resolve(tag) is not None:
             raise VoltLibError(
-                'Script "%s" already defined, '
-                "script tags are case insensitive" % tag,
+                'Script "%s" already defined, ' "script tags are case insensitive" % tag,
                 location,
             )
         self.langs_.enter_scope()
@@ -188,13 +182,10 @@ class Parser(object):
         location = self.cur_token_location_
         name = self.expect_string_()
         if not name[0].isalpha():
-            raise VoltLibError(
-                'Lookup name "%s" must start with a letter' % name, location
-            )
+            raise VoltLibError('Lookup name "%s" must start with a letter' % name, location)
         if self.lookups_.resolve(name) is not None:
             raise VoltLibError(
-                'Lookup "%s" already defined, '
-                "lookup names are case insensitive" % name,
+                'Lookup "%s" already defined, ' "lookup names are case insensitive" % name,
                 location,
             )
         process_base = True
@@ -289,9 +280,7 @@ class Parser(object):
                     else:
                         right.append(coverage)
                 self.expect_keyword_("END_CONTEXT")
-                context = ast.ContextDefinition(
-                    ex_or_in, left, right, location=location
-                )
+                context = ast.ContextDefinition(ex_or_in, left, right, location=location)
                 contexts.append(context)
             else:
                 self.expect_keyword_("END_CONTEXT")
@@ -372,9 +361,7 @@ class Parser(object):
             anchor_name = self.expect_string_()
             coverage_to.append((cov, anchor_name))
         self.expect_keyword_("END_ATTACH")
-        position = ast.PositionAttachDefinition(
-            coverage, coverage_to, location=location
-        )
+        position = ast.PositionAttachDefinition(coverage, coverage_to, location=location)
         return position
 
     def parse_attach_cursive_(self):
@@ -449,8 +436,7 @@ class Parser(object):
             anchor = self.anchors_[glyph_name].resolve(name)
             if anchor is not None and anchor.component == component:
                 raise VoltLibError(
-                    'Anchor "%s" already defined, '
-                    "anchor names are case insensitive" % name,
+                    'Anchor "%s" already defined, ' "anchor names are case insensitive" % name,
                     location,
                 )
         if self.next_token_ == "LOCKED":

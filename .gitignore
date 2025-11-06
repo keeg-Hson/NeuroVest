@@ -4,3 +4,23 @@ prediction_log.txt
 /backups/
 
 models/
+
+# data + outputs
+outputs/
+data/_archive/
+data/features/
+data_cache/
+logs/
+*.parquet
+*.feather
+*.tmp
+*.csv.zip
+
+# local env
+.venv/
+__pycache__/
+*.pyc
+
+# databases
+*.duckdb
+

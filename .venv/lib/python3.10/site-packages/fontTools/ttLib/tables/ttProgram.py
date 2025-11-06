@@ -246,10 +246,7 @@ class Program(object):
         return self.assembly
 
     def toXML(self, writer, ttFont) -> None:
-        if (
-            not hasattr(ttFont, "disassembleInstructions")
-            or ttFont.disassembleInstructions
-        ):
+        if not hasattr(ttFont, "disassembleInstructions") or ttFont.disassembleInstructions:
             try:
                 assembly = self.getAssembly()
             except:
@@ -378,11 +375,7 @@ class Program(object):
                     # Automatically choose the most compact representation
                     nWords = 0
                     while nArgs:
-                        while (
-                            nWords < nArgs
-                            and nWords < 255
-                            and not (0 <= args[nWords] <= 255)
-                        ):
+                        while nWords < nArgs and nWords < 255 and not (0 <= args[nWords] <= 255):
                             nWords += 1
                         nBytes = 0
                         while (
@@ -391,11 +384,7 @@ class Program(object):
                             and 0 <= args[nWords + nBytes] <= 255
                         ):
                             nBytes += 1
-                        if (
-                            nBytes < 2
-                            and nWords + nBytes < 255
-                            and nWords + nBytes != nArgs
-                        ):
+                        if nBytes < 2 and nWords + nBytes < 255 and nWords + nBytes != nArgs:
                             # Will write bytes as words
                             nWords += nBytes
                             continue
@@ -411,9 +400,7 @@ class Program(object):
                                 push(op)
                                 push(nWords)
                             for value in args[:nWords]:
-                                assert -32768 <= value < 32768, (
-                                    "PUSH value out of range %d" % value
-                                )
+                                assert -32768 <= value < 32768, "PUSH value out of range %d" % value
                                 push((value >> 8) & 0xFF)
                                 push(value & 0xFF)
 
@@ -449,16 +436,12 @@ class Program(object):
                         push(nArgs)
                     if words:
                         for value in args:
-                            assert -32768 <= value < 32768, (
-                                "PUSHW value out of range %d" % value
-                            )
+                            assert -32768 <= value < 32768, "PUSHW value out of range %d" % value
                             push((value >> 8) & 0xFF)
                             push(value & 0xFF)
                     else:
                         for value in args:
-                            assert 0 <= value < 256, (
-                                "PUSHB value out of range %d" % value
-                            )
+                            assert 0 <= value < 256, "PUSHB value out of range %d" % value
                             push(value)
 
             pos = _skipWhite(assembly, pos)
@@ -514,9 +497,7 @@ class Program(object):
                     if nValues == 1:
                         assembly.append("%s[ ]	/* 1 value pushed */" % mnemonic)
                     else:
-                        assembly.append(
-                            "%s[ ]	/* %s values pushed */" % (mnemonic, nValues)
-                        )
+                        assembly.append("%s[ ]	/* %s values pushed */" % (mnemonic, nValues))
                     assembly.extend(values)
                 else:
                     assembly.append("INSTR%d[ ]" % op)
@@ -524,8 +505,7 @@ class Program(object):
             else:
                 if argBits:
                     assembly.append(
-                        mnemonic
-                        + "[%s]	/* %s */" % (num2binary(op - argoffset, argBits), name)
+                        mnemonic + "[%s]	/* %s */" % (num2binary(op - argoffset, argBits), name)
                     )
                 else:
                     assembly.append(mnemonic + "[ ]	/* %s */" % name)

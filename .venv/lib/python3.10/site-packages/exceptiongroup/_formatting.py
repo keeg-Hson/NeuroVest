@@ -16,13 +16,9 @@ from ._exceptions import BaseExceptionGroup
 
 max_group_width = 15
 max_group_depth = 10
-_cause_message = (
-    "\nThe above exception was the direct cause of the following exception:\n\n"
-)
+_cause_message = "\nThe above exception was the direct cause of the following exception:\n\n"
 
-_context_message = (
-    "\nDuring handling of the above exception, another exception occurred:\n\n"
-)
+_context_message = "\nDuring handling of the above exception, another exception occurred:\n\n"
 
 
 def _format_final_exc_line(etype, value):
@@ -165,9 +161,7 @@ class PatchedTracebackException(traceback.TracebackException):
                     cause = None
 
                 if compact:
-                    need_context = (
-                        cause is None and e is not None and not e.__suppress_context__
-                    )
+                    need_context = cause is None and e is not None and not e.__suppress_context__
                 else:
                     need_context = True
                 if (
@@ -291,9 +285,7 @@ class PatchedTracebackException(traceback.TracebackException):
                     else:
                         remaining = num_excs - max_group_width
                         plural = "s" if remaining > 1 else ""
-                        yield from _ctx.emit(
-                            f"and {remaining} more exception{plural}\n"
-                        )
+                        yield from _ctx.emit(f"and {remaining} more exception{plural}\n")
 
                     if last_exc and _ctx.need_close:
                         yield _ctx.indent() + "+------------------------------------\n"
@@ -401,9 +393,7 @@ if getattr(sys.excepthook, "__name__", None) in (
 @singledispatch
 def format_exception_only(__exc: BaseException, **kwargs: Any) -> List[str]:
     return list(
-        PatchedTracebackException(
-            type(__exc), __exc, None, compact=True
-        ).format_exception_only()
+        PatchedTracebackException(type(__exc), __exc, None, compact=True).format_exception_only()
     )
 
 
@@ -529,9 +519,7 @@ def _compute_suggestion_error(exc_value, tb):
         max_distance = (len(possible_name) + wrong_name_len + 3) * _MOVE_COST // 6
         # Don't take matches we've already beaten.
         max_distance = min(max_distance, best_distance - 1)
-        current_distance = _levenshtein_distance(
-            wrong_name, possible_name, max_distance
-        )
+        current_distance = _levenshtein_distance(wrong_name, possible_name, max_distance)
         if current_distance > max_distance:
             continue
         if not suggestion or current_distance < best_distance:

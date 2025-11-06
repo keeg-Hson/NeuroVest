@@ -61,18 +61,14 @@ class ConfigValueParsingError(ConfigError):
     """Raised when a configuration value cannot be parsed."""
 
     def __init__(self, name, value):
-        super().__init__(
-            f"Config option {name}: value cannot be parsed (given {repr(value)})"
-        )
+        super().__init__(f"Config option {name}: value cannot be parsed (given {repr(value)})")
 
 
 class ConfigValueValidationError(ConfigError):
     """Raised when a configuration value cannot be validated."""
 
     def __init__(self, name, value):
-        super().__init__(
-            f"Config option {name}: value is invalid (given {repr(value)})"
-        )
+        super().__init__(f"Config option {name}: value is invalid (given {repr(value)})")
 
 
 class ConfigUnknownOptionError(ConfigError):
@@ -294,9 +290,7 @@ class AbstractConfig(MutableMapping):
 
         self._values[option.name] = value
 
-    def get(
-        self, option_or_name: Union[Option, str], default: Any = _USE_GLOBAL_DEFAULT
-    ) -> Any:
+    def get(self, option_or_name: Union[Option, str], default: Any = _USE_GLOBAL_DEFAULT) -> Any:
         """
         Get the value of an option. The value which is returned is the first
         provided among:

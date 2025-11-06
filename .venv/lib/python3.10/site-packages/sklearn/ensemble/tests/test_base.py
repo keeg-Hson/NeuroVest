@@ -20,9 +20,7 @@ from sklearn.pipeline import Pipeline
 
 def test_base():
     # Check BaseEnsemble methods.
-    ensemble = BaggingClassifier(
-        estimator=Perceptron(random_state=None), n_estimators=3
-    )
+    ensemble = BaggingClassifier(estimator=Perceptron(random_state=None), n_estimators=3)
 
     iris = load_iris()
     ensemble.fit(iris.data, iris.target)
@@ -43,9 +41,7 @@ def test_base():
     assert isinstance(ensemble[2].random_state, int)
     assert ensemble[1].random_state != ensemble[2].random_state
 
-    np_int_ensemble = BaggingClassifier(
-        estimator=Perceptron(), n_estimators=np.int32(3)
-    )
+    np_int_ensemble = BaggingClassifier(estimator=Perceptron(), n_estimators=np.int32(3))
     np_int_ensemble.fit(iris.data, iris.target)
 
 
@@ -79,8 +75,7 @@ def test_set_random_states():
     assert isinstance(est1.steps[0][1].estimator.random_state, int)
     assert isinstance(est1.steps[1][1].random_state, int)
     assert (
-        est1.get_params()["sel__estimator__random_state"]
-        != est1.get_params()["clf__random_state"]
+        est1.get_params()["sel__estimator__random_state"] != est1.get_params()["clf__random_state"]
     )
 
     # ensure multiple random_state parameters are invariant to get_params()
@@ -103,7 +98,4 @@ def test_set_random_states():
             est1.get_params()["sel__estimator__random_state"]
             == est2.get_params()["sel__estimator__random_state"]
         )
-        assert (
-            est1.get_params()["clf__random_state"]
-            == est2.get_params()["clf__random_state"]
-        )
+        assert est1.get_params()["clf__random_state"] == est2.get_params()["clf__random_state"]

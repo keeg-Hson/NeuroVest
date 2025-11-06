@@ -54,9 +54,7 @@ def test_compute_mi_cc(global_dtype):
     # Theory and computed values won't be very close
     # We here check with a large relative tolerance
     for n_neighbors in [3, 5, 7]:
-        I_computed = _compute_mi(
-            x, y, x_discrete=False, y_discrete=False, n_neighbors=n_neighbors
-        )
+        I_computed = _compute_mi(x, y, x_discrete=False, y_discrete=False, n_neighbors=n_neighbors)
         assert_allclose(I_computed, I_theory, rtol=1e-1)
 
 
@@ -120,9 +118,7 @@ def test_compute_mi_cd_unique_label(global_dtype):
 
 # We are going test that feature ordering by MI matches our expectations.
 def test_mutual_info_classif_discrete(global_dtype):
-    X = np.array(
-        [[0, 0, 0], [1, 1, 0], [2, 0, 1], [2, 0, 1], [2, 0, 1]], dtype=global_dtype
-    )
+    X = np.array([[0, 0, 0], [1, 1, 0], [2, 0, 1], [2, 0, 1], [2, 0, 1]], dtype=global_dtype)
     y = np.array([0, 1, 2, 2, 1])
 
     # Here X[:, 0] is the most informative feature, and X[:, 1] is weakly
@@ -179,9 +175,7 @@ def test_mutual_info_classif_mixed(global_dtype):
 
 @pytest.mark.parametrize("csr_container", CSR_CONTAINERS)
 def test_mutual_info_options(global_dtype, csr_container):
-    X = np.array(
-        [[0, 0, 0], [1, 1, 0], [2, 0, 1], [2, 0, 1], [2, 0, 1]], dtype=global_dtype
-    )
+    X = np.array([[0, 0, 0], [1, 1, 0], [2, 0, 1], [2, 0, 1], [2, 0, 1]], dtype=global_dtype)
     y = np.array([0, 1, 2, 2, 1], dtype=global_dtype)
     X_csr = csr_container(X)
 

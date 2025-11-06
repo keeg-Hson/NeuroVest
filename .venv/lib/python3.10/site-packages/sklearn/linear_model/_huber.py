@@ -77,8 +77,7 @@ def _huber_loss_and_gradient(w, X, y, epsilon, alpha, sample_weight=None):
     outliers_sw = sample_weight[outliers_mask]
     n_sw_outliers = np.sum(outliers_sw)
     outlier_loss = (
-        2.0 * epsilon * np.sum(outliers_sw * outliers)
-        - sigma * n_sw_outliers * epsilon**2
+        2.0 * epsilon * np.sum(outliers_sw * outliers) - sigma * n_sw_outliers * epsilon**2
     )
 
     # Calculate the quadratic loss due to the non-outliers.-
@@ -95,9 +94,7 @@ def _huber_loss_and_gradient(w, X, y, epsilon, alpha, sample_weight=None):
 
     # Gradient due to the squared loss.
     X_non_outliers = -axis0_safe_slice(X, ~outliers_mask, n_non_outliers)
-    grad[:n_features] = (
-        2.0 / sigma * safe_sparse_dot(weighted_non_outliers, X_non_outliers)
-    )
+    grad[:n_features] = 2.0 / sigma * safe_sparse_dot(weighted_non_outliers, X_non_outliers)
 
     # Gradient due to the linear loss.
     signed_outliers = np.ones_like(outliers)

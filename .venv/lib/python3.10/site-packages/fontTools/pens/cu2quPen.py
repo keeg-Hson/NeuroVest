@@ -245,8 +245,7 @@ class Cu2QuMultiPen:
     def __init__(self, other_pens, max_err, reverse_direction=False):
         if reverse_direction:
             other_pens = [
-                ReverseContourPen(pen, outputImpliedClosingLine=True)
-                for pen in other_pens
+                ReverseContourPen(pen, outputImpliedClosingLine=True) for pen in other_pens
             ]
         self.pens = other_pens
         self.max_err = max_err

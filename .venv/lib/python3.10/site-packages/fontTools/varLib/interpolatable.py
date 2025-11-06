@@ -151,9 +151,7 @@ def test_gen(
         # ... risks the sparse master being the first one, and only processing a subset of the glyphs
         glyphs = {g for glyphset in glyphsets for g in glyphset.keys()}
 
-    parents, order = find_parents_and_order(
-        glyphsets, locations, discrete_axes=discrete_axes
-    )
+    parents, order = find_parents_and_order(glyphsets, locations, discrete_axes=discrete_axes)
 
     def grand_parent(i, glyphname):
         if i is None:
@@ -170,9 +168,7 @@ def test_gen(
         allGlyphs = [Glyph(glyph_name, glyphset) for glyphset in glyphsets]
         if len([1 for glyph in allGlyphs if glyph is not None]) <= 1:
             continue
-        for master_idx, (glyph, glyphset, name) in enumerate(
-            zip(allGlyphs, glyphsets, names)
-        ):
+        for master_idx, (glyph, glyphset, name) in enumerate(zip(allGlyphs, glyphsets, names)):
             if glyph.doesnt_exist:
                 if not ignore_missing:
                     yield (
@@ -307,9 +303,7 @@ def test_gen(
 
             # If contour-order is wrong, adjust it
             matching = matchings[m1idx]
-            if (
-                matching is not None and m1Isomorphisms
-            ):  # m1 is empty for composite glyphs
+            if matching is not None and m1Isomorphisms:  # m1 is empty for composite glyphs
                 m1Isomorphisms = [m1Isomorphisms[i] for i in matching]
                 m1Vectors = [m1Vectors[i] for i in matching]
                 recording1 = [recording1[i] for i in matching]
@@ -324,9 +318,7 @@ def test_gen(
                     # Mismatch because of the reordering above
                     midRecording.append(None)
 
-            for ix, (contour0, contour1) in enumerate(
-                zip(m0Isomorphisms, m1Isomorphisms)
-            ):
+            for ix, (contour0, contour1) in enumerate(zip(m0Isomorphisms, m1Isomorphisms)):
                 if (
                     contour0 is None
                     or contour1 is None
@@ -400,9 +392,9 @@ def test_gen(
                             size1,
                         )
 
-                        if (
-                            not overweight and expectedSize * tolerance > midSize + 1e-5
-                        ) or (overweight and 1e-5 + expectedSize / tolerance < midSize):
+                        if (not overweight and expectedSize * tolerance > midSize + 1e-5) or (
+                            overweight and 1e-5 + expectedSize / tolerance < midSize
+                        ):
                             try:
                                 if overweight:
                                     this_tolerance = expectedSize / midSize
@@ -435,9 +427,7 @@ def test_gen(
                 m1 = [m1[i] for i in matchings[m1idx]]
 
             t = 0.1  # ~sin(radian(6)) for tolerance 0.95
-            deviation_threshold = (
-                upem * DEFAULT_KINKINESS_LENGTH * DEFAULT_KINKINESS / kinkiness
-            )
+            deviation_threshold = upem * DEFAULT_KINKINESS_LENGTH * DEFAULT_KINKINESS / kinkiness
 
             for ix, (contour0, contour1) in enumerate(zip(m0, m1)):
                 if (
@@ -717,9 +707,7 @@ def main(args=None):
             designspace = DesignSpaceDocument.fromfile(args.inputs[0])
             args.inputs = [master.path for master in designspace.sources]
             locations = [master.location for master in designspace.sources]
-            discrete_axes = {
-                a.name for a in designspace.axes if not hasattr(a, "minimum")
-            }
+            discrete_axes = {a.name for a in designspace.axes if not hasattr(a, "minimum")}
             axis_triples = {
                 a.name: (a.minimum, a.default, a.maximum)
                 for a in designspace.axes
@@ -741,9 +729,7 @@ def main(args=None):
             names = ["%s-%s" % (f.info.familyName, f.info.styleName) for f in fonts]
             args.inputs = []
             locations = [master.location for master in designspace.sources]
-            axis_triples = {
-                a.name: (a.minimum, a.default, a.maximum) for a in designspace.axes
-            }
+            axis_triples = {a.name: (a.minimum, a.default, a.maximum) for a in designspace.axes}
             axis_mappings = {a.name: a.map for a in designspace.axes}
             axis_triples = {
                 k: tuple(piecewiseLinearMap(v, dict(axis_mappings[k])) for v in vv)
@@ -776,9 +762,7 @@ def main(args=None):
                     for axisTag, segments in avar.segments.items():
                         fvarMapping = axisMapping[axisTag].copy()
                         for location, value in segments.items():
-                            axisMapping[axisTag][value] = piecewiseLinearMap(
-                                location, fvarMapping
-                            )
+                            axisMapping[axisTag][value] = piecewiseLinearMap(location, fvarMapping)
 
             # Gather all glyphs at their "master" locations
             ttGlyphSets = {}
@@ -873,9 +857,7 @@ def main(args=None):
                         "%s=%s"
                         % (
                             k,
-                            floatToFixedToStr(
-                                piecewiseLinearMap(v, axisMapping[k]), 14
-                            ),
+                            floatToFixedToStr(piecewiseLinearMap(v, axisMapping[k]), 14),
                         )
                         for k, v in locTuple
                     )
@@ -925,16 +907,8 @@ def main(args=None):
 
     if args.name:
         accepted_names = set(args.name)
-        glyphsets = [
-            glyphset
-            for name, glyphset in zip(names, glyphsets)
-            if name in accepted_names
-        ]
-        locations = [
-            location
-            for name, location in zip(names, locations)
-            if name in accepted_names
-        ]
+        glyphsets = [glyphset for name, glyphset in zip(names, glyphsets) if name in accepted_names]
+        locations = [location for name, location in zip(names, locations) if name in accepted_names]
         names = [name for name in names if name in accepted_names]
 
     if not glyphs:
@@ -976,11 +950,7 @@ def main(args=None):
         )
         problems = defaultdict(list)
 
-        f = (
-            sys.stdout
-            if args.output is None
-            else open(ensure_parent_dir(args.output), "w")
-        )
+        f = sys.stdout if args.output is None else open(ensure_parent_dir(args.output), "w")
 
         if not args.quiet:
             if args.json:
@@ -1007,17 +977,13 @@ def main(args=None):
                     )
                     if master_idxs != last_master_idxs:
                         master_names = (
-                            (p["master"],)
-                            if "master" in p
-                            else (p["master_1"], p["master_2"])
+                            (p["master"],) if "master" in p else (p["master_1"], p["master_2"])
                         )
                         print(f"  Masters: %s:" % ", ".join(master_names), file=f)
                         last_master_idxs = master_idxs
 
                     if p["type"] == InterpolatableProblem.MISSING:
-                        print(
-                            "    Glyph was missing in master %s" % p["master"], file=f
-                        )
+                        print("    Glyph was missing in master %s" % p["master"], file=f)
                     elif p["type"] == InterpolatableProblem.OPEN_PATH:
                         print(
                             "    Glyph has an open path in master %s" % p["master"],
@@ -1138,12 +1104,8 @@ def main(args=None):
 
             PlotterClass = InterpolatablePS if p == "ps" else InterpolatablePDF
 
-            with PlotterClass(
-                ensure_parent_dir(arg), glyphsets=glyphsets, names=names
-            ) as doc:
-                doc.add_title_page(
-                    original_args_inputs, tolerance=tolerance, kinkiness=kinkiness
-                )
+            with PlotterClass(ensure_parent_dir(arg), glyphsets=glyphsets, names=names) as doc:
+                doc.add_title_page(original_args_inputs, tolerance=tolerance, kinkiness=kinkiness)
                 if problems:
                     doc.add_summary(problems)
                 doc.add_problems(problems)

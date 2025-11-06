@@ -190,9 +190,7 @@ def test_sparse_support(csr_container):
 
     X, y = make_regression(n_features=10)
     X = csr_container(X)
-    sfs = SequentialFeatureSelector(
-        LinearRegression(), n_features_to_select="auto", cv=2
-    )
+    sfs = SequentialFeatureSelector(LinearRegression(), n_features_to_select="auto", cv=2)
     sfs.fit(X, y)
     sfs.transform(X)
 
@@ -213,9 +211,7 @@ def test_nan_support():
 
     with pytest.raises(ValueError, match="Input X contains NaN"):
         # LinearRegression does not support nans
-        SequentialFeatureSelector(
-            LinearRegression(), n_features_to_select="auto", cv=2
-        ).fit(X, y)
+        SequentialFeatureSelector(LinearRegression(), n_features_to_select="auto", cv=2).fit(X, y)
 
 
 def test_pipeline_support():
@@ -232,9 +228,7 @@ def test_pipeline_support():
     sfs.transform(X)
 
     # SFS in pipeline
-    sfs = SequentialFeatureSelector(
-        LinearRegression(), n_features_to_select="auto", cv=2
-    )
+    sfs = SequentialFeatureSelector(LinearRegression(), n_features_to_select="auto", cv=2)
     pipe = make_pipeline(StandardScaler(), sfs)
     pipe.fit(X, y)
     pipe.transform(X)

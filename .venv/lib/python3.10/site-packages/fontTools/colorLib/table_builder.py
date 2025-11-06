@@ -64,9 +64,7 @@ def _split_format(cls, source):
     else:
         raise ValueError(f"Not sure how to populate {cls} from {source}")
 
-    assert isinstance(
-        fmt, collections.abc.Hashable
-    ), f"{cls} Format is not hashable: {fmt!r}"
+    assert isinstance(fmt, collections.abc.Hashable), f"{cls} Format is not hashable: {fmt!r}"
     assert fmt in cls.convertersByName, f"{cls} invalid Format: {fmt!r}"
 
     return fmt, remainder
@@ -174,9 +172,9 @@ class TableBuilder:
             if not hasattr(dest, field) and isinstance(conv, OptionalValue):
                 setattr(dest, field, conv.DEFAULT)
 
-        dest = self._callbackTable.get(
-            (BuildCallback.AFTER_BUILD,) + callbackKey, lambda d: d
-        )(dest)
+        dest = self._callbackTable.get((BuildCallback.AFTER_BUILD,) + callbackKey, lambda d: d)(
+            dest
+        )
 
         return dest
 
@@ -214,9 +212,7 @@ class TableUnbuilder:
                 # "simple" values (e.g. int, float, str) need no further un-building
                 source[converter.name] = value
             else:
-                raise NotImplementedError(
-                    "Don't know how unbuild {value!r} with {converter!r}"
-                )
+                raise NotImplementedError("Don't know how unbuild {value!r} with {converter!r}")
 
         source = self._callbackTable.get(callbackKey, lambda s: s)(source)
 

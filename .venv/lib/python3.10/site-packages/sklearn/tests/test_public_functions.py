@@ -88,9 +88,7 @@ def _check_function_param_validation(
                 " RealNotInt instead of Real."
             )
 
-        match = (
-            rf"The '{param_name}' parameter of {func_name} must be .* Got .* instead."
-        )
+        match = rf"The '{param_name}' parameter of {func_name} must be .* Got .* instead."
 
         err_msg = (
             f"{func_name} does not raise an informative error message when the "
@@ -375,9 +373,7 @@ PARAM_VALIDATION_CLASS_WRAPPER_LIST = [
 ]
 
 
-@pytest.mark.parametrize(
-    "func_module, class_module", PARAM_VALIDATION_CLASS_WRAPPER_LIST
-)
+@pytest.mark.parametrize("func_module, class_module", PARAM_VALIDATION_CLASS_WRAPPER_LIST)
 def test_class_wrapper_param_validation(func_module, class_module):
     """Check param validation for public functions that are wrappers around
     estimators.
@@ -394,9 +390,7 @@ def test_class_wrapper_param_validation(func_module, class_module):
         **parameter_constraints_class,
         **parameter_constraints_func,
     }
-    parameter_constraints = {
-        k: v for k, v in parameter_constraints.items() if k in func_params
-    }
+    parameter_constraints = {k: v for k, v in parameter_constraints.items() if k in func_params}
 
     _check_function_param_validation(
         func, func_name, func_params, required_params, parameter_constraints

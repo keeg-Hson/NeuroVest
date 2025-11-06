@@ -36,13 +36,13 @@ def test_delegate_to_func():
     )
 
     # The function should only have received X.
-    assert args_store == [
-        X
-    ], "Incorrect positional arguments passed to func: {args}".format(args=args_store)
+    assert args_store == [X], "Incorrect positional arguments passed to func: {args}".format(
+        args=args_store
+    )
 
-    assert (
-        not kwargs_store
-    ), "Unexpected keyword arguments passed to func: {args}".format(args=kwargs_store)
+    assert not kwargs_store, "Unexpected keyword arguments passed to func: {args}".format(
+        args=kwargs_store
+    )
 
     # reset the argument stores.
     args_store[:] = []
@@ -51,18 +51,16 @@ def test_delegate_to_func():
         _make_func(args_store, kwargs_store),
     ).transform(X)
 
-    assert_array_equal(
-        transformed, X, err_msg="transform should have returned X unchanged"
-    )
+    assert_array_equal(transformed, X, err_msg="transform should have returned X unchanged")
 
     # The function should have received X
-    assert args_store == [
-        X
-    ], "Incorrect positional arguments passed to func: {args}".format(args=args_store)
+    assert args_store == [X], "Incorrect positional arguments passed to func: {args}".format(
+        args=args_store
+    )
 
-    assert (
-        not kwargs_store
-    ), "Unexpected keyword arguments passed to func: {args}".format(args=kwargs_store)
+    assert not kwargs_store, "Unexpected keyword arguments passed to func: {args}".format(
+        args=kwargs_store
+    )
 
 
 def test_np_log():
@@ -162,15 +160,11 @@ def test_check_inverse_func_or_inverse_not_provided():
     # provided.
     X = np.array([1, 4, 9, 16], dtype=np.float64).reshape((2, 2))
 
-    trans = FunctionTransformer(
-        func=np.expm1, inverse_func=None, check_inverse=True, validate=True
-    )
+    trans = FunctionTransformer(func=np.expm1, inverse_func=None, check_inverse=True, validate=True)
     with warnings.catch_warnings():
         warnings.simplefilter("error", UserWarning)
         trans.fit(X)
-    trans = FunctionTransformer(
-        func=None, inverse_func=np.expm1, check_inverse=True, validate=True
-    )
+    trans = FunctionTransformer(func=None, inverse_func=np.expm1, check_inverse=True, validate=True)
     with warnings.catch_warnings():
         warnings.simplefilter("error", UserWarning)
         trans.fit(X)
@@ -327,9 +321,7 @@ def test_function_transformer_get_feature_names_out(
         pd = pytest.importorskip("pandas")
         X = pd.DataFrame(X)
 
-    transformer = FunctionTransformer(
-        feature_names_out=feature_names_out, validate=validate
-    )
+    transformer = FunctionTransformer(feature_names_out=feature_names_out, validate=validate)
     transformer.fit(X)
     names = transformer.get_feature_names_out(input_features)
     assert isinstance(names, np.ndarray)
@@ -414,9 +406,7 @@ def test_function_transformer_validate_inverse():
     ],
 )
 @pytest.mark.parametrize("in_pipeline", [True, False])
-def test_get_feature_names_out_dataframe_with_string_data(
-    feature_names_out, expected, in_pipeline
-):
+def test_get_feature_names_out_dataframe_with_string_data(feature_names_out, expected, in_pipeline):
     """Check that get_feature_names_out works with DataFrames with string data."""
     pd = pytest.importorskip("pandas")
     X = pd.DataFrame({"pet": ["dog", "cat"], "color": ["red", "green"]})
@@ -473,10 +463,7 @@ def test_set_output_func():
 
     for transform in ("pandas", "polars"):
         ft_np.set_output(transform=transform)
-        msg = (
-            f"When `set_output` is configured to be '{transform}'.*{transform} "
-            "DataFrame.*"
-        )
+        msg = f"When `set_output` is configured to be '{transform}'.*{transform} " "DataFrame.*"
         with pytest.warns(UserWarning, match=msg):
             ft_np.fit_transform(X)
 
@@ -558,9 +545,7 @@ def test_function_transformer_overwrite_column_names_numerical(feature_names_out
     "feature_names_out",
     ["one-to-one", lambda _, names: [f"{name}_log" for name in names]],
 )
-def test_function_transformer_error_column_inconsistent(
-    dataframe_lib, feature_names_out
-):
+def test_function_transformer_error_column_inconsistent(dataframe_lib, feature_names_out):
     """Check that we raise an error when `func` returns a dataframe with new
     column names that become inconsistent with `get_feature_names_out`."""
     lib = pytest.importorskip(dataframe_lib)

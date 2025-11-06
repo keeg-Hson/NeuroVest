@@ -147,9 +147,7 @@ def test_custom_optimizer(kernel, global_random_seed):
     # Define a dummy optimizer that simply tests 10 random hyperparameters
     def optimizer(obj_func, initial_theta, bounds):
         rng = np.random.RandomState(global_random_seed)
-        theta_opt, func_min = initial_theta, obj_func(
-            initial_theta, eval_gradient=False
-        )
+        theta_opt, func_min = initial_theta, obj_func(initial_theta, eval_gradient=False)
         for _ in range(10):
             theta = np.atleast_1d(
                 rng.uniform(np.maximum(-2, bounds[:, 0]), np.minimum(1, bounds[:, 1]))
@@ -162,9 +160,9 @@ def test_custom_optimizer(kernel, global_random_seed):
     gpc = GaussianProcessClassifier(kernel=kernel, optimizer=optimizer)
     gpc.fit(X, y_mc)
     # Checks that optimizer improved marginal likelihood
-    assert gpc.log_marginal_likelihood(
-        gpc.kernel_.theta
-    ) >= gpc.log_marginal_likelihood(kernel.theta)
+    assert gpc.log_marginal_likelihood(gpc.kernel_.theta) >= gpc.log_marginal_likelihood(
+        kernel.theta
+    )
 
 
 @pytest.mark.parametrize("kernel", kernels)
@@ -206,9 +204,7 @@ def test_warning_bounds():
     with pytest.warns(ConvergenceWarning, match=warning_message):
         gpc.fit(X, y)
 
-    kernel_sum = WhiteKernel(noise_level_bounds=[1e-5, 1e-3]) + RBF(
-        length_scale_bounds=[1e3, 1e5]
-    )
+    kernel_sum = WhiteKernel(noise_level_bounds=[1e-5, 1e-3]) + RBF(length_scale_bounds=[1e3, 1e5])
     gpc_sum = GaussianProcessClassifier(kernel=kernel_sum)
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always")

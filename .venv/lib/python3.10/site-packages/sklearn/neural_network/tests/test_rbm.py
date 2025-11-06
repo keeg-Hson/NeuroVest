@@ -23,9 +23,7 @@ Xdigits /= Xdigits.max()
 def test_fit():
     X = Xdigits.copy()
 
-    rbm = BernoulliRBM(
-        n_components=64, learning_rate=0.1, batch_size=10, n_iter=7, random_state=9
-    )
+    rbm = BernoulliRBM(n_components=64, learning_rate=0.1, batch_size=10, n_iter=7, random_state=9)
     rbm.fit(X)
 
     assert_almost_equal(rbm.score_samples(X).mean(), -21.0, decimal=0)
@@ -36,9 +34,7 @@ def test_fit():
 
 def test_partial_fit():
     X = Xdigits.copy()
-    rbm = BernoulliRBM(
-        n_components=64, learning_rate=0.1, batch_size=20, random_state=9
-    )
+    rbm = BernoulliRBM(n_components=64, learning_rate=0.1, batch_size=20, random_state=9)
     n_samples = X.shape[0]
     n_batches = int(np.ceil(float(n_samples) / rbm.batch_size))
     batch_slices = np.array_split(X, n_batches)
@@ -74,19 +70,13 @@ def test_small_sparse_partial_fit(sparse_container):
     X_sparse = sparse_container(Xdigits[:100])
     X = Xdigits[:100].copy()
 
-    rbm1 = BernoulliRBM(
-        n_components=64, learning_rate=0.1, batch_size=10, random_state=9
-    )
-    rbm2 = BernoulliRBM(
-        n_components=64, learning_rate=0.1, batch_size=10, random_state=9
-    )
+    rbm1 = BernoulliRBM(n_components=64, learning_rate=0.1, batch_size=10, random_state=9)
+    rbm2 = BernoulliRBM(n_components=64, learning_rate=0.1, batch_size=10, random_state=9)
 
     rbm1.partial_fit(X_sparse)
     rbm2.partial_fit(X)
 
-    assert_almost_equal(
-        rbm1.score_samples(X).mean(), rbm2.score_samples(X).mean(), decimal=0
-    )
+    assert_almost_equal(rbm1.score_samples(X).mean(), rbm2.score_samples(X).mean(), decimal=0)
 
 
 def test_sample_hiddens():
@@ -112,9 +102,7 @@ def test_fit_gibbs(csc_container):
     rbm1 = BernoulliRBM(n_components=2, batch_size=2, n_iter=42, random_state=rng)
     # you need that much iters
     rbm1.fit(X)
-    assert_almost_equal(
-        rbm1.components_, np.array([[0.02649814], [0.02009084]]), decimal=4
-    )
+    assert_almost_equal(rbm1.components_, np.array([[0.02649814], [0.02009084]]), decimal=4)
     assert_almost_equal(rbm1.gibbs(X), X)
 
     # Gibbs on the RBM hidden layer should be able to recreate [[0], [1]] from
@@ -123,9 +111,7 @@ def test_fit_gibbs(csc_container):
     X = csc_container([[0.0], [1.0]])
     rbm2 = BernoulliRBM(n_components=2, batch_size=2, n_iter=42, random_state=rng)
     rbm2.fit(X)
-    assert_almost_equal(
-        rbm2.components_, np.array([[0.02649814], [0.02009084]]), decimal=4
-    )
+    assert_almost_equal(rbm2.components_, np.array([[0.02649814], [0.02009084]]), decimal=4)
     assert_almost_equal(rbm2.gibbs(X), X.toarray())
     assert_almost_equal(rbm1.components_, rbm2.components_)
 
@@ -184,9 +170,7 @@ def test_sparse_and_verbose(csc_container):
     sys.stdout = StringIO()
 
     X = csc_container([[0.0], [1.0]])
-    rbm = BernoulliRBM(
-        n_components=2, batch_size=2, n_iter=1, random_state=42, verbose=True
-    )
+    rbm = BernoulliRBM(n_components=2, batch_size=2, n_iter=1, random_state=42, verbose=True)
     try:
         rbm.fit(X)
         s = sys.stdout.getvalue()
@@ -229,12 +213,8 @@ def test_convergence_dtype_consistency():
 
     # results and attributes should be close enough in 32 bit and 64 bit
     assert_allclose(Xt_64, Xt_32, rtol=1e-06, atol=0)
-    assert_allclose(
-        rbm_64.intercept_hidden_, rbm_32.intercept_hidden_, rtol=1e-06, atol=0
-    )
-    assert_allclose(
-        rbm_64.intercept_visible_, rbm_32.intercept_visible_, rtol=1e-05, atol=0
-    )
+    assert_allclose(rbm_64.intercept_hidden_, rbm_32.intercept_hidden_, rtol=1e-06, atol=0)
+    assert_allclose(rbm_64.intercept_visible_, rbm_32.intercept_visible_, rtol=1e-05, atol=0)
     assert_allclose(rbm_64.components_, rbm_32.components_, rtol=1e-03, atol=0)
     assert_allclose(rbm_64.h_samples_, rbm_32.h_samples_)
 

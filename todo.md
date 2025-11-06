@@ -6,8 +6,8 @@ refresh data → (re)train if scheduled → predict → append to point-in-time 
 - [ x] Add pinned `requirements.txt` and verify `pip install -r requirements.txt` on a clean venv.
 - [ x] Commit `.env.example` (this issue includes a template). Ensure `.env` is gitignored.
 - [ x] Create folders: `data/`, `data_cache/`, `models/`, `logs/`, `outputs/`.
-- [ ] Add `pyproject.toml` (project metadata + ruff/black config).
-- [ ] Lint format baseline: `ruff .` and `black .` pass.
+- [x ] Add `pyproject.toml` (project metadata + ruff/black config).
+- [ x] Lint format baseline: `ruff .` and `black .` pass.
 
 ## Day 2 — Fix broken/truncated code & imports
 - [ ] Remove/replace ellipses and cut-offs in: `train.py`, `predict.py`, `run_all.py`, `backtest.py`, `main.py`.

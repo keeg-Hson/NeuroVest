@@ -93,9 +93,7 @@ def brute_force_neighbors(X, Y, k, metric, **kwargs):
 @pytest.mark.parametrize("rtol", [0, 1e-5])
 @pytest.mark.parametrize("atol", [1e-6, 1e-2])
 @pytest.mark.parametrize("breadth_first", [True, False])
-def test_kernel_density(
-    Cls, kernel, h, rtol, atol, breadth_first, n_samples=100, n_features=3
-):
+def test_kernel_density(Cls, kernel, h, rtol, atol, breadth_first, n_samples=100, n_features=3):
     rng = check_random_state(1)
     X = rng.random_sample((n_samples, n_features))
     Y = rng.random_sample((n_samples, n_features))
@@ -198,9 +196,7 @@ def test_node_heap(nodeheap_sort, n_nodes=50):
     assert_array_almost_equal(vals[i1], vals2)
 
 
-@pytest.mark.parametrize(
-    "simultaneous_sort", [simultaneous_sort_bt, simultaneous_sort_kdt]
-)
+@pytest.mark.parametrize("simultaneous_sort", [simultaneous_sort_bt, simultaneous_sort_kdt])
 def test_simultaneous_sort(simultaneous_sort, n_rows=10, n_pts=201):
     rng = check_random_state(0)
     dist = rng.random_sample((n_rows, n_pts)).astype(np.float64, copy=False)

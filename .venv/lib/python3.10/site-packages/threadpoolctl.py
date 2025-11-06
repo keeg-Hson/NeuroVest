@@ -155,9 +155,7 @@ class LibController(ABC):
 
     def _get_symbol(self, name):
         """Return the symbol of the shared library accounding for the affixes"""
-        return getattr(
-            self.dynlib, f"{self._symbol_prefix}{name}{self._symbol_suffix}", None
-        )
+        return getattr(self.dynlib, f"{self._symbol_prefix}{name}{self._symbol_suffix}", None)
 
 
 class OpenBLASController(LibController):
@@ -177,9 +175,7 @@ class OpenBLASController(LibController):
     )
 
     def _find_affixes(self):
-        for prefix, suffix in itertools.product(
-            self._symbol_prefixes, self._symbol_suffixes
-        ):
+        for prefix, suffix in itertools.product(self._symbol_prefixes, self._symbol_suffixes):
             if hasattr(self.dynlib, f"{prefix}openblas_get_num_threads{suffix}"):
                 return prefix, suffix
 
@@ -260,9 +256,7 @@ class BLISController(LibController):
         return 1 if num_threads == -1 else num_threads
 
     def set_num_threads(self, num_threads):
-        set_func = getattr(
-            self.dynlib, "bli_thread_set_num_threads", lambda num_threads: None
-        )
+        set_func = getattr(self.dynlib, "bli_thread_set_num_threads", lambda num_threads: None)
         return set_func(num_threads)
 
     def get_version(self):
@@ -339,9 +333,7 @@ class FlexiBLASController(LibController):
         return 1 if num_threads == -1 else num_threads
 
     def set_num_threads(self, num_threads):
-        set_func = getattr(
-            self.dynlib, "flexiblas_set_num_threads", lambda num_threads: None
-        )
+        set_func = getattr(self.dynlib, "flexiblas_set_num_threads", lambda num_threads: None)
         return set_func(num_threads)
 
     def get_version(self):
@@ -401,9 +393,7 @@ class FlexiBLASController(LibController):
             if backend in self.available_backends:
                 load_func = getattr(self.dynlib, "flexiblas_load_backend", lambda _: -1)
             else:  # assume backend is a path to a shared library
-                load_func = getattr(
-                    self.dynlib, "flexiblas_load_backend_library", lambda _: -1
-                )
+                load_func = getattr(self.dynlib, "flexiblas_load_backend_library", lambda _: -1)
             res = load_func(str(backend).encode("utf-8"))
             if res == -1:
                 raise RuntimeError(
@@ -465,9 +455,7 @@ class MKLController(LibController):
         # The function mkl_set_threading_layer returns the current threading
         # layer. Calling it with an invalid threading layer allows us to safely
         # get the threading layer
-        set_threading_layer = getattr(
-            self.dynlib, "MKL_Set_Threading_Layer", lambda layer: -1
-        )
+        set_threading_layer = getattr(self.dynlib, "MKL_Set_Threading_Layer", lambda layer: -1)
         layer_map = {
             0: "intel",
             1: "sequential",
@@ -516,12 +504,8 @@ _ALL_CONTROLLERS = [
 # Helpers for the doc and test names
 _ALL_USER_APIS = list(set(lib.user_api for lib in _ALL_CONTROLLERS))
 _ALL_INTERNAL_APIS = [lib.internal_api for lib in _ALL_CONTROLLERS]
-_ALL_PREFIXES = list(
-    set(prefix for lib in _ALL_CONTROLLERS for prefix in lib.filename_prefixes)
-)
-_ALL_BLAS_LIBRARIES = [
-    lib.internal_api for lib in _ALL_CONTROLLERS if lib.user_api == "blas"
-]
+_ALL_PREFIXES = list(set(prefix for lib in _ALL_CONTROLLERS for prefix in lib.filename_prefixes))
+_ALL_BLAS_LIBRARIES = [lib.internal_api for lib in _ALL_CONTROLLERS if lib.user_api == "blas"]
 _ALL_OPENMP_LIBRARIES = OpenMPController.filename_prefixes
 
 
@@ -580,9 +564,7 @@ class _ThreadpoolLimiter:
 
     def __init__(self, controller, *, limits=None, user_api=None):
         self._controller = controller
-        self._limits, self._user_api, self._prefixes = self._check_params(
-            limits, user_api
-        )
+        self._limits, self._user_api, self._prefixes = self._check_params(limits, user_api)
         self._original_info = self._controller.info()
         self._set_threadpool_limits()
 
@@ -595,9 +577,7 @@ class _ThreadpoolLimiter:
     @classmethod
     def wrap(cls, controller, *, limits=None, user_api=None):
         """Return an instance of this class that can be used as a decorator"""
-        return _ThreadpoolLimiterDecorator(
-            controller=controller, limits=limits, user_api=user_api
-        )
+        return _ThreadpoolLimiterDecorator(controller=controller, limits=limits, user_api=user_api)
 
     def restore_original_limits(self):
         """Set the limits back to their original values"""
@@ -672,9 +652,7 @@ class _ThreadpoolLimiter:
             if isinstance(limits, list):
                 # This should be a list of dicts of library info, for
                 # compatibility with the result from threadpool_info.
-                limits = {
-                    lib_info["prefix"]: lib_info["num_threads"] for lib_info in limits
-                }
+                limits = {lib_info["prefix"]: lib_info["num_threads"] for lib_info in limits}
             elif isinstance(limits, ThreadpoolController):
                 # To set the limits from the library controllers of a
                 # ThreadpoolController object.
@@ -724,9 +702,7 @@ class _ThreadpoolLimiterDecorator(_ThreadpoolLimiter, ContextDecorator):
     """Same as _ThreadpoolLimiter but to be used as a decorator"""
 
     def __init__(self, controller, *, limits=None, user_api=None):
-        self._limits, self._user_api, self._prefixes = self._check_params(
-            limits, user_api
-        )
+        self._limits, self._user_api, self._prefixes = self._check_params(limits, user_api)
         self._controller = controller
 
     def __enter__(self):
@@ -847,10 +823,7 @@ class ThreadpoolController:
         lib_controllers = [
             lib_controller
             for lib_controller in self.lib_controllers
-            if any(
-                getattr(lib_controller, key, None) in vals
-                for key, vals in kwargs.items()
-            )
+            if any(getattr(lib_controller, key, None) in vals for key, vals in kwargs.items())
         ]
 
         return ThreadpoolController._from_controllers(lib_controllers)
@@ -861,9 +834,7 @@ class ThreadpoolController:
         This function takes into account the unexpected behavior of OpenBLAS with the
         OpenMP threading layer.
         """
-        if self.select(
-            internal_api="openblas", threading_layer="openmp"
-        ).lib_controllers:
+        if self.select(internal_api="openblas", threading_layer="openmp").lib_controllers:
             return {"limits": None, "user_api": None}
         return {"limits": 1, "user_api": "blas"}
 
@@ -1127,8 +1098,7 @@ class ThreadpoolController:
             from pyodide_js._module import LDSO
         except ImportError:
             warnings.warn(
-                "Unable to import LDSO from pyodide_js._module. This should never "
-                "happen."
+                "Unable to import LDSO from pyodide_js._module. This should never " "happen."
             )
             return
 
@@ -1166,10 +1136,7 @@ class ThreadpoolController:
             if prefix == "libblas":
                 if filename.endswith(".dll"):
                     libblas = ctypes.CDLL(filepath, _RTLD_NOLOAD)
-                    if not any(
-                        hasattr(libblas, func)
-                        for func in controller_class.check_symbols
-                    ):
+                    if not any(hasattr(libblas, func) for func in controller_class.check_symbols):
                         continue
                 else:
                     # We ignore libblas on other platforms than windows because there
@@ -1184,17 +1151,14 @@ class ThreadpoolController:
             # expected library (e.g. a library having a common prefix with one of the
             # our supported libraries). Otherwise, create and store the library
             # controller.
-            lib_controller = controller_class(
-                filepath=filepath, prefix=prefix, parent=self
-            )
+            lib_controller = controller_class(filepath=filepath, prefix=prefix, parent=self)
 
             if filepath in (lib.filepath for lib in self.lib_controllers):
                 # We already have a controller for this library.
                 continue
 
             if not hasattr(controller_class, "check_symbols") or any(
-                hasattr(lib_controller.dynlib, func)
-                for func in controller_class.check_symbols
+                hasattr(lib_controller.dynlib, func) for func in controller_class.check_symbols
             ):
                 self.lib_controllers.append(lib_controller)
 

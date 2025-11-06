@@ -41,7 +41,7 @@ def check_point_array(points: Any) -> None:
         raise TypeError(f"Expected numpy array not {type(points)}")
     if points.dtype != point_dtype:
         raise ValueError(f"Expected numpy array of dtype {point_dtype} not {points.dtype}")
-    if not (points.ndim == 2 and points.shape[1] ==2 and points.shape[0] > 1):
+    if not (points.ndim == 2 and points.shape[1] == 2 and points.shape[0] > 1):
         raise ValueError(f"Expected numpy array of shape (?, 2) not {points.shape}")
 
 
@@ -116,8 +116,11 @@ def check_filled(filled: cpy.FillReturn, fill_type: FillType | str) -> None:
             filled = cast(cpy.FillReturn_ChunkCombinedCodeOffset, filled)
         _check_tuple_of_lists_with_same_length(filled, 3, allow_empty_lists=False)
         for i, (points_or_none, codes_or_none, outer_offsets_or_none) in enumerate(zip(*filled)):
-            if (points_or_none is not None and codes_or_none is not None and
-                    outer_offsets_or_none is not None):
+            if (
+                points_or_none is not None
+                and codes_or_none is not None
+                and outer_offsets_or_none is not None
+            ):
                 check_point_array(points_or_none)
                 check_code_array(codes_or_none)
                 check_offset_array(outer_offsets_or_none)
@@ -125,16 +128,20 @@ def check_filled(filled: cpy.FillReturn, fill_type: FillType | str) -> None:
                     raise ValueError(f"Points and codes have different lengths in chunk {i}")
                 if outer_offsets_or_none[-1] != len(codes_or_none):
                     raise ValueError(f"Inconsistent codes and outer_offsets in chunk {i}")
-            elif not (points_or_none is None and codes_or_none is None and
-                      outer_offsets_or_none is None):
+            elif not (
+                points_or_none is None and codes_or_none is None and outer_offsets_or_none is None
+            ):
                 raise ValueError(f"Inconsistent Nones in chunk {i}")
     elif fill_type == FillType.ChunkCombinedOffsetOffset:
         if TYPE_CHECKING:
             filled = cast(cpy.FillReturn_ChunkCombinedOffsetOffset, filled)
         _check_tuple_of_lists_with_same_length(filled, 3, allow_empty_lists=False)
         for i, (points_or_none, offsets_or_none, outer_offsets_or_none) in enumerate(zip(*filled)):
-            if (points_or_none is not None and offsets_or_none is not None and
-                    outer_offsets_or_none is not None):
+            if (
+                points_or_none is not None
+                and offsets_or_none is not None
+                and outer_offsets_or_none is not None
+            ):
                 check_point_array(points_or_none)
                 check_offset_array(offsets_or_none)
                 check_offset_array(outer_offsets_or_none)
@@ -142,8 +149,9 @@ def check_filled(filled: cpy.FillReturn, fill_type: FillType | str) -> None:
                     raise ValueError(f"Inconsistent points and offsets in chunk {i}")
                 if outer_offsets_or_none[-1] != len(offsets_or_none) - 1:
                     raise ValueError(f"Inconsistent offsets and outer_offsets in chunk {i}")
-            elif not (points_or_none is None and offsets_or_none is None and
-                      outer_offsets_or_none is None):
+            elif not (
+                points_or_none is None and offsets_or_none is None and outer_offsets_or_none is None
+            ):
                 raise ValueError(f"Inconsistent Nones in chunk {i}")
     else:
         raise ValueError(f"Invalid FillType {fill_type}")

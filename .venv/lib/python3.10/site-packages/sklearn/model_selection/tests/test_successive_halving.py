@@ -39,18 +39,11 @@ class FastClassifier(DummyClassifier):
     # update the constraints such that we accept all parameters from a to z
     _parameter_constraints: dict = {
         **DummyClassifier._parameter_constraints,
-        **{
-            chr(key): "no_validation"  # type: ignore
-            for key in range(ord("a"), ord("z") + 1)
-        },
+        **{chr(key): "no_validation" for key in range(ord("a"), ord("z") + 1)},  # type: ignore
     }
 
-    def __init__(
-        self, strategy="stratified", random_state=None, constant=None, **kwargs
-    ):
-        super().__init__(
-            strategy=strategy, random_state=random_state, constant=constant
-        )
+    def __init__(self, strategy="stratified", random_state=None, constant=None, **kwargs):
+        super().__init__(strategy=strategy, random_state=random_state, constant=constant)
 
     def get_params(self, deep=False):
         params = super().get_params(deep=deep)
@@ -75,9 +68,7 @@ class SometimesFailClassifier(DummyClassifier):
         self.n_estimators = n_estimators
         self.a = a
 
-        super().__init__(
-            strategy=strategy, random_state=random_state, constant=constant
-        )
+        super().__init__(strategy=strategy, random_state=random_state, constant=constant)
 
     def fit(self, X, y):
         if self.fail_fit:
@@ -327,9 +318,7 @@ def test_resource_parameter(Est):
     ):
         assert r_i == params["c"] == param_c
 
-    with pytest.raises(
-        ValueError, match="Cannot use resource=1234 which is not supported "
-    ):
+    with pytest.raises(ValueError, match="Cannot use resource=1234 which is not supported "):
         sh = HalvingGridSearchCV(
             base_estimator, param_grid, cv=2, resource="1234", max_resources=10
         )
@@ -338,14 +327,11 @@ def test_resource_parameter(Est):
     with pytest.raises(
         ValueError,
         match=(
-            "Cannot use parameter c as the resource since it is part "
-            "of the searched parameters."
+            "Cannot use parameter c as the resource since it is part " "of the searched parameters."
         ),
     ):
         param_grid = {"a": [1, 2], "b": [1, 2], "c": [1, 3]}
-        sh = HalvingGridSearchCV(
-            base_estimator, param_grid, cv=2, resource="c", max_resources=10
-        )
+        sh = HalvingGridSearchCV(base_estimator, param_grid, cv=2, resource="c", max_resources=10)
         sh.fit(X, y)
 
 
@@ -391,9 +377,7 @@ def test_random_search(max_resources, n_candidates, expected_n_candidates):
         ({"a": randint(1, 3)}, 10),  # not all list, respect n_candidates
     ],
 )
-def test_random_search_discrete_distributions(
-    param_distributions, expected_n_candidates
-):
+def test_random_search_discrete_distributions(param_distributions, expected_n_candidates):
     # Make sure random search samples the appropriate number of candidates when
     # we ask for more than what's possible. How many parameters are sampled
     # depends whether the distributions are 'all lists' or not (see
@@ -591,9 +575,7 @@ def test_cv_results(Est):
     assert len(cv_results_df["mean_test_score"].unique()) == len(cv_results_df)
 
     cv_results_df["params_str"] = cv_results_df["params"].apply(str)
-    table = cv_results_df.pivot(
-        index="params_str", columns="iter", values="mean_test_score"
-    )
+    table = cv_results_df.pivot(index="params_str", columns="iter", values="mean_test_score")
 
     # table looks like something like this:
     # iter                    0      1       2        3   4   5
@@ -617,9 +599,7 @@ def test_cv_results(Est):
 
         # make sure that if a candidate is already discarded, we don't evaluate
         # it later
-        assert (
-            already_discarded_mask & nan_mask[it + 1] == already_discarded_mask
-        ).all()
+        assert (already_discarded_mask & nan_mask[it + 1] == already_discarded_mask).all()
 
         # make sure that the number of discarded candidate is correct
         discarded_now_mask = ~already_discarded_mask & nan_mask[it + 1]
@@ -699,9 +679,7 @@ def test_base_estimator_inputs(Est):
     sh.fit(X, y)
 
     assert len(passed_n_samples_fit) == len(passed_n_samples_predict)
-    passed_n_samples = [
-        x + y for (x, y) in zip(passed_n_samples_fit, passed_n_samples_predict)
-    ]
+    passed_n_samples = [x + y for (x, y) in zip(passed_n_samples_fit, passed_n_samples_predict)]
 
     # Lists are of length n_splits * n_iter * n_candidates_at_i.
     # Each chunk of size n_splits corresponds to the n_splits folds for the
@@ -832,9 +810,7 @@ def test_halving_random_search_list_of_dicts():
         "param_gamma": "f",
         "param_kernel": "O",
     }
-    check_cv_results_array_types(
-        search, param_keys, score_keys, expected_cv_results_kinds
-    )
+    check_cv_results_array_types(search, param_keys, score_keys, expected_cv_results_kinds)
 
     assert all(
         (

@@ -110,17 +110,14 @@ class _TTGlyphBasePen:
             component.x, component.y = (otRound(v) for v in transformation[4:])
             # quantize floats to F2Dot14 so we get same values as when decompiled
             # from a binary glyf table
-            transformation = tuple(
-                floatToFixedToFloat(v, 14) for v in transformation[:4]
-            )
+            transformation = tuple(floatToFixedToFloat(v, 14) for v in transformation[:4])
             if transformation != (1, 0, 0, 1):
                 if self.handleOverflowingTransforms and any(
                     MAX_F2DOT14 < s <= 2 for s in transformation
                 ):
                     # clamp values ~= +2.0 so we can keep the component
                     transformation = tuple(
-                        MAX_F2DOT14 if MAX_F2DOT14 < s <= 2 else s
-                        for s in transformation
+                        MAX_F2DOT14 if MAX_F2DOT14 < s <= 2 else s for s in transformation
                     )
                 component.transform = (transformation[:2], transformation[2:])
             component.flags = componentFlags
@@ -198,9 +195,7 @@ class TTGlyphPen(_TTGlyphBasePen, LoggingPen):
         self.types.pop()
 
     def _isClosed(self) -> bool:
-        return (not self.points) or (
-            self.endPts and self.endPts[-1] == len(self.points) - 1
-        )
+        return (not self.points) or (self.endPts and self.endPts[-1] == len(self.points) - 1)
 
     def lineTo(self, pt: Tuple[float, float]) -> None:
         self._addPoint(pt, flagOnCurve)

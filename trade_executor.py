@@ -48,7 +48,6 @@ def place_trade(
     min_crash_conf=0.6,
     use_momentum=True,
 ):
-
     if signal == "BUY":
         if spike_conf < min_spike_conf:
             status = "Skipped BUY (low spike confidence)"
@@ -107,7 +106,6 @@ def simulate_trade_execution(
     min_crash_conf=0.6,
     use_momentum=True,
 ):
-
     df = safe_read_csv(signal_log_path, prefer_index=False)
 
     balance = START_BALANCE

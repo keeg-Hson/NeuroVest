@@ -160,17 +160,13 @@ def prune_post_subset(self, ttfFont, options):
     return True
 
 
-@deprecateFunction(
-    "use 'CFFFontSet.desubroutinize()' instead", category=DeprecationWarning
-)
+@deprecateFunction("use 'CFFFontSet.desubroutinize()' instead", category=DeprecationWarning)
 @_add_method(ttLib.getTableClass("CFF "))
 def desubroutinize(self):
     self.cff.desubroutinize()
 
 
-@deprecateFunction(
-    "use 'CFFFontSet.remove_hints()' instead", category=DeprecationWarning
-)
+@deprecateFunction("use 'CFFFontSet.remove_hints()' instead", category=DeprecationWarning)
 @_add_method(ttLib.getTableClass("CFF "))
 def remove_hints(self):
     self.cff.remove_hints()

@@ -54,9 +54,7 @@ from sklearn.linear_model import (
         # This is a known limitation, see:
         # https://github.com/scikit-learn/scikit-learn/issues/21305
         pytest.param(
-            LogisticRegression(
-                penalty="elasticnet", solver="saga", l1_ratio=0.5, tol=1e-15
-            ),
+            LogisticRegression(penalty="elasticnet", solver="saga", l1_ratio=0.5, tol=1e-15),
             marks=pytest.mark.xfail(reason="Missing importance sampling scheme"),
         ),
         LogisticRegressionCV(tol=1e-6),
@@ -92,10 +90,7 @@ def test_balance_property(model, with_sample_weight, global_random_seed):
     # M.V. Wuthrich and M. Merz, "Statistical Foundations of Actuarial Learning and its
     # Applications" (June 3, 2022). http://doi.org/10.2139/ssrn.3822407
 
-    if (
-        with_sample_weight
-        and "sample_weight" not in inspect.signature(model.fit).parameters.keys()
-    ):
+    if with_sample_weight and "sample_weight" not in inspect.signature(model.fit).parameters.keys():
         pytest.skip("Estimator does not support sample_weight.")
 
     rel = 2e-4  # test precision
@@ -114,8 +109,7 @@ def test_balance_property(model, with_sample_weight, global_random_seed):
     X = make_low_rank_matrix(n_samples=n_train, n_features=n_features, random_state=rng)
     if n_targets:
         coef = (
-            rng.uniform(low=-2, high=2, size=(n_features, n_targets))
-            / np.max(X, axis=0)[:, None]
+            rng.uniform(low=-2, high=2, size=(n_features, n_targets)) / np.max(X, axis=0)[:, None]
         )
     else:
         coef = rng.uniform(low=-2, high=2, size=n_features) / np.max(X, axis=0)

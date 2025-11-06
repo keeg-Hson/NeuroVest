@@ -169,9 +169,7 @@ def merge_PrivateDicts(top_dicts, vsindex_dict, var_model, fd_map):
                 prev_val_list = [0] * num_masters
                 any_points_differ = False
                 for val_list in values:
-                    rel_list = [
-                        (val - prev_val_list[i]) for (i, val) in enumerate(val_list)
-                    ]
+                    rel_list = [(val - prev_val_list[i]) for (i, val) in enumerate(val_list)]
                     if (not any_points_differ) and not allEqual(rel_list):
                         any_points_differ = True
                     prev_val_list = val_list
@@ -288,9 +286,7 @@ def _get_cs(charstrings, glyphName, filterEmpty=False):
     return cs
 
 
-def _add_new_vsindex(
-    model, key, masterSupports, vsindex_dict, vsindex_by_key, varDataList
-):
+def _add_new_vsindex(model, key, masterSupports, vsindex_dict, vsindex_by_key, varDataList):
     varTupleIndexes = []
     for support in model.supports[1:]:
         if support not in masterSupports:
@@ -312,9 +308,7 @@ def merge_charstrings(glyphOrder, num_masters, top_dicts, masterModel):
     default_charstrings = top_dicts[0].CharStrings
     for gid, gname in enumerate(glyphOrder):
         # interpret empty non-default masters as missing glyphs from a sparse master
-        all_cs = [
-            _get_cs(td.CharStrings, gname, i != 0) for i, td in enumerate(top_dicts)
-        ]
+        all_cs = [_get_cs(td.CharStrings, gname, i != 0) for i, td in enumerate(top_dicts)]
         model, model_cs = masterModel.getSubModel(all_cs)
         # create the first pass CFF2 charstring, from
         # the default charstring.
@@ -465,13 +459,9 @@ class MergeOutlineExtractor(CFFToCFF2OutlineExtractor):
 class CFF2CharStringMergePen(T2CharStringPen):
     """Pen to merge Type 2 CharStrings."""
 
-    def __init__(
-        self, default_commands, glyphName, num_masters, master_idx, roundTolerance=0.01
-    ):
+    def __init__(self, default_commands, glyphName, num_masters, master_idx, roundTolerance=0.01):
         # For roundTolerance see https://github.com/fonttools/fonttools/issues/2838
-        super().__init__(
-            width=None, glyphSet=None, CFF2=True, roundTolerance=roundTolerance
-        )
+        super().__init__(width=None, glyphSet=None, CFF2=True, roundTolerance=roundTolerance)
         self.pt_index = 0
         self._commands = default_commands
         self.m_index = master_idx
@@ -593,9 +583,7 @@ class CFF2CharStringMergePen(T2CharStringPen):
             if lastOp in ["hintmask", "cntrmask"]:
                 coord = list(cmd[1])
                 if not allEqual(coord):
-                    raise VarLibMergeError(
-                        "Hintmask values cannot differ between source fonts."
-                    )
+                    raise VarLibMergeError("Hintmask values cannot differ between source fonts.")
                 cmd[1] = [coord[0][0]]
             else:
                 coords = cmd[1]
@@ -613,19 +601,11 @@ class CFF2CharStringMergePen(T2CharStringPen):
             lastOp = op
         return commands
 
-    def getCharString(
-        self, private=None, globalSubrs=None, var_model=None, optimize=True
-    ):
+    def getCharString(self, private=None, globalSubrs=None, var_model=None, optimize=True):
         commands = self._commands
-        commands = self.reorder_blend_args(
-            commands, partial(var_model.getDeltas, round=self.round)
-        )
+        commands = self.reorder_blend_args(commands, partial(var_model.getDeltas, round=self.round))
         if optimize:
-            commands = specializeCommands(
-                commands, generalizeFirst=False, maxstack=maxStackLimit
-            )
+            commands = specializeCommands(commands, generalizeFirst=False, maxstack=maxStackLimit)
         program = commandsToProgram(commands)
-        charString = T2CharString(
-            program=program, private=private, globalSubrs=globalSubrs
-        )
+        charString = T2CharString(program=program, private=private, globalSubrs=globalSubrs)
         return charString
