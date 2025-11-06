@@ -51,9 +51,7 @@ def test_affinity_propagation_precomputed():
     """
     S = -euclidean_distances(X, squared=True)
     preference = np.median(S) * 10
-    af = AffinityPropagation(
-        preference=preference, affinity="precomputed", random_state=28
-    )
+    af = AffinityPropagation(preference=preference, affinity="precomputed", random_state=28)
     labels_precomputed = af.fit(S).labels_
 
     af = AffinityPropagation(preference=preference, verbose=True, random_state=37)
@@ -90,9 +88,7 @@ def test_affinity_propagation_no_copy():
     af = AffinityPropagation(preference=preference, verbose=True, random_state=0)
 
     labels = af.fit(X).labels_
-    _, labels_no_copy = affinity_propagation(
-        S, preference=preference, copy=False, random_state=74
-    )
+    _, labels_no_copy = affinity_propagation(S, preference=preference, copy=False, random_state=74)
     assert_array_equal(labels, labels_no_copy)
 
 
@@ -200,9 +196,7 @@ def test_affinity_propagation_predict_non_convergence(global_dtype):
 
 
 def test_affinity_propagation_non_convergence_regressiontest(global_dtype):
-    X = np.array(
-        [[1, 0, 0, 0, 0, 0], [0, 1, 1, 1, 0, 0], [0, 0, 1, 0, 0, 1]], dtype=global_dtype
-    )
+    X = np.array([[1, 0, 0, 0, 0, 0], [0, 1, 1, 1, 0, 0], [0, 0, 1, 0, 0, 1]], dtype=global_dtype)
     af = AffinityPropagation(affinity="euclidean", max_iter=2, random_state=34)
     msg = (
         "Affinity propagation did not converge, this model may return degenerate"
@@ -240,9 +234,7 @@ def test_affinity_propagation_random_state():
     by looking at the center locations after two iterations.
     """
     centers = [[1, 1], [-1, -1], [1, -1]]
-    X, labels_true = make_blobs(
-        n_samples=300, centers=centers, cluster_std=0.5, random_state=0
-    )
+    X, labels_true = make_blobs(n_samples=300, centers=centers, cluster_std=0.5, random_state=0)
     # random_state = 0
     ap = AffinityPropagation(convergence_iter=1, max_iter=2, random_state=0)
     ap.fit(X)
@@ -279,12 +271,8 @@ def test_affinity_propagation_convergence_warning_dense_sparse(container, global
 def test_correct_clusters(global_dtype):
     # Test to fix incorrect clusters due to dtype change
     # (non-regression test for issue #10832)
-    X = np.array(
-        [[1, 0, 0, 0], [0, 1, 1, 0], [0, 1, 1, 0], [0, 0, 0, 1]], dtype=global_dtype
-    )
-    afp = AffinityPropagation(preference=1, affinity="precomputed", random_state=0).fit(
-        X
-    )
+    X = np.array([[1, 0, 0, 0], [0, 1, 1, 0], [0, 1, 1, 0], [0, 0, 0, 1]], dtype=global_dtype)
+    afp = AffinityPropagation(preference=1, affinity="precomputed", random_state=0).fit(X)
     expected = np.array([0, 1, 1, 2])
     assert_array_equal(afp.labels_, expected)
 

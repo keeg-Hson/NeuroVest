@@ -318,9 +318,7 @@ def _convertBlendOpToArgs(blendList):
     # we convert the current list.
     if any([isinstance(arg, list) for arg in blendList]):
         args = [
-            i
-            for e in blendList
-            for i in (_convertBlendOpToArgs(e) if isinstance(e, list) else [e])
+            i for e in blendList for i in (_convertBlendOpToArgs(e) if isinstance(e, list) else [e])
         ]
     else:
         args = blendList
@@ -346,9 +344,7 @@ def _convertBlendOpToArgs(blendList):
     defaultArgs = [[arg] for arg in args[:numBlends]]
     deltaArgs = args[numBlends:]
     numDeltaValues = len(deltaArgs)
-    deltaList = [
-        deltaArgs[i : i + numRegions] for i in range(0, numDeltaValues, numRegions)
-    ]
+    deltaList = [deltaArgs[i : i + numRegions] for i in range(0, numDeltaValues, numRegions)]
     blend_args = [a + b + [1] for a, b in zip(defaultArgs, deltaList)]
     return blend_args
 
@@ -363,9 +359,7 @@ def generalizeCommands(commands, ignoreErrors=False):
                 args = [
                     n
                     for arg in args
-                    for n in (
-                        _convertBlendOpToArgs(arg) if isinstance(arg, list) else [arg]
-                    )
+                    for n in (_convertBlendOpToArgs(arg) if isinstance(arg, list) else [arg])
                 ]
             except ValueError:
                 if ignoreErrors:
@@ -880,9 +874,7 @@ if __name__ == "__main__":
         getNumRegions = (
             None
             if options.num_regions is None
-            else lambda vsIndex: int(
-                options.num_regions[0 if vsIndex is None else vsIndex]
-            )
+            else lambda vsIndex: int(options.num_regions[0 if vsIndex is None else vsIndex])
         )
 
         program = stringToProgram(options.program)
@@ -917,9 +909,7 @@ if __name__ == "__main__":
         if options.output_file is None:
             from fontTools.misc.cliTools import makeOutputFileName
 
-            outfile = makeOutputFileName(
-                options.font, overWrite=True, suffix=".specialized"
-            )
+            outfile = makeOutputFileName(options.font, overWrite=True, suffix=".specialized")
         else:
             outfile = options.output_file
         if outfile:

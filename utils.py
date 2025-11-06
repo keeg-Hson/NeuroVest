@@ -1,8 +1,8 @@
 # utils.py
 import csv
-import datetime
 import os
 import shutil
+import socket
 from datetime import datetime
 
 import numpy as np
@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-import socket
 
 socket.setdefaulttimeout(float(os.getenv("NET_TIMEOUT", "3")))
 
@@ -678,25 +677,16 @@ def load_SPY_data() -> pd.DataFrame:
 # =========================
 
 
-def safe_read_csv(path: str, **kwargs):
-    """
-    A tolerant CSV reader used everywhere we read our own data files.
-    - Parses Date if present
-    - Strips columns
-    - Returns empty DataFrame on failure (with a warning)
-    """
+def safe_read_csv(path, prefer_index=None, **kwargs):
+    """Read CSV; if prefer_index is provided, set it if present. Ignores unsupported kwargs."""
     import pandas as pd
 
-    try:
-        kw = dict(kwargs)
-        if "parse_dates" not in kw and "Date" in pd.read_csv(path, nrows=1).columns:
-            kw["parse_dates"] = ["Date"]
-        df = pd.read_csv(path, **kw)
-        df.columns = [str(c).strip() for c in df.columns]
-        return df
-    except Exception as e:
-        print(f"⚠️ safe_read_csv: could not read {path} ({e})")
-        return pd.DataFrame()
+    # Drop 'prefer_index' if someone passed it via kwargs by mistake
+    kwargs.pop("prefer_index", None)
+    df = pd.read_csv(path, **kwargs)
+    if prefer_index and prefer_index in df.columns:
+        df = df.set_index(prefer_index)
+    return df
 
 
 def _add_forward_returns_and_labels_v2(

@@ -209,9 +209,7 @@ def test_silhouette_paper_example():
             silhouette_samples(D, np.array(labels), metric="precomputed"),
             abs=1e-2,
         )
-        pytest.approx(
-            score, silhouette_score(D, np.array(labels), metric="precomputed"), abs=1e-2
-        )
+        pytest.approx(score, silhouette_score(D, np.array(labels), metric="precomputed"), abs=1e-2)
 
 
 def test_correct_labelsize():
@@ -243,9 +241,7 @@ def test_non_encoded_labels():
     X = dataset.data
     labels = dataset.target
     assert silhouette_score(X, labels * 2 + 10) == silhouette_score(X, labels)
-    assert_array_equal(
-        silhouette_samples(X, labels * 2 + 10), silhouette_samples(X, labels)
-    )
+    assert_array_equal(silhouette_samples(X, labels * 2 + 10), silhouette_samples(X, labels))
 
 
 def test_non_numpy_labels():
@@ -261,9 +257,7 @@ def test_silhouette_nonzero_diag(dtype):
     # Non-regression test for #12178
 
     # Construct a zero-diagonal matrix
-    dists = pairwise_distances(
-        np.array([[0.2, 0.1, 0.12, 1.34, 1.11, 1.6]], dtype=dtype).T
-    )
+    dists = pairwise_distances(np.array([[0.2, 0.1, 0.12, 1.34, 1.11, 1.6]], dtype=dtype).T)
     labels = [0, 0, 0, 1, 1, 1]
 
     # small values on the diagonal are OK
@@ -308,9 +302,7 @@ def test_silhouette_samples_euclidean_sparse(sparse_container):
     assert_allclose(output_with_sparse_input, output_with_dense_input)
 
 
-@pytest.mark.parametrize(
-    "sparse_container", CSC_CONTAINERS + DOK_CONTAINERS + LIL_CONTAINERS
-)
+@pytest.mark.parametrize("sparse_container", CSC_CONTAINERS + DOK_CONTAINERS + LIL_CONTAINERS)
 def test_silhouette_reduce(sparse_container):
     """Check for non-CSR input to private method `_silhouette_reduce`."""
     X = np.array([[0.2, 0.1, 0.1, 0.2, 0.1, 1.6, 0.2, 0.1]], dtype=np.float32).T
@@ -351,12 +343,7 @@ def test_calinski_harabasz_score():
     assert 0.0 == calinski_harabasz_score([[-1, -1], [1, 1]] * 10, [0] * 10 + [1] * 10)
 
     # General case (with non numpy arrays)
-    X = (
-        [[0, 0], [1, 1]] * 5
-        + [[3, 3], [4, 4]] * 5
-        + [[0, 4], [1, 3]] * 5
-        + [[3, 1], [4, 0]] * 5
-    )
+    X = [[0, 0], [1, 1]] * 5 + [[3, 3], [4, 4]] * 5 + [[0, 4], [1, 3]] * 5 + [[3, 1], [4, 0]] * 5
     labels = [0] * 10 + [1] * 10 + [2] * 10 + [3] * 10
     pytest.approx(calinski_harabasz_score(X, labels), 45 * (40 - 4) / (5 * (4 - 1)))
 
@@ -366,22 +353,13 @@ def test_davies_bouldin_score():
     assert_raises_on_all_points_same_cluster(davies_bouldin_score)
 
     # Assert the value is 0. when all samples are equals
-    assert davies_bouldin_score(np.ones((10, 2)), [0] * 5 + [1] * 5) == pytest.approx(
-        0.0
-    )
+    assert davies_bouldin_score(np.ones((10, 2)), [0] * 5 + [1] * 5) == pytest.approx(0.0)
 
     # Assert the value is 0. when all the mean cluster are equal
-    assert davies_bouldin_score(
-        [[-1, -1], [1, 1]] * 10, [0] * 10 + [1] * 10
-    ) == pytest.approx(0.0)
+    assert davies_bouldin_score([[-1, -1], [1, 1]] * 10, [0] * 10 + [1] * 10) == pytest.approx(0.0)
 
     # General case (with non numpy arrays)
-    X = (
-        [[0, 0], [1, 1]] * 5
-        + [[3, 3], [4, 4]] * 5
-        + [[0, 4], [1, 3]] * 5
-        + [[3, 1], [4, 0]] * 5
-    )
+    X = [[0, 0], [1, 1]] * 5 + [[3, 3], [4, 4]] * 5 + [[0, 4], [1, 3]] * 5 + [[3, 1], [4, 0]] * 5
     labels = [0] * 10 + [1] * 10 + [2] * 10 + [3] * 10
     pytest.approx(davies_bouldin_score(X, labels), 2 * np.sqrt(0.5) / 3)
 
@@ -401,13 +379,9 @@ def test_silhouette_score_integer_precomputed():
 
     Non-regression test for #22107.
     """
-    result = silhouette_score(
-        [[0, 1, 2], [1, 0, 1], [2, 1, 0]], [0, 0, 1], metric="precomputed"
-    )
+    result = silhouette_score([[0, 1, 2], [1, 0, 1], [2, 1, 0]], [0, 0, 1], metric="precomputed")
     assert result == pytest.approx(1 / 6)
 
     # non-zero on diagonal for ints raises an error
     with pytest.raises(ValueError, match="contains non-zero"):
-        silhouette_score(
-            [[1, 1, 2], [1, 0, 1], [2, 1, 0]], [0, 0, 1], metric="precomputed"
-        )
+        silhouette_score([[1, 1, 2], [1, 0, 1], [2, 1, 0]], [0, 0, 1], metric="precomputed")

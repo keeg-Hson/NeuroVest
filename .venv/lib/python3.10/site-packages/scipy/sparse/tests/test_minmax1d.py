@@ -37,12 +37,8 @@ class Test_MinMaxMixin1D:
         X = spcreator(D)
 
         for axis in [0, -1]:
-            assert_array_equal(
-                toarray(X.max(axis=axis)), D.max(axis=axis, keepdims=True)
-            )
-            assert_array_equal(
-                toarray(X.min(axis=axis)), D.min(axis=axis, keepdims=True)
-            )
+            assert_array_equal(toarray(X.max(axis=axis)), D.max(axis=axis, keepdims=True))
+            assert_array_equal(toarray(X.min(axis=axis)), D.min(axis=axis, keepdims=True))
         for axis in [-2, 1]:
             with pytest.raises(ValueError, match="axis out of range"):
                 X.min(axis=axis)
@@ -54,7 +50,6 @@ class Test_MinMaxMixin1D:
         datsp = spcreator(dat)
         assert_array_equal(np.min(datsp), np.min(dat))
         assert_array_equal(np.max(datsp), np.max(dat))
-
 
     def test_argmax(self, spcreator):
         D1 = np.array([-1, 5, 2, 3])
@@ -88,7 +83,7 @@ class Test_ShapeMinMax2DWithAxis:
         dat = np.array([[-1, 5, 0, 3], [0, 0, -1, -2], [0, 0, 1, 2]])
         datsp = spcreator(dat)
 
-        for (spminmax, npminmax) in [
+        for spminmax, npminmax in [
             (datsp.min, np.min),
             (datsp.max, np.max),
             (datsp.nanmin, np.nanmin),
@@ -105,10 +100,10 @@ class Test_ShapeMinMax2DWithAxis:
 
         # verify spmatrix behavior
         spmat_form = {
-            'coo': coo_matrix,
-            'csr': csr_matrix,
-            'csc': csc_matrix,
-            'bsr': bsr_matrix,
+            "coo": coo_matrix,
+            "csr": csr_matrix,
+            "csc": csc_matrix,
+            "bsr": bsr_matrix,
         }
         datspm = spmat_form[datsp.format](dat)
 

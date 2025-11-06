@@ -45,8 +45,7 @@ class LayerListUnbuilder:
                 [
                     self.unbuildPaint(childPaint)
                     for childPaint in self.layers[
-                        source["FirstLayerIndex"] : source["FirstLayerIndex"]
-                        + source["NumLayers"]
+                        source["FirstLayerIndex"] : source["FirstLayerIndex"] + source["NumLayers"]
                     ]
                 ]
             )

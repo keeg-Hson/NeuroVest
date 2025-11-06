@@ -40,14 +40,10 @@ def test_incremental_pca():
         ipca.fit(X)
         cov = ipca.get_covariance()
         precision = ipca.get_precision()
-        np.testing.assert_allclose(
-            np.dot(cov, precision), np.eye(X.shape[1]), atol=1e-13
-        )
+        np.testing.assert_allclose(np.dot(cov, precision), np.eye(X.shape[1]), atol=1e-13)
 
 
-@pytest.mark.parametrize(
-    "sparse_container", CSC_CONTAINERS + CSR_CONTAINERS + LIL_CONTAINERS
-)
+@pytest.mark.parametrize("sparse_container", CSC_CONTAINERS + CSR_CONTAINERS + LIL_CONTAINERS)
 def test_incremental_pca_sparse(sparse_container):
     # Incremental PCA on sparse arrays.
     X = iris.data
@@ -71,9 +67,7 @@ def test_incremental_pca_sparse(sparse_container):
         ipca.fit(X_sparse)
         cov = ipca.get_covariance()
         precision = ipca.get_precision()
-        np.testing.assert_allclose(
-            np.dot(cov, precision), np.eye(X_sparse.shape[1]), atol=1e-13
-        )
+        np.testing.assert_allclose(np.dot(cov, precision), np.eye(X_sparse.shape[1]), atol=1e-13)
 
     with pytest.raises(
         TypeError,
@@ -318,9 +312,7 @@ def test_explained_variances():
     for nc in [None, 99]:
         pca = PCA(n_components=nc).fit(X)
         ipca = IncrementalPCA(n_components=nc, batch_size=100).fit(X)
-        assert_almost_equal(
-            pca.explained_variance_, ipca.explained_variance_, decimal=prec
-        )
+        assert_almost_equal(pca.explained_variance_, ipca.explained_variance_, decimal=prec)
         assert_almost_equal(
             pca.explained_variance_ratio_, ipca.explained_variance_ratio_, decimal=prec
         )
@@ -353,12 +345,8 @@ def test_singular_values():
     )
 
     # Compare to the 2-norms of the score vectors
-    assert_array_almost_equal(
-        pca.singular_values_, np.sqrt(np.sum(X_pca**2.0, axis=0)), 12
-    )
-    assert_array_almost_equal(
-        ipca.singular_values_, np.sqrt(np.sum(X_ipca**2.0, axis=0)), 2
-    )
+    assert_array_almost_equal(pca.singular_values_, np.sqrt(np.sum(X_pca**2.0, axis=0)), 12)
+    assert_array_almost_equal(ipca.singular_values_, np.sqrt(np.sum(X_ipca**2.0, axis=0)), 2)
 
     # Set the singular values and see what we get back
     rng = np.random.RandomState(0)
@@ -438,9 +426,7 @@ def test_incremental_pca_partial_fit_float_division():
     pca2.partial_fit(B)
     singular_vals_int_samples_seen = pca2.singular_values_
 
-    np.testing.assert_allclose(
-        singular_vals_float_samples_seen, singular_vals_int_samples_seen
-    )
+    np.testing.assert_allclose(singular_vals_float_samples_seen, singular_vals_int_samples_seen)
 
 
 def test_incremental_pca_fit_overflow_error():

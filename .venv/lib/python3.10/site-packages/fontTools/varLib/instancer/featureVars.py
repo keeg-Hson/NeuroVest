@@ -8,16 +8,12 @@ log = logging.getLogger("fontTools.varLib.instancer")
 
 def _featureVariationRecordIsUnique(rec, seen):
     conditionSet = []
-    conditionSets = (
-        rec.ConditionSet.ConditionTable if rec.ConditionSet is not None else []
-    )
+    conditionSets = rec.ConditionSet.ConditionTable if rec.ConditionSet is not None else []
     for cond in conditionSets:
         if cond.Format != 1:
             # can't tell whether this is duplicate, assume is unique
             return True
-        conditionSet.append(
-            (cond.AxisIndex, cond.FilterRangeMinValue, cond.FilterRangeMaxValue)
-        )
+        conditionSet.append((cond.AxisIndex, cond.FilterRangeMinValue, cond.FilterRangeMaxValue))
     # besides the set of conditions, we also include the FeatureTableSubstitution
     # version to identify unique FeatureVariationRecords, even though only one
     # version is currently defined. It's theoretically possible that multiple
@@ -35,22 +31,14 @@ def _limitFeatureVariationConditionRange(condition, axisLimit):
     minValue = condition.FilterRangeMinValue
     maxValue = condition.FilterRangeMaxValue
 
-    if (
-        minValue > maxValue
-        or minValue > axisLimit.maximum
-        or maxValue < axisLimit.minimum
-    ):
+    if minValue > maxValue or minValue > axisLimit.maximum or maxValue < axisLimit.minimum:
         # condition invalid or out of range
         return
 
-    return tuple(
-        axisLimit.renormalizeValue(v, extrapolate=False) for v in (minValue, maxValue)
-    )
+    return tuple(axisLimit.renormalizeValue(v, extrapolate=False) for v in (minValue, maxValue))
 
 
-def _instantiateFeatureVariationRecord(
-    record, recIdx, axisLimits, fvarAxes, axisIndexMap
-):
+def _instantiateFeatureVariationRecord(record, recIdx, axisLimits, fvarAxes, axisIndexMap):
     applies = True
     shouldKeep = False
     newConditions = []
@@ -147,9 +135,7 @@ def _instantiateFeatureVariations(table, fvarAxes, axisLimits):
                 default.Feature = deepcopy(
                     table.FeatureList.FeatureRecord[rec.FeatureIndex].Feature
                 )
-                table.FeatureList.FeatureRecord[rec.FeatureIndex].Feature = deepcopy(
-                    rec.Feature
-                )
+                table.FeatureList.FeatureRecord[rec.FeatureIndex].Feature = deepcopy(rec.Feature)
             # Set variations only once
             featureVariationApplied = True
 
@@ -183,8 +169,6 @@ def instantiateFeatureVariations(varfont, axisLimits):
         ):
             continue
         log.info("Instantiating FeatureVariations of %s table", tableTag)
-        _instantiateFeatureVariations(
-            varfont[tableTag].table, varfont["fvar"].axes, axisLimits
-        )
+        _instantiateFeatureVariations(varfont[tableTag].table, varfont["fvar"].axes, axisLimits)
         # remove unreferenced lookups
         varfont[tableTag].prune_lookups()

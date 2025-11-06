@@ -91,9 +91,8 @@ class table_V_O_R_G_(DefaultTable.DefaultTable):
             try:
                 gid = ttFont.getGlyphID(glyphName)
             except:
-                assert 0, (
-                    "VORG table contains a glyph name not in ttFont.getGlyphNames(): "
-                    + str(glyphName)
+                assert 0, "VORG table contains a glyph name not in ttFont.getGlyphNames(): " + str(
+                    glyphName
                 )
             vOriginTable.append([gid, glyphName, self.VOriginRecords[glyphName]])
         vOriginTable.sort()

@@ -109,9 +109,7 @@ class table_G__l_a_t(DefaultTable.DefaultTable):
             o.subboxes = []
             for b in range(numsub):
                 if len(data) >= 8:
-                    subbox, data = sstruct.unpack2(
-                        Glat_format_3_subbox_entry, data, _Object()
-                    )
+                    subbox, data = sstruct.unpack2(Glat_format_3_subbox_entry, data, _Object())
                     o.subboxes.append(subbox)
         attrs = self.decompileAttributes12(data, Glat_format_23_entry)
         if self.hasOctaboxes:
@@ -162,16 +160,12 @@ class table_G__l_a_t(DefaultTable.DefaultTable):
     def toXML(self, writer, ttFont):
         writer.simpletag("version", version=self.version, compressionScheme=self.scheme)
         writer.newline()
-        for n, a in sorted(
-            self.attributes.items(), key=lambda x: ttFont.getGlyphID(x[0])
-        ):
+        for n, a in sorted(self.attributes.items(), key=lambda x: ttFont.getGlyphID(x[0])):
             writer.begintag("glyph", name=n)
             writer.newline()
             if hasattr(a, "octabox"):
                 o = a.octabox
-                formatstring, names, fixes = sstruct.getformat(
-                    Glat_format_3_octabox_metrics
-                )
+                formatstring, names, fixes = sstruct.getformat(Glat_format_3_octabox_metrics)
                 vals = {}
                 for k in names:
                     if k == "subboxBitmap":
@@ -180,9 +174,7 @@ class table_G__l_a_t(DefaultTable.DefaultTable):
                 vals["bitmap"] = "{:0X}".format(o.subboxBitmap)
                 writer.begintag("octaboxes", **vals)
                 writer.newline()
-                formatstring, names, fixes = sstruct.getformat(
-                    Glat_format_3_subbox_entry
-                )
+                formatstring, names, fixes = sstruct.getformat(Glat_format_3_subbox_entry)
                 for s in o.subboxes:
                     vals = {}
                     for k in names:

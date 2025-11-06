@@ -173,9 +173,7 @@ def test_gemv(dtype, opA, transA, order):
     gemv = _gemv_memview[_numpy_to_cython(dtype)]
 
     rng = np.random.RandomState(0)
-    A = np.asarray(
-        opA(rng.random_sample((20, 10)).astype(dtype, copy=False)), order=ORDER[order]
-    )
+    A = np.asarray(opA(rng.random_sample((20, 10)).astype(dtype, copy=False)), order=ORDER[order])
     x = rng.random_sample(10).astype(dtype, copy=False)
     y = rng.random_sample(20).astype(dtype, copy=False)
     alpha, beta = 2.5, -0.5
@@ -194,9 +192,7 @@ def test_ger(dtype, order):
     rng = np.random.RandomState(0)
     x = rng.random_sample(10).astype(dtype, copy=False)
     y = rng.random_sample(20).astype(dtype, copy=False)
-    A = np.asarray(
-        rng.random_sample((10, 20)).astype(dtype, copy=False), order=ORDER[order]
-    )
+    A = np.asarray(rng.random_sample((10, 20)).astype(dtype, copy=False), order=ORDER[order])
     alpha = 2.5
 
     expected = alpha * np.outer(x, y) + A
@@ -217,15 +213,9 @@ def test_gemm(dtype, opA, transA, opB, transB, order):
     gemm = _gemm_memview[_numpy_to_cython(dtype)]
 
     rng = np.random.RandomState(0)
-    A = np.asarray(
-        opA(rng.random_sample((30, 10)).astype(dtype, copy=False)), order=ORDER[order]
-    )
-    B = np.asarray(
-        opB(rng.random_sample((10, 20)).astype(dtype, copy=False)), order=ORDER[order]
-    )
-    C = np.asarray(
-        rng.random_sample((30, 20)).astype(dtype, copy=False), order=ORDER[order]
-    )
+    A = np.asarray(opA(rng.random_sample((30, 10)).astype(dtype, copy=False)), order=ORDER[order])
+    B = np.asarray(opB(rng.random_sample((10, 20)).astype(dtype, copy=False)), order=ORDER[order])
+    C = np.asarray(rng.random_sample((30, 20)).astype(dtype, copy=False), order=ORDER[order])
     alpha, beta = 2.5, -0.5
 
     expected = alpha * opA(A).dot(opB(B)) + beta * C

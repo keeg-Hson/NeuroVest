@@ -64,9 +64,7 @@ def test_birch_predict(global_random_seed, global_dtype):
 
     assert_array_equal(brc.labels_, brc.predict(X_shuffle))
     centroids = brc.subcluster_centers_
-    nearest_centroid = brc.subcluster_labels_[
-        pairwise_distances_argmin(X_shuffle, centroids)
-    ]
+    nearest_centroid = brc.subcluster_labels_[pairwise_distances_argmin(X_shuffle, centroids)]
     assert_allclose(v_measure_score(nearest_centroid, brc.labels_), 1.0)
 
 
@@ -199,9 +197,7 @@ def test_transform_match_across_dtypes(global_random_seed):
 
 
 def test_subcluster_dtype(global_dtype):
-    X = make_blobs(n_samples=80, n_features=4, random_state=0)[0].astype(
-        global_dtype, copy=False
-    )
+    X = make_blobs(n_samples=80, n_features=4, random_state=0)[0].astype(global_dtype, copy=False)
     brc = Birch(n_clusters=4)
     assert brc.fit(X).subcluster_centers_.dtype == global_dtype
 

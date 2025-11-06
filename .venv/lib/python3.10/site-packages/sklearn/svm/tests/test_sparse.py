@@ -127,12 +127,8 @@ def test_unsorted_indices(csr_container):
     X, y = X[:50], y[:50]
 
     X_sparse = csr_container(X)
-    coef_dense = (
-        svm.SVC(kernel="linear", probability=True, random_state=0).fit(X, y).coef_
-    )
-    sparse_svc = svm.SVC(kernel="linear", probability=True, random_state=0).fit(
-        X_sparse, y
-    )
+    coef_dense = svm.SVC(kernel="linear", probability=True, random_state=0).fit(X, y).coef_
+    sparse_svc = svm.SVC(kernel="linear", probability=True, random_state=0).fit(X_sparse, y)
     coef_sorted = sparse_svc.coef_
     # make sure dense and sparse SVM give the same result
     assert_allclose(coef_dense, coef_sorted.toarray())
@@ -159,9 +155,7 @@ def test_unsorted_indices(csr_container):
     coef_unsorted = unsorted_svc.coef_
     # make sure unsorted indices give same result
     assert_allclose(coef_unsorted.toarray(), coef_sorted.toarray())
-    assert_allclose(
-        sparse_svc.predict_proba(X_test_unsorted), sparse_svc.predict_proba(X_test)
-    )
+    assert_allclose(sparse_svc.predict_proba(X_test_unsorted), sparse_svc.predict_proba(X_test))
 
 
 @pytest.mark.parametrize("lil_container", LIL_CONTAINERS)
@@ -213,9 +207,7 @@ def test_sparse_decision_function(csr_container):
     dec = np.dot(X, clf.coef_.T) + clf.intercept_
     prediction = clf.predict(X)
     assert_allclose(dec.ravel(), clf.decision_function(X))
-    assert_allclose(
-        prediction, clf.classes_[(clf.decision_function(X) > 0).astype(int).ravel()]
-    )
+    assert_allclose(prediction, clf.classes_[(clf.decision_function(X) > 0).astype(int).ravel()])
     expected = np.array([-1.0, -0.66, -1.0, 0.66, 1.0, 1.0])
     assert_array_almost_equal(clf.decision_function(X), expected, decimal=2)
 
@@ -234,9 +226,7 @@ def test_error(lil_container):
     assert_array_equal(clf.predict(T), true_result)
 
 
-@pytest.mark.parametrize(
-    "lil_container, dok_container", zip(LIL_CONTAINERS, DOK_CONTAINERS)
-)
+@pytest.mark.parametrize("lil_container, dok_container", zip(LIL_CONTAINERS, DOK_CONTAINERS))
 def test_linearsvc(lil_container, dok_container):
     # Similar to test_SVC
     X_sp = lil_container(X)
@@ -462,9 +452,7 @@ def test_sparse_svc_clone_with_callable_kernel(lil_container):
     pred = b.predict(X_sp)
     b.predict_proba(X_sp)
 
-    dense_svm = svm.SVC(
-        C=1, kernel=lambda x, y: np.dot(x, y.T), probability=True, random_state=0
-    )
+    dense_svm = svm.SVC(C=1, kernel=lambda x, y: np.dot(x, y.T), probability=True, random_state=0)
     pred_dense = dense_svm.fit(X, Y).predict(X)
     assert_array_equal(pred_dense, pred)
     # b.decision_function(X_sp)  # XXX : should be supported
@@ -472,9 +460,7 @@ def test_sparse_svc_clone_with_callable_kernel(lil_container):
 
 @pytest.mark.parametrize("lil_container", LIL_CONTAINERS)
 def test_timeout(lil_container):
-    sp = svm.SVC(
-        C=1, kernel=lambda x, y: x @ y.T, probability=True, random_state=0, max_iter=1
-    )
+    sp = svm.SVC(C=1, kernel=lambda x, y: x @ y.T, probability=True, random_state=0, max_iter=1)
     warning_msg = (
         r"Solver terminated early \(max_iter=1\).  Consider pre-processing "
         r"your data with StandardScaler or MinMaxScaler."

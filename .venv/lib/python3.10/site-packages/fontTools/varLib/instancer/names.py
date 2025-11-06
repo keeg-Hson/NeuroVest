@@ -124,9 +124,7 @@ def updateNameTable(varfont, axisLimits):
     checkAxisValuesExist(stat, axisValueTables, defaultAxisCoords.pinnedLocation())
 
     # ignore "elidable" axis values, should be omitted in application font menus.
-    axisValueTables = [
-        v for v in axisValueTables if not v.Flags & ELIDABLE_AXIS_VALUE_NAME
-    ]
+    axisValueTables = [v for v in axisValueTables if not v.Flags & ELIDABLE_AXIS_VALUE_NAME]
     axisValueTables = _sortAxisValues(axisValueTables)
     _updateNameRecords(varfont, axisValueTables)
 
@@ -217,9 +215,7 @@ def _updateNameRecords(varfont, axisValues):
             # we cannot update this set of name Records.
             continue
 
-        subFamilyName = " ".join(
-            getName(n, *platform).toUnicode() for n in ribbiNameIDs
-        )
+        subFamilyName = " ".join(getName(n, *platform).toUnicode() for n in ribbiNameIDs)
         if nonRibbiNameIDs:
             typoSubFamilyName = " ".join(
                 getName(n, *platform).toUnicode() for n in axisValueNameIDs
@@ -235,9 +231,7 @@ def _updateNameRecords(varfont, axisValues):
             else:
                 typoSubFamilyName = getName(elidedNameID, *platform).toUnicode()
 
-        familyNameSuffix = " ".join(
-            getName(n, *platform).toUnicode() for n in nonRibbiNameIDs
-        )
+        familyNameSuffix = " ".join(getName(n, *platform).toUnicode() for n in nonRibbiNameIDs)
 
         _updateNameTableStyleRecords(
             varfont,
@@ -303,12 +297,8 @@ def _updateNameTableStyleRecords(
         ):
             nametable.removeNames(nameID=nameID)
 
-    newFamilyName = (
-        nameIDs.get(NameID.TYPOGRAPHIC_FAMILY_NAME) or nameIDs[NameID.FAMILY_NAME]
-    )
-    newStyleName = (
-        nameIDs.get(NameID.TYPOGRAPHIC_SUBFAMILY_NAME) or nameIDs[NameID.SUBFAMILY_NAME]
-    )
+    newFamilyName = nameIDs.get(NameID.TYPOGRAPHIC_FAMILY_NAME) or nameIDs[NameID.FAMILY_NAME]
+    newStyleName = nameIDs.get(NameID.TYPOGRAPHIC_SUBFAMILY_NAME) or nameIDs[NameID.SUBFAMILY_NAME]
 
     nameIDs[NameID.FULL_FONT_NAME] = f"{newFamilyName} {newStyleName}"
     nameIDs[NameID.POSTSCRIPT_NAME] = _updatePSNameRecord(
@@ -332,9 +322,7 @@ def _updatePSNameRecord(varfont, familyName, styleName, platform):
     # https://wwwimages2.adobe.com/content/dam/acom/en/devnet/font/pdfs/5902.AdobePSNameGeneration.pdf
     nametable = varfont["name"]
 
-    family_prefix = nametable.getName(
-        NameID.VARIATIONS_POSTSCRIPT_NAME_PREFIX, *platform
-    )
+    family_prefix = nametable.getName(NameID.VARIATIONS_POSTSCRIPT_NAME_PREFIX, *platform)
     if family_prefix:
         family_prefix = family_prefix.toUnicode()
     else:

@@ -154,9 +154,7 @@ def populateCOLRv0(
             ``TTFont.getReverseGlyphMap()``, to optionally sort base records by GID.
     """
     if glyphMap is not None:
-        colorGlyphItems = sorted(
-            colorGlyphsV0.items(), key=lambda item: glyphMap[item[0]]
-        )
+        colorGlyphItems = sorted(colorGlyphsV0.items(), key=lambda item: glyphMap[item[0]])
     else:
         colorGlyphItems = colorGlyphsV0.items()
     baseGlyphRecords = []
@@ -340,9 +338,7 @@ def buildCPAL(
         raise ColorLibError("color palettes have different lengths")
 
     if (paletteLabels or paletteEntryLabels) and not nameTable:
-        raise TypeError(
-            "nameTable is required if palette or palette entries have labels"
-        )
+        raise TypeError("nameTable is required if palette or palette entries have labels")
 
     cpal = C_P_A_L_.table_C_P_A_L_()
     cpal.numPaletteEntries = len(palettes[0])
@@ -361,9 +357,7 @@ def buildCPAL(
                 )
             # input colors are RGBA, CPAL encodes them as BGRA
             red, green, blue, alpha = color
-            colors.append(
-                C_P_A_L_.Color(*(round(v * 255) for v in (blue, green, red, alpha)))
-            )
+            colors.append(C_P_A_L_.Color(*(round(v * 255) for v in (blue, green, red, alpha))))
         cpal.palettes.append(colors)
 
     if any(v is not None for v in (paletteTypes, paletteLabels, paletteEntryLabels)):
@@ -376,9 +370,7 @@ def buildCPAL(
                 )
             cpal.paletteTypes = [ColorPaletteType(t).value for t in paletteTypes]
         else:
-            cpal.paletteTypes = [C_P_A_L_.table_C_P_A_L_.DEFAULT_PALETTE_TYPE] * len(
-                palettes
-            )
+            cpal.paletteTypes = [C_P_A_L_.table_C_P_A_L_.DEFAULT_PALETTE_TYPE] * len(palettes)
 
         if paletteLabels is not None:
             if len(paletteLabels) != len(palettes):
@@ -397,9 +389,7 @@ def buildCPAL(
                 )
             cpal.paletteEntryLabels = buildPaletteLabels(paletteEntryLabels, nameTable)
         else:
-            cpal.paletteEntryLabels = [
-                C_P_A_L_.table_C_P_A_L_.NO_NAME_ID
-            ] * cpal.numPaletteEntries
+            cpal.paletteEntryLabels = [C_P_A_L_.table_C_P_A_L_.NO_NAME_ID] * cpal.numPaletteEntries
     else:
         cpal.version = 0
 
@@ -446,9 +436,7 @@ def _reuse_ranges(num_layers: int) -> Generator[Tuple[int, int], None, None]:
         # Reuse of very large #s of layers is relatively unlikely
         # +2: we want sequences of at least 2
         # otData handles single-record duplication
-        for ubound in range(
-            lbound + 2, min(num_layers + 1, lbound + 2 + _MAX_REUSE_LEN)
-        ):
+        for ubound in range(lbound + 2, min(num_layers + 1, lbound + 2 + _MAX_REUSE_LEN)):
             yield (lbound, ubound)
 
 
@@ -468,9 +456,7 @@ class LayerReuseCache:
             if isinstance(value, enum.Enum):
                 return value
             elif hasattr(value, "__dict__"):
-                return tuple(
-                    (k, _tuple_safe(v)) for k, v in sorted(value.__dict__.items())
-                )
+                return tuple((k, _tuple_safe(v)) for k, v in sorted(value.__dict__.items()))
             elif isinstance(value, collections.abc.MutableSequence):
                 return tuple(_tuple_safe(e) for e in value)
             return value
@@ -498,9 +484,7 @@ class LayerReuseCache:
                 reverse=True,
             )
             for lbound, ubound in ranges:
-                reuse_lbound = self.reusePool.get(
-                    self._as_tuple(layers[lbound:ubound]), -1
-                )
+                reuse_lbound = self.reusePool.get(self._as_tuple(layers[lbound:ubound]), -1)
                 if reuse_lbound == -1:
                     continue
                 new_slice = ot.Paint()
@@ -514,9 +498,7 @@ class LayerReuseCache:
 
     def add(self, layers: List[ot.Paint], first_layer_index: int):
         for lbound, ubound in _reuse_ranges(len(layers)):
-            self.reusePool[self._as_tuple(layers[lbound:ubound])] = (
-                lbound + first_layer_index
-            )
+            self.reusePool[self._as_tuple(layers[lbound:ubound])] = lbound + first_layer_index
 
 
 class LayerListBuilder:
@@ -635,9 +617,7 @@ def buildColrV1(
     allowLayerReuse: bool = True,
 ) -> Tuple[Optional[ot.LayerList], ot.BaseGlyphList]:
     if glyphMap is not None:
-        colorGlyphItems = sorted(
-            colorGlyphs.items(), key=lambda item: glyphMap[item[0]]
-        )
+        colorGlyphItems = sorted(colorGlyphs.items(), key=lambda item: glyphMap[item[0]])
     else:
         colorGlyphItems = colorGlyphs.items()
 

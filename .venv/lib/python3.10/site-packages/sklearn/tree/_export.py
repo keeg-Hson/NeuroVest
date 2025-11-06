@@ -337,17 +337,13 @@ class _BaseTreeExporter:
                 criterion = "impurity"
             if labels:
                 node_string += "%s = " % criterion
-            node_string += (
-                str(round(tree.impurity[node_id], self.precision)) + characters[4]
-            )
+            node_string += str(round(tree.impurity[node_id], self.precision)) + characters[4]
 
         # Write node sample count
         if labels:
             node_string += "samples = "
         if self.proportion:
-            percent = (
-                100.0 * tree.n_node_samples[node_id] / float(tree.n_node_samples[0])
-            )
+            percent = 100.0 * tree.n_node_samples[node_id] / float(tree.n_node_samples[0])
             node_string += str(round(percent, 1)) + "%" + characters[4]
         else:
             node_string += str(tree.n_node_samples[node_id]) + characters[4]
@@ -379,11 +375,7 @@ class _BaseTreeExporter:
         node_string += value_text + characters[4]
 
         # Write node majority class
-        if (
-            self.class_names is not None
-            and tree.n_classes[0] != 1
-            and tree.n_outputs == 1
-        ):
+        if self.class_names is not None and tree.n_classes[0] != 1 and tree.n_outputs == 1:
             # Only done for single-output classification trees
             if labels:
                 node_string += "class = "
@@ -492,9 +484,7 @@ class _DOTTreeExporter(_BaseTreeExporter):
         if self.rounded:
             rounded_filled.append("rounded")
         if len(rounded_filled) > 0:
-            self.out_file.write(
-                ', style="%s", color="black"' % ", ".join(rounded_filled)
-            )
+            self.out_file.write(', style="%s", color="black"' % ", ".join(rounded_filled))
 
         self.out_file.write(', fontname="%s"' % self.fontname)
         self.out_file.write("] ;\n")
@@ -530,9 +520,7 @@ class _DOTTreeExporter(_BaseTreeExporter):
             )
 
             if self.filled:
-                self.out_file.write(
-                    ', fillcolor="%s"' % self.get_fill_color(tree, node_id)
-                )
+                self.out_file.write(', fillcolor="%s"' % self.get_fill_color(tree, node_id))
             self.out_file.write("] ;\n")
 
             if parent is not None:
@@ -627,12 +615,8 @@ class _MPLTreeExporter(_BaseTreeExporter):
             self.max_depth is None or depth <= self.max_depth
         ):
             children = [
-                self._make_tree(
-                    et.children_left[node_id], et, criterion, depth=depth + 1
-                ),
-                self._make_tree(
-                    et.children_right[node_id], et, criterion, depth=depth + 1
-                ),
+                self._make_tree(et.children_left[node_id], et, criterion, depth=depth + 1),
+                self._make_tree(et.children_right[node_id], et, criterion, depth=depth + 1),
             ]
         else:
             return Tree(name, node_id)
@@ -681,9 +665,7 @@ class _MPLTreeExporter(_BaseTreeExporter):
             max_width = max([extent.width for extent in extents])
             max_height = max([extent.height for extent in extents])
             # width should be around scale_x in axis coordinates
-            size = anns[0].get_fontsize() * min(
-                scale_x / max_width, scale_y / max_height
-            )
+            size = anns[0].get_fontsize() * min(scale_x / max_width, scale_y / max_height)
             for ann in anns:
                 ann.set_fontsize(size)
 
@@ -899,9 +881,7 @@ def export_graphviz(
             feature_names, ensure_2d=False, dtype=None, ensure_min_samples=0
         )
     if class_names is not None and not isinstance(class_names, bool):
-        class_names = check_array(
-            class_names, ensure_2d=False, dtype=None, ensure_min_samples=0
-        )
+        class_names = check_array(class_names, ensure_2d=False, dtype=None, ensure_min_samples=0)
 
     check_is_fitted(decision_tree)
     own_file = False
@@ -947,19 +927,13 @@ def _compute_depth(tree, node):
     Returns the depth of the subtree rooted in node.
     """
 
-    def compute_depth_(
-        current_node, current_depth, children_left, children_right, depths
-    ):
+    def compute_depth_(current_node, current_depth, children_left, children_right, depths):
         depths += [current_depth]
         left = children_left[current_node]
         right = children_right[current_node]
         if left != -1 and right != -1:
-            compute_depth_(
-                left, current_depth + 1, children_left, children_right, depths
-            )
-            compute_depth_(
-                right, current_depth + 1, children_left, children_right, depths
-            )
+            compute_depth_(left, current_depth + 1, children_left, children_right, depths)
+            compute_depth_(right, current_depth + 1, children_left, children_right, depths)
 
     depths = []
     compute_depth_(node, 1, tree.children_left, tree.children_right, depths)
@@ -1059,9 +1033,7 @@ def export_text(
             feature_names, ensure_2d=False, dtype=None, ensure_min_samples=0
         )
     if class_names is not None:
-        class_names = check_array(
-            class_names, ensure_2d=False, dtype=None, ensure_min_samples=0
-        )
+        class_names = check_array(class_names, ensure_2d=False, dtype=None, ensure_min_samples=0)
 
     check_is_fitted(decision_tree)
     tree_ = decision_tree.tree_
@@ -1094,8 +1066,7 @@ def export_text(
 
     if feature_names is not None:
         feature_names_ = [
-            feature_names[i] if i != _tree.TREE_UNDEFINED else None
-            for i in tree_.feature
+            feature_names[i] if i != _tree.TREE_UNDEFINED else None for i in tree_.feature
         ]
     else:
         feature_names_ = ["feature_{}".format(i) for i in tree_.feature]
@@ -1106,10 +1077,7 @@ def export_text(
         val = ""
         if isinstance(decision_tree, DecisionTreeClassifier):
             if show_weights:
-                val = [
-                    "{1:.{0}f}, ".format(decimals, v * weighted_n_node_samples)
-                    for v in value
-                ]
+                val = ["{1:.{0}f}, ".format(decimals, v * weighted_n_node_samples) for v in value]
                 val = "[" + "".join(val)[:-2] + "]"
                 weighted_n_node_samples
             val += " class: " + str(class_name)

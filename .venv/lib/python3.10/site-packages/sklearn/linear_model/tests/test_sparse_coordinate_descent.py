@@ -157,9 +157,7 @@ def test_sparse_enet_not_as_toy_dataset(csc_container, alpha, fit_intercept, pos
     n_samples, n_features, max_iter = 100, 100, 1000
     n_informative = 10
 
-    X, y = make_sparse_data(
-        csc_container, n_samples, n_features, n_informative, positive=positive
-    )
+    X, y = make_sparse_data(csc_container, n_samples, n_features, n_informative, positive=positive)
 
     X_train, X_test = X[n_samples // 2 :], X[: n_samples // 2]
     y_train, y_test = y[n_samples // 2 :], y[: n_samples // 2]
@@ -205,9 +203,7 @@ def test_sparse_lasso_not_as_toy_dataset(csc_container):
     n_samples = 100
     max_iter = 1000
     n_informative = 10
-    X, y = make_sparse_data(
-        csc_container, n_samples=n_samples, n_informative=n_informative
-    )
+    X, y = make_sparse_data(csc_container, n_samples=n_samples, n_informative=n_informative)
 
     X_train, X_test = X[n_samples // 2 :], X[: n_samples // 2]
     y_train, y_test = y[n_samples // 2 :], y[: n_samples // 2]
@@ -362,8 +358,7 @@ def test_sparse_enet_coordinate_descent(csc_container):
     X = csc_container((n_samples, n_features)) * 1e50
     y = np.ones(n_samples)
     warning_message = (
-        "Objective did not converge. You might want "
-        "to increase the number of iterations."
+        "Objective did not converge. You might want " "to increase the number of iterations."
     )
     with pytest.warns(ConvergenceWarning, match=warning_message):
         clf.fit(X, y)

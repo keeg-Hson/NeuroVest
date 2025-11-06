@@ -355,9 +355,7 @@ class Block(Statement):
     def asFea(self, indent=""):
         indent += SHIFT
         return (
-            indent
-            + ("\n" + indent).join([s.asFea(indent=indent) for s in self.statements])
-            + "\n"
+            indent + ("\n" + indent).join([s.asFea(indent=indent) for s in self.statements]) + "\n"
         )
 
 
@@ -482,9 +480,7 @@ class GlyphClassDefStatement(Statement):
     must be either :class:`GlyphClass` or :class:`GlyphClassName` objects, or
     ``None``."""
 
-    def __init__(
-        self, baseGlyphs, markGlyphs, ligatureGlyphs, componentGlyphs, location=None
-    ):
+    def __init__(self, baseGlyphs, markGlyphs, ligatureGlyphs, componentGlyphs, location=None):
         Statement.__init__(self, location)
         self.baseGlyphs, self.markGlyphs = (baseGlyphs, markGlyphs)
         self.ligatureGlyphs = ligatureGlyphs
@@ -729,17 +725,11 @@ class ChainContextPosStatement(Statement):
         prefix = [p.glyphSet() for p in self.prefix]
         glyphs = [g.glyphSet() for g in self.glyphs]
         suffix = [s.glyphSet() for s in self.suffix]
-        builder.add_chain_context_pos(
-            self.location, prefix, glyphs, suffix, self.lookups
-        )
+        builder.add_chain_context_pos(self.location, prefix, glyphs, suffix, self.lookups)
 
     def asFea(self, indent=""):
         res = "pos "
-        if (
-            len(self.prefix)
-            or len(self.suffix)
-            or any([x is not None for x in self.lookups])
-        ):
+        if len(self.prefix) or len(self.suffix) or any([x is not None for x in self.lookups]):
             if len(self.prefix):
                 res += " ".join(g.asFea() for g in self.prefix) + " "
             for i, g in enumerate(self.glyphs):
@@ -787,17 +777,11 @@ class ChainContextSubstStatement(Statement):
         prefix = [p.glyphSet() for p in self.prefix]
         glyphs = [g.glyphSet() for g in self.glyphs]
         suffix = [s.glyphSet() for s in self.suffix]
-        builder.add_chain_context_subst(
-            self.location, prefix, glyphs, suffix, self.lookups
-        )
+        builder.add_chain_context_subst(self.location, prefix, glyphs, suffix, self.lookups)
 
     def asFea(self, indent=""):
         res = "sub "
-        if (
-            len(self.prefix)
-            or len(self.suffix)
-            or any([x is not None for x in self.lookups])
-        ):
+        if len(self.prefix) or len(self.suffix) or any([x is not None for x in self.lookups]):
             if len(self.prefix):
                 res += " ".join(g.asFea() for g in self.prefix) + " "
             for i, g in enumerate(self.glyphs):
@@ -1081,9 +1065,7 @@ class LookupFlagStatement(Statement):
     class and ``markFilteringSet`` values, which must be specified as
     glyph-containing objects."""
 
-    def __init__(
-        self, value=0, markAttachment=None, markFilteringSet=None, location=None
-    ):
+    def __init__(self, value=0, markAttachment=None, markFilteringSet=None, location=None):
         Statement.__init__(self, location)
         self.value = value
         self.markAttachment = markAttachment
@@ -1198,12 +1180,7 @@ class MarkLigPosStatement(Statement):
                 temp = "\n" + indent + SHIFT * 2 + "<anchor NULL>"
             else:
                 for a, m in l:
-                    temp += (
-                        "\n"
-                        + indent
-                        + SHIFT * 2
-                        + "{} mark @{}".format(a.asFea(), m.name)
-                    )
+                    temp += "\n" + indent + SHIFT * 2 + "{} mark @{}".format(a.asFea(), m.name)
             ligs.append(temp)
         res += ("\n" + indent + SHIFT + "ligComponent").join(ligs)
         res += ";"
@@ -1243,9 +1220,7 @@ class MultipleSubstStatement(Statement):
             (e.g. ``sub f' i' by f_i``) even when no context is given.
     """
 
-    def __init__(
-        self, prefix, glyph, suffix, replacement, forceChain=False, location=None
-    ):
+    def __init__(self, prefix, glyph, suffix, replacement, forceChain=False, location=None):
         Statement.__init__(self, location)
         self.prefix, self.glyph, self.suffix = prefix, glyph, suffix
         self.replacement = replacement
@@ -1343,14 +1318,10 @@ class PairPosStatement(Statement):
                     self.location, glyph1, self.valuerecord1, glyph2, self.valuerecord2
                 )
             if not seen_pair:
-                raise FeatureLibError(
-                    "Empty glyph class in positioning rule", self.location
-                )
+                raise FeatureLibError("Empty glyph class in positioning rule", self.location)
             return
 
-        is_specific = isinstance(self.glyphs1, GlyphName) and isinstance(
-            self.glyphs2, GlyphName
-        )
+        is_specific = isinstance(self.glyphs1, GlyphName) and isinstance(self.glyphs2, GlyphName)
         if is_specific:
             builder.add_specific_pair_pos(
                 self.location,
@@ -1511,9 +1482,7 @@ class SinglePosStatement(Statement):
                 res += " ".join(map(asFea, self.prefix)) + " "
             res += " ".join(
                 [
-                    asFea(x[0])
-                    + "'"
-                    + ((" " + x[1].asFea()) if x[1] is not None else "")
+                    asFea(x[0]) + "'" + ((" " + x[1].asFea()) if x[1] is not None else "")
                     for x in self.pos
                 ]
             )
@@ -1521,10 +1490,7 @@ class SinglePosStatement(Statement):
                 res += " " + " ".join(map(asFea, self.suffix))
         else:
             res += " ".join(
-                [
-                    asFea(x[0]) + " " + (x[1].asFea() if x[1] is not None else "")
-                    for x in self.pos
-                ]
+                [asFea(x[0]) + " " + (x[1].asFea() if x[1] is not None else "") for x in self.pos]
             )
         res += ";"
         return res
@@ -1616,12 +1582,7 @@ class ValueRecord(Expression):
         yAdvance = yAdvance or 0
 
         # Try format B, if possible.
-        if (
-            xPlaDevice is None
-            and yPlaDevice is None
-            and xAdvDevice is None
-            and yAdvDevice is None
-        ):
+        if xPlaDevice is None and yPlaDevice is None and xAdvDevice is None and yAdvDevice is None:
             return "<%s %s %s %s>" % (x, y, xAdvance, yAdvance)
 
         # Last resort is format C.
@@ -1783,12 +1744,8 @@ class SizeParameters(Statement):
 class CVParametersNameStatement(NameRecord):
     """Represent a name statement inside a ``cvParameters`` block."""
 
-    def __init__(
-        self, nameID, platformID, platEncID, langID, string, block_name, location=None
-    ):
-        NameRecord.__init__(
-            self, nameID, platformID, platEncID, langID, string, location=location
-        )
+    def __init__(self, nameID, platformID, platEncID, langID, string, block_name, location=None):
+        NameRecord.__init__(self, nameID, platformID, platEncID, langID, string, location=location)
         self.block_name = block_name
 
     def build(self, builder):
@@ -1845,10 +1802,7 @@ class BaseAxis(Statement):
 
     def asFea(self, indent=""):
         direction = "Vert" if self.vertical else "Horiz"
-        scripts = [
-            "{} {} {}".format(a[0], a[1], " ".join(map(str, a[2])))
-            for a in self.scripts
-        ]
+        scripts = ["{} {} {}".format(a[0], a[1], " ".join(map(str, a[2]))) for a in self.scripts]
         minmaxes = [
             "\n{}Axis.MinMax {} {} {}, {};".format(direction, a[0], a[1], a[2], a[3])
             for a in self.minmax
@@ -1896,9 +1850,7 @@ class OS2Field(Statement):
         keywords["panose"] = ["Panose", intarr2str]
         keywords["vendor"] = ["Vendor", lambda y: '"{}"'.format(y)]
         if self.key in keywords:
-            return "{} {};".format(
-                keywords[self.key][0], keywords[self.key][1](self.value)
-            )
+            return "{} {};".format(keywords[self.key][0], keywords[self.key][1](self.value))
         return ""  # should raise exception
 
 
@@ -2108,10 +2060,7 @@ class VariationBlock(Block):
         """Call the ``start_feature`` callback on the builder object, visit
         all the statements in this feature, and then call ``end_feature``."""
         builder.start_feature(self.location, self.name, self.use_extension)
-        if (
-            self.conditionset != "NULL"
-            and self.conditionset not in builder.conditionsets_
-        ):
+        if self.conditionset != "NULL" and self.conditionset not in builder.conditionsets_:
             raise FeatureLibError(
                 f"variation block used undefined conditionset {self.conditionset}",
                 self.location,

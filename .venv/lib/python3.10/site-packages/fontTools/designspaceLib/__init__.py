@@ -210,9 +210,7 @@ class SourceDescriptor(SimpleDescriptor):
         MutatorMath + varLib.
         """
 
-        self.designLocation = (
-            designLocation if designLocation is not None else location or {}
-        )
+        self.designLocation = designLocation if designLocation is not None else location or {}
         """dict. Axis values for this source, in design space coordinates.
 
         MutatorMath + varLib.
@@ -816,9 +814,7 @@ class InstanceDescriptor(SimpleDescriptor):
             )
         return label
 
-    def getFullDesignLocation(
-        self, doc: "DesignSpaceDocument"
-    ) -> AnisotropicLocationDict:
+    def getFullDesignLocation(self, doc: "DesignSpaceDocument") -> AnisotropicLocationDict:
         """Get the complete design location of this instance, by combining data
         from the various location fields, default axis values and mappings, and
         top-level location labels.
@@ -1285,10 +1281,7 @@ class LocationLabelDescriptor(SimpleDescriptor):
 
         .. versionadded:: 5.0
         """
-        return {
-            axis.name: self.userLocation.get(axis.name, axis.default)
-            for axis in doc.axes
-        }
+        return {axis.name: self.userLocation.get(axis.name, axis.default) for axis in doc.axes}
 
 
 class VariableFontDescriptor(SimpleDescriptor):
@@ -1324,9 +1317,9 @@ class VariableFontDescriptor(SimpleDescriptor):
 
         If not specified, the :attr:`name` will be used as a basename for the file.
         """
-        self.axisSubsets: List[
-            Union[RangeAxisSubsetDescriptor, ValueAxisSubsetDescriptor]
-        ] = (axisSubsets or [])
+        self.axisSubsets: List[Union[RangeAxisSubsetDescriptor, ValueAxisSubsetDescriptor]] = (
+            axisSubsets or []
+        )
         """Axis subsets to include in this variable font.
 
         If an axis is not mentioned, assume that we only want the default
@@ -1345,9 +1338,7 @@ class RangeAxisSubsetDescriptor(SimpleDescriptor):
     flavor = "axis-subset"
     _attrs = ("name", "userMinimum", "userDefault", "userMaximum")
 
-    def __init__(
-        self, *, name, userMinimum=-math.inf, userDefault=None, userMaximum=math.inf
-    ):
+    def __init__(self, *, name, userMinimum=-math.inf, userDefault=None, userMaximum=math.inf):
         self.name: str = name
         """Name of the :class:`AxisDescriptor` to subset."""
         self.userMinimum: float = userMinimum
@@ -1435,9 +1426,7 @@ class BaseDocWriter(object):
         ):
             axesElement = ET.Element("axes")
             if self.documentObject.elidedFallbackName is not None:
-                axesElement.attrib["elidedfallbackname"] = (
-                    self.documentObject.elidedFallbackName
-                )
+                axesElement.attrib["elidedfallbackname"] = self.documentObject.elidedFallbackName
             self.root.append(axesElement)
         for axisObject in self.documentObject.axes:
             self._addAxis(axisObject)
@@ -1507,9 +1496,7 @@ class BaseDocWriter(object):
         minVersion = self.documentObject.formatTuple
         if (
             any(
-                hasattr(axis, "values")
-                or axis.axisOrdering is not None
-                or axis.axisLabels
+                hasattr(axis, "values") or axis.axisOrdering is not None or axis.axisLabels
                 for axis in self.documentObject.axes
             )
             or self.documentObject.locationLabels
@@ -1567,13 +1554,9 @@ class BaseDocWriter(object):
                 conditionElement = ET.Element("condition")
                 conditionElement.attrib["name"] = cond.get("name")
                 if cond.get("minimum") is not None:
-                    conditionElement.attrib["minimum"] = self.intOrFloat(
-                        cond.get("minimum")
-                    )
+                    conditionElement.attrib["minimum"] = self.intOrFloat(cond.get("minimum"))
                 if cond.get("maximum") is not None:
-                    conditionElement.attrib["maximum"] = self.intOrFloat(
-                        cond.get("maximum")
-                    )
+                    conditionElement.attrib["maximum"] = self.intOrFloat(cond.get("maximum"))
                 conditionsetElement.append(conditionElement)
             if len(conditionsetElement):
                 ruleElement.append(conditionsetElement)
@@ -1607,9 +1590,7 @@ class BaseDocWriter(object):
             axisElement.attrib["minimum"] = self.intOrFloat(axisObject.minimum)
             axisElement.attrib["maximum"] = self.intOrFloat(axisObject.maximum)
         elif hasattr(axisObject, "values"):
-            axisElement.attrib["values"] = " ".join(
-                self.intOrFloat(v) for v in axisObject.values
-            )
+            axisElement.attrib["values"] = " ".join(self.intOrFloat(v) for v in axisObject.values)
         axisElement.attrib["default"] = self.intOrFloat(axisObject.default)
         if axisObject.hidden:
             axisElement.attrib["hidden"] = "1"
@@ -1634,9 +1615,7 @@ class BaseDocWriter(object):
 
         mappingsElement.append(mappingElement)
 
-    def _addAxisLabel(
-        self, axisElement: ET.Element, label: AxisLabelDescriptor
-    ) -> None:
+    def _addAxisLabel(self, axisElement: ET.Element, label: AxisLabelDescriptor) -> None:
         labelElement = ET.Element("label")
         labelElement.attrib["uservalue"] = self.intOrFloat(label.userValue)
         if label.userMinimum is not None:
@@ -1649,9 +1628,7 @@ class BaseDocWriter(object):
         if label.olderSibling:
             labelElement.attrib["oldersibling"] = "true"
         if label.linkedUserValue is not None:
-            labelElement.attrib["linkeduservalue"] = self.intOrFloat(
-                label.linkedUserValue
-            )
+            labelElement.attrib["linkeduservalue"] = self.intOrFloat(label.linkedUserValue)
         self._addLabelNames(labelElement, label.labelNames)
         axisElement.append(labelElement)
 
@@ -1662,9 +1639,7 @@ class BaseDocWriter(object):
             languageElement.text = labelName
             parentElement.append(languageElement)
 
-    def _addLocationLabel(
-        self, parentElement: ET.Element, label: LocationLabelDescriptor
-    ) -> None:
+    def _addLocationLabel(self, parentElement: ET.Element, label: LocationLabelDescriptor) -> None:
         labelElement = ET.Element("label")
         labelElement.attrib["name"] = label.name
         if label.elidable:
@@ -1742,9 +1717,7 @@ class BaseDocWriter(object):
                     continue
                 localisedStyleMapStyleNameElement = ET.Element("stylemapstylename")
                 localisedStyleMapStyleNameElement.attrib[XML_LANG] = code
-                localisedStyleMapStyleNameElement.text = (
-                    instanceObject.getStyleMapStyleName(code)
-                )
+                localisedStyleMapStyleNameElement.text = instanceObject.getStyleMapStyleName(code)
                 instanceElement.append(localisedStyleMapStyleNameElement)
         if instanceObject.localisedStyleMapFamilyName:
             languageCodes = list(instanceObject.localisedStyleMapFamilyName.keys())
@@ -1754,9 +1727,7 @@ class BaseDocWriter(object):
                     continue
                 localisedStyleMapFamilyNameElement = ET.Element("stylemapfamilyname")
                 localisedStyleMapFamilyNameElement.attrib[XML_LANG] = code
-                localisedStyleMapFamilyNameElement.text = (
-                    instanceObject.getStyleMapFamilyName(code)
-                )
+                localisedStyleMapFamilyNameElement.text = instanceObject.getStyleMapFamilyName(code)
                 instanceElement.append(localisedStyleMapFamilyNameElement)
 
         if self.effectiveFormatTuple >= (5, 0):
@@ -1777,17 +1748,11 @@ class BaseDocWriter(object):
         if instanceObject.filename is not None:
             instanceElement.attrib["filename"] = instanceObject.filename
         if instanceObject.postScriptFontName is not None:
-            instanceElement.attrib["postscriptfontname"] = (
-                instanceObject.postScriptFontName
-            )
+            instanceElement.attrib["postscriptfontname"] = instanceObject.postScriptFontName
         if instanceObject.styleMapFamilyName is not None:
-            instanceElement.attrib["stylemapfamilyname"] = (
-                instanceObject.styleMapFamilyName
-            )
+            instanceElement.attrib["stylemapfamilyname"] = instanceObject.styleMapFamilyName
         if instanceObject.styleMapStyleName is not None:
-            instanceElement.attrib["stylemapstylename"] = (
-                instanceObject.styleMapStyleName
-            )
+            instanceElement.attrib["stylemapstylename"] = instanceObject.styleMapStyleName
         if self.effectiveFormatTuple < (5, 0):
             # Deprecated members as of version 5.0
             if instanceObject.glyphs:
@@ -1863,9 +1828,7 @@ class BaseDocWriter(object):
                 glyphElement.attrib["mute"] = "1"
                 sourceElement.append(glyphElement)
         if self.effectiveFormatTuple >= (5, 0):
-            self._addLocationElement(
-                sourceElement, designLocation=sourceObject.location
-            )
+            self._addLocationElement(sourceElement, designLocation=sourceObject.location)
         else:
             # Pre-version 5.0 code was validating and filling in the location
             # dict while writing it out, as preserved below.
@@ -1875,9 +1838,7 @@ class BaseDocWriter(object):
             sourceElement.append(locationElement)
         self.root.findall(".sources")[0].append(sourceElement)
 
-    def _addVariableFont(
-        self, parentElement: ET.Element, vf: VariableFontDescriptor
-    ) -> None:
+    def _addVariableFont(self, parentElement: ET.Element, vf: VariableFontDescriptor) -> None:
         vfElement = ET.Element("variable-font")
         vfElement.attrib["name"] = vf.name
         if vf.filename is not None:
@@ -1893,22 +1854,14 @@ class BaseDocWriter(object):
                 if hasattr(subset, "userMinimum"):
                     subset = cast(RangeAxisSubsetDescriptor, subset)
                     if subset.userMinimum != -math.inf:
-                        subsetElement.attrib["userminimum"] = self.intOrFloat(
-                            subset.userMinimum
-                        )
+                        subsetElement.attrib["userminimum"] = self.intOrFloat(subset.userMinimum)
                     if subset.userMaximum != math.inf:
-                        subsetElement.attrib["usermaximum"] = self.intOrFloat(
-                            subset.userMaximum
-                        )
+                        subsetElement.attrib["usermaximum"] = self.intOrFloat(subset.userMaximum)
                     if subset.userDefault is not None:
-                        subsetElement.attrib["userdefault"] = self.intOrFloat(
-                            subset.userDefault
-                        )
+                        subsetElement.attrib["userdefault"] = self.intOrFloat(subset.userDefault)
                 elif hasattr(subset, "userValue"):
                     subset = cast(ValueAxisSubsetDescriptor, subset)
-                    subsetElement.attrib["uservalue"] = self.intOrFloat(
-                        subset.userValue
-                    )
+                    subsetElement.attrib["uservalue"] = self.intOrFloat(subset.userValue)
                 subsetsElement.append(subsetElement)
             vfElement.append(subsetsElement)
         self._addLib(vfElement, vf.lib, 4)
@@ -1926,9 +1879,7 @@ class BaseDocWriter(object):
         if data.get("mute"):
             glyphElement.attrib["mute"] = "1"
         if data.get("unicodes") is not None:
-            glyphElement.attrib["unicode"] = " ".join(
-                [hex(u) for u in data.get("unicodes")]
-            )
+            glyphElement.attrib["unicode"] = " ".join([hex(u) for u in data.get("unicodes")])
         if data.get("instanceLocation") is not None:
             locationElement, data["instanceLocation"] = self._makeLocationElement(
                 data.get("instanceLocation")
@@ -1949,9 +1900,7 @@ class BaseDocWriter(object):
                 if m.get("font") is not None:
                     masterElement.attrib["source"] = m.get("font")
                 if m.get("location") is not None:
-                    locationElement, m["location"] = self._makeLocationElement(
-                        m.get("location")
-                    )
+                    locationElement, m["location"] = self._makeLocationElement(m.get("location"))
                     masterElement.append(locationElement)
                 mastersElement.append(masterElement)
             glyphElement.append(mastersElement)
@@ -2071,21 +2020,14 @@ class BaseDocReader(LogMixin):
         # read the axes elements, including the warp map.
         axesElement = self.root.find(".axes")
         if axesElement is not None and "elidedfallbackname" in axesElement.attrib:
-            self.documentObject.elidedFallbackName = axesElement.attrib[
-                "elidedfallbackname"
-            ]
+            self.documentObject.elidedFallbackName = axesElement.attrib["elidedfallbackname"]
         axisElements = self.root.findall(".axes/axis")
         if not axisElements:
             return
         for axisElement in axisElements:
-            if (
-                self.documentObject.formatTuple >= (5, 0)
-                and "values" in axisElement.attrib
-            ):
+            if self.documentObject.formatTuple >= (5, 0) and "values" in axisElement.attrib:
                 axisObject = self.discreteAxisDescriptorClass()
-                axisObject.values = [
-                    float(s) for s in axisElement.attrib["values"].split(" ")
-                ]
+                axisObject.values = [float(s) for s in axisElement.attrib["values"].split(" ")]
             else:
                 axisObject = self.axisDescriptorClass()
                 axisObject.minimum = float(axisElement.attrib.get("minimum"))
@@ -2160,9 +2102,7 @@ class BaseDocReader(LogMixin):
             raise DesignSpaceDocumentError("label element must have a name attribute.")
         valueStr = element.get("uservalue")
         if valueStr is None:
-            raise DesignSpaceDocumentError(
-                "label element must have a uservalue attribute."
-            )
+            raise DesignSpaceDocumentError("label element must have a uservalue attribute.")
         value = float(valueStr)
         minimumStr = element.get("userminimum")
         minimum = float(minimumStr) if minimumStr is not None else None
@@ -2205,9 +2145,7 @@ class BaseDocReader(LogMixin):
 
             name = labelElement.get("name")
             if name is None:
-                raise DesignSpaceDocumentError(
-                    "label element must have a name attribute."
-                )
+                raise DesignSpaceDocumentError("label element must have a name attribute.")
             designLocation, userLocation = self.locationFromElement(labelElement)
             if designLocation:
                 raise DesignSpaceDocumentError(
@@ -2246,9 +2184,7 @@ class BaseDocReader(LogMixin):
 
             name = variableFontElement.get("name")
             if name is None:
-                raise DesignSpaceDocumentError(
-                    "variable-font element must have a name attribute."
-                )
+                raise DesignSpaceDocumentError("variable-font element must have a name attribute.")
 
             filename = variableFontElement.get("filename")
 
@@ -2285,9 +2221,7 @@ class BaseDocReader(LogMixin):
 
             name = element.get("name")
             if name is None:
-                raise DesignSpaceDocumentError(
-                    "axis-subset element must have a name attribute."
-                )
+                raise DesignSpaceDocumentError("axis-subset element must have a name attribute.")
             userValueStr = element.get("uservalue")
             if userValueStr is None:
                 raise DesignSpaceDocumentError(
@@ -2306,18 +2240,12 @@ class BaseDocReader(LogMixin):
 
             name = element.get("name")
             if name is None:
-                raise DesignSpaceDocumentError(
-                    "axis-subset element must have a name attribute."
-                )
+                raise DesignSpaceDocumentError("axis-subset element must have a name attribute.")
 
             userMinimum = element.get("userminimum")
             userDefault = element.get("userdefault")
             userMaximum = element.get("usermaximum")
-            if (
-                userMinimum is not None
-                and userDefault is not None
-                and userMaximum is not None
-            ):
+            if userMinimum is not None and userDefault is not None and userMaximum is not None:
                 return self.rangeAxisSubsetDescriptorClass(
                     name=name,
                     userMinimum=float(userMinimum),
@@ -2332,14 +2260,10 @@ class BaseDocReader(LogMixin):
             )
 
     def readSources(self):
-        for sourceCount, sourceElement in enumerate(
-            self.root.findall(".sources/source")
-        ):
+        for sourceCount, sourceElement in enumerate(self.root.findall(".sources/source")):
             filename = sourceElement.attrib.get("filename")
             if filename is not None and self.path is not None:
-                sourcePath = os.path.abspath(
-                    os.path.join(os.path.dirname(self.path), filename)
-                )
+                sourcePath = os.path.abspath(os.path.join(os.path.dirname(self.path), filename))
             else:
                 sourcePath = None
             sourceName = sourceElement.attrib.get("name")
@@ -2429,9 +2353,7 @@ class BaseDocReader(LogMixin):
                 if userValue is not None:
                     userValue = float(userValue)
             except ValueError:
-                self.log.warning(
-                    "ValueError in readLocation userValue %3.3f", userValue
-                )
+                self.log.warning("ValueError in readLocation userValue %3.3f", userValue)
             try:
                 xValue = dimensionElement.attrib.get("xvalue")
                 if xValue is not None:
@@ -2475,9 +2397,7 @@ class BaseDocReader(LogMixin):
     ):
         filename = instanceElement.attrib.get("filename")
         if filename is not None and self.documentObject.path is not None:
-            instancePath = os.path.join(
-                os.path.dirname(self.documentObject.path), filename
-            )
+            instancePath = os.path.join(os.path.dirname(self.documentObject.path), filename)
         else:
             instancePath = None
         instanceObject = self.instanceDescriptorClass()
@@ -2579,9 +2499,7 @@ class BaseDocReader(LogMixin):
                 unicodes = [int(u, 16) for u in unicodes.split(" ")]
                 glyphData["unicodes"] = unicodes
             except ValueError:
-                raise DesignSpaceDocumentError(
-                    "unicode values %s are not integers" % unicodes
-                )
+                raise DesignSpaceDocumentError("unicode values %s are not integers" % unicodes)
 
         for noteElement in glyphElement.findall(".note"):
             glyphData["note"] = noteElement.text
@@ -2605,9 +2523,7 @@ class BaseDocReader(LogMixin):
             if masterGlyphName is None:
                 # if we don't read a glyphname, use the one we have
                 masterGlyphName = glyphName
-            d = dict(
-                font=fontSourceName, location=designLocation, glyphName=masterGlyphName
-            )
+            d = dict(font=fontSourceName, location=designLocation, glyphName=masterGlyphName)
             if glyphSources is None:
                 glyphSources = []
             glyphSources.append(d)
@@ -2960,9 +2876,7 @@ class DesignSpaceDocument(LogMixin, AsDictMixin):
         # https://github.com/LettError/designSpaceDocument/issues/10
         loc = collections.OrderedDict()
         for axisDescriptor in self.axes:
-            loc[axisDescriptor.name] = axisDescriptor.map_forward(
-                axisDescriptor.default
-            )
+            loc[axisDescriptor.name] = axisDescriptor.map_forward(axisDescriptor.default)
         return loc
 
     def labelForUserLocation(
@@ -2974,11 +2888,7 @@ class DesignSpaceDocument(LogMixin, AsDictMixin):
         .. versionadded:: 5.0
         """
         return next(
-            (
-                label
-                for label in self.locationLabels
-                if label.userLocation == userLocation
-            ),
+            (label for label in self.locationLabels if label.userLocation == userLocation),
             None,
         )
 
@@ -3052,9 +2962,7 @@ class DesignSpaceDocument(LogMixin, AsDictMixin):
             for axis in self.axes
         }
 
-    def map_backward(
-        self, designLocation: AnisotropicLocationDict
-    ) -> SimpleLocationDict:
+    def map_backward(self, designLocation: AnisotropicLocationDict) -> SimpleLocationDict:
         """Map a design location to a user location.
 
         Assume that missing coordinates are at the default location for that axis.
@@ -3111,9 +3019,7 @@ class DesignSpaceDocument(LogMixin, AsDictMixin):
             # 'anisotropic' location, take first coord only
             if isinstance(value, tuple):
                 value = value[0]
-            triple = [
-                axis.map_forward(v) for v in (axis.minimum, axis.default, axis.maximum)
-            ]
+            triple = [axis.map_forward(v) for v in (axis.minimum, axis.default, axis.maximum)]
             new[axis.name] = normalizeValue(value, triple)
         return new
 
@@ -3135,18 +3041,14 @@ class DesignSpaceDocument(LogMixin, AsDictMixin):
                     glyphData["instanceLocation"]
                 )
                 for glyphMaster in glyphData["masters"]:
-                    glyphMaster["location"] = self.normalizeLocation(
-                        glyphMaster["location"]
-                    )
+                    glyphMaster["location"] = self.normalizeLocation(glyphMaster["location"])
             item.location = self.normalizeLocation(item.location)
         # the axes
         for axis in self.axes:
             # scale the map first
             newMap = []
             for inputValue, outputValue in axis.map:
-                newOutputValue = self.normalizeLocation({axis.name: outputValue}).get(
-                    axis.name
-                )
+                newOutputValue = self.normalizeLocation({axis.name: outputValue}).get(axis.name)
                 newMap.append((inputValue, newOutputValue))
             if newMap:
                 axis.map = newMap
@@ -3165,20 +3067,18 @@ class DesignSpaceDocument(LogMixin, AsDictMixin):
                 newConditions = []
                 for cond in conditions:
                     if cond.get("minimum") is not None:
-                        minimum = self.normalizeLocation(
-                            {cond["name"]: cond["minimum"]}
-                        ).get(cond["name"])
+                        minimum = self.normalizeLocation({cond["name"]: cond["minimum"]}).get(
+                            cond["name"]
+                        )
                     else:
                         minimum = None
                     if cond.get("maximum") is not None:
-                        maximum = self.normalizeLocation(
-                            {cond["name"]: cond["maximum"]}
-                        ).get(cond["name"])
+                        maximum = self.normalizeLocation({cond["name"]: cond["maximum"]}).get(
+                            cond["name"]
+                        )
                     else:
                         maximum = None
-                    newConditions.append(
-                        dict(name=cond["name"], minimum=minimum, maximum=maximum)
-                    )
+                    newConditions.append(dict(name=cond["name"], minimum=minimum, maximum=maximum))
                 newConditionSets.append(newConditions)
             rule.conditionSets = newConditionSets
 
@@ -3262,9 +3162,7 @@ class DesignSpaceDocument(LogMixin, AsDictMixin):
 
         variableFonts = []
         discreteAxes = []
-        rangeAxisSubsets: List[
-            Union[RangeAxisSubsetDescriptor, ValueAxisSubsetDescriptor]
-        ] = []
+        rangeAxisSubsets: List[Union[RangeAxisSubsetDescriptor, ValueAxisSubsetDescriptor]] = []
         for axis in self.axes:
             if hasattr(axis, "values"):
                 # Mypy doesn't support narrowing union types via hasattr()

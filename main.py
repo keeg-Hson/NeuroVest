@@ -119,7 +119,6 @@ LABELED_LOG_FILE = "logs/labeled_predictions.csv"
 def fetch_ohlcv(
     symbol="SPY", interval="1min", outputsize="full", api_key=None
 ):  # for testing: outputsize: (thing),  #add interval='1min' if it fails
-
     # Fetch daily OHLCV data from Alpha Vantage API
     print("Fetching OHLCV data valuations...")
     url = "https://www.alphavantage.co/query"  # THIS LINK MIGHT BE BROKEN

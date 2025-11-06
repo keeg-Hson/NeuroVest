@@ -69,9 +69,7 @@ class table__h_h_e_a(DefaultTable.DefaultTable):
 
     def compile(self, ttFont):
         if ttFont.recalcBBoxes and (
-            ttFont.isLoaded("glyf")
-            or ttFont.isLoaded("CFF ")
-            or ttFont.isLoaded("CFF2")
+            ttFont.isLoaded("glyf") or ttFont.isLoaded("CFF ") or ttFont.isLoaded("CFF2")
         ):
             self.recalc(ttFont)
         self.tableVersion = fi2ve(self.tableVersion)
@@ -106,9 +104,7 @@ class table__h_h_e_a(DefaultTable.DefaultTable):
                 cs = charStrings[name]
                 bounds = cs.calcBounds(charStrings)
                 if bounds is not None:
-                    boundsWidthDict[name] = int(
-                        math.ceil(bounds[2]) - math.floor(bounds[0])
-                    )
+                    boundsWidthDict[name] = int(math.ceil(bounds[2]) - math.floor(bounds[0]))
 
         if boundsWidthDict:
             minLeftSideBearing = float("inf")

@@ -136,9 +136,7 @@ class InterpolatablePlot:
     def show_page(self):
         self.page_number += 1
 
-    def add_title_page(
-        self, files, *, show_tolerance=True, tolerance=None, kinkiness=None
-    ):
+    def add_title_page(self, files, *, show_tolerance=True, tolerance=None, kinkiness=None):
         pad = self.pad
         width = self.width - 3 * self.pad
         height = self.height - 2 * self.pad
@@ -180,9 +178,7 @@ class InterpolatablePlot:
                         n = name.getFirstDebugName(nameIDs)
                         if n is None:
                             continue
-                        self.draw_label(
-                            "%s: %s" % (what, n), x=x + pad, y=y, width=width
-                        )
+                        self.draw_label("%s: %s" % (what, n), x=x + pad, y=y, width=width)
                         y += self.font_size + self.pad
             elif file.endswith((".glyphs", ".glyphspackage")):
                 from glyphsLib import GSFont
@@ -201,9 +197,7 @@ class InterpolatablePlot:
                     )
                     y += self.font_size + self.pad
 
-        self.draw_legend(
-            show_tolerance=show_tolerance, tolerance=tolerance, kinkiness=kinkiness
-        )
+        self.draw_legend(show_tolerance=show_tolerance, tolerance=tolerance, kinkiness=kinkiness)
         self.show_page()
 
     def draw_legend(self, *, show_tolerance=True, tolerance=None, kinkiness=None):
@@ -217,9 +211,7 @@ class InterpolatablePlot:
         xxx = x + self.pad * 4
 
         if show_tolerance:
-            self.draw_label(
-                "Tolerance: badness; closer to zero the worse", x=xxx, y=y, width=width
-            )
+            self.draw_label("Tolerance: badness; closer to zero the worse", x=xxx, y=y, width=width)
             y -= self.pad + self.font_size
 
         self.draw_label("Underweight contours", x=xxx, y=y, width=width)
@@ -234,9 +226,7 @@ class InterpolatablePlot:
         cr.fill()
         y -= self.pad + self.font_size
 
-        self.draw_label(
-            "Colored contours: contours with the wrong order", x=xxx, y=y, width=width
-        )
+        self.draw_label("Colored contours: contours with the wrong order", x=xxx, y=y, width=width)
         cr.rectangle(xx - self.pad * 0.7, y, 1.5 * self.pad, self.font_size)
         if self.fill_color:
             cr.set_source_rgb(*self.fill_color)
@@ -394,9 +384,7 @@ class InterpolatablePlot:
         height = self.height - 2 * self.pad
         x = y = pad
 
-        self.draw_label(
-            title, x=x, y=y, bold=True, width=width, font_size=self.title_font_size
-        )
+        self.draw_label(title, x=x, y=y, bold=True, width=width, font_size=self.title_font_size)
         y += self.title_font_size + self.pad
 
         last_glyphname = None
@@ -425,9 +413,7 @@ class InterpolatablePlot:
             current_glyph_problems = []
             for p in glyph_problems:
                 masters = (
-                    p["master_idx"]
-                    if "master_idx" in p
-                    else (p["master_1_idx"], p["master_2_idx"])
+                    p["master_idx"] if "master_idx" in p else (p["master_1_idx"], p["master_2_idx"])
                 )
                 if masters == last_masters:
                     current_glyph_problems.append(p)
@@ -453,9 +439,7 @@ class InterpolatablePlot:
                 )
                 self.show_page()
 
-    def add_problem(
-        self, glyphname, problems, *, show_tolerance=True, show_page_number=True
-    ):
+    def add_problem(self, glyphname, problems, *, show_tolerance=True, show_page_number=True):
         if type(problems) not in (list, tuple):
             problems = [problems]
 
@@ -469,16 +453,12 @@ class InterpolatablePlot:
         log.info("Drawing %s: %s", glyphname, problem_type)
 
         master_keys = (
-            ("master_idx",)
-            if "master_idx" in problems[0]
-            else ("master_1_idx", "master_2_idx")
+            ("master_idx",) if "master_idx" in problems[0] else ("master_1_idx", "master_2_idx")
         )
         master_indices = [problems[0][k] for k in master_keys]
 
         if problem_type == InterpolatableProblem.MISSING:
-            sample_glyph = next(
-                i for i, m in enumerate(self.glyphsets) if m[glyphname] is not None
-            )
+            sample_glyph = next(i for i, m in enumerate(self.glyphsets) if m[glyphname] is not None)
             master_indices.insert(0, sample_glyph)
 
         x = self.pad
@@ -530,9 +510,7 @@ class InterpolatablePlot:
             y += self.font_size + self.pad
 
             if glyphset[glyphname] is not None:
-                scales.append(
-                    self.draw_glyph(glyphset, glyphname, problems, which, x=x, y=y)
-                )
+                scales.append(self.draw_glyph(glyphset, glyphname, problems, which, x=x, y=y))
             else:
                 self.draw_emoticon(self.shrug, x=x, y=y)
             y += self.panel_height + self.font_size + self.pad
@@ -615,20 +593,14 @@ class InterpolatablePlot:
 
             overriding1 = OverridingDict(glyphset1)
             overriding2 = OverridingDict(glyphset2)
-            perContourPen1 = PerContourOrComponentPen(
-                RecordingPen, glyphset=overriding1
-            )
-            perContourPen2 = PerContourOrComponentPen(
-                RecordingPen, glyphset=overriding2
-            )
+            perContourPen1 = PerContourOrComponentPen(RecordingPen, glyphset=overriding1)
+            perContourPen2 = PerContourOrComponentPen(RecordingPen, glyphset=overriding2)
             glyphset1[glyphname].draw(perContourPen1)
             glyphset2[glyphname].draw(perContourPen2)
 
             for problem in problems:
                 if problem["type"] == InterpolatableProblem.CONTOUR_ORDER:
-                    fixed_contours = [
-                        perContourPen2.value[i] for i in problems[0]["value_2"]
-                    ]
+                    fixed_contours = [perContourPen2.value[i] for i in problems[0]["value_2"]]
                     perContourPen2.value = fixed_contours
 
             for problem in problems:
@@ -985,9 +957,7 @@ class InterpolatablePlot:
             if problem["type"] == InterpolatableProblem.CONTOUR_ORDER:
                 matching = problem["value_2"]
                 colors = cycle(self.contour_colors)
-                perContourPen = PerContourOrComponentPen(
-                    RecordingPen, glyphset=glyphset
-                )
+                perContourPen = PerContourOrComponentPen(RecordingPen, glyphset=glyphset)
                 recording.replay(perContourPen)
                 for i, contour in enumerate(perContourPen.value):
                     if matching[i] == i:
@@ -1006,15 +976,13 @@ class InterpolatablePlot:
 
                 # Draw suggested point
                 if idx is not None and which == 1 and "value_2" in problem:
-                    perContourPen = PerContourOrComponentPen(
-                        RecordingPen, glyphset=glyphset
-                    )
+                    perContourPen = PerContourOrComponentPen(RecordingPen, glyphset=glyphset)
                     decomposedRecording.replay(perContourPen)
                     points = SimpleRecordingPointPen()
                     converter = SegmentToPointPen(points, False)
-                    perContourPen.value[
-                        idx if matching is None else matching[idx]
-                    ].replay(converter)
+                    perContourPen.value[idx if matching is None else matching[idx]].replay(
+                        converter
+                    )
                     targetPoint = points.value[problem["value_2"]][0]
                     cr.save()
                     cr.translate(*targetPoint)
@@ -1081,15 +1049,11 @@ class InterpolatablePlot:
 
             if problem["type"] == InterpolatableProblem.KINK:
                 idx = problem.get("contour")
-                perContourPen = PerContourOrComponentPen(
-                    RecordingPen, glyphset=glyphset
-                )
+                perContourPen = PerContourOrComponentPen(RecordingPen, glyphset=glyphset)
                 decomposedRecording.replay(perContourPen)
                 points = SimpleRecordingPointPen()
                 converter = SegmentToPointPen(points, False)
-                perContourPen.value[idx if matching is None else matching[idx]].replay(
-                    converter
-                )
+                perContourPen.value[idx if matching is None else matching[idx]].replay(converter)
 
                 targetPoint = points.value[problem["value"]][0]
                 cr.save()
@@ -1124,9 +1088,7 @@ class InterpolatablePlot:
         cr.stroke()
         cr.restore()
 
-    def draw_circle(
-        self, cr, *, x=0, y=0, color=(0, 0, 0), diameter=10, stroke_width=1
-    ):
+    def draw_circle(self, cr, *, x=0, y=0, color=(0, 0, 0), diameter=10, stroke_width=1):
         cr.save()
         cr.set_line_width(stroke_width)
         cr.set_line_cap(cairo.LINE_CAP_SQUARE)
@@ -1166,9 +1128,7 @@ class InterpolatablePlot:
         cr = cairo.Context(self.surface)
         cr.set_source_rgb(*color)
         cr.set_font_size(self.font_size)
-        cr.select_font_face(
-            "@cairo:monospace", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL
-        )
+        cr.select_font_face("@cairo:monospace", cairo.FONT_SLANT_NORMAL, cairo.FONT_WEIGHT_NORMAL)
         text_width = 0
         text_height = 0
         font_extents = cr.font_extents()
@@ -1183,9 +1143,7 @@ class InterpolatablePlot:
         cr.translate(x, y)
         scale = min(width / text_width, height / text_height)
         # center
-        cr.translate(
-            (width - text_width * scale) / 2, (height - text_height * scale) / 2
-        )
+        cr.translate((width - text_width * scale) / 2, (height - text_height * scale) / 2)
         cr.scale(scale, scale)
 
         cr.translate(0, font_ascent)
@@ -1244,9 +1202,7 @@ class InterpolatablePS(InterpolatablePostscriptLike):
 class InterpolatablePDF(InterpolatablePostscriptLike):
     def __enter__(self):
         self.surface = cairo.PDFSurface(self.out, self.width, self.height)
-        self.surface.set_metadata(
-            cairo.PDF_METADATA_CREATOR, "fonttools varLib.interpolatable"
-        )
+        self.surface.set_metadata(cairo.PDF_METADATA_CREATOR, "fonttools varLib.interpolatable")
         self.surface.set_metadata(cairo.PDF_METADATA_CREATE_DATE, "")
         return self
 

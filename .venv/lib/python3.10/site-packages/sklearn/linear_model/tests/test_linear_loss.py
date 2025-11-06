@@ -25,9 +25,7 @@ from sklearn.utils.fixes import CSR_CONTAINERS
 LOSSES = [HalfBinomialLoss, HalfMultinomialLoss, HalfPoissonLoss]
 
 
-def random_X_y_coef(
-    linear_model_loss, n_samples, n_features, coef_bound=(-2, 2), seed=42
-):
+def random_X_y_coef(linear_model_loss, n_samples, n_features, coef_bound=(-2, 2), seed=42):
     """Random generate y, X and coef in valid range."""
     rng = np.random.RandomState(seed)
     n_dof = n_features + linear_model_loss.fit_intercept
@@ -112,19 +110,13 @@ def test_loss_grad_hess_are_the_same(
 ):
     """Test that loss and gradient are the same across different functions."""
     loss = LinearModelLoss(base_loss=base_loss(), fit_intercept=fit_intercept)
-    X, y, coef = random_X_y_coef(
-        linear_model_loss=loss, n_samples=10, n_features=5, seed=42
-    )
+    X, y, coef = random_X_y_coef(linear_model_loss=loss, n_samples=10, n_features=5, seed=42)
 
     if sample_weight == "range":
         sample_weight = np.linspace(1, y.shape[0], num=y.shape[0])
 
-    l1 = loss.loss(
-        coef, X, y, sample_weight=sample_weight, l2_reg_strength=l2_reg_strength
-    )
-    g1 = loss.gradient(
-        coef, X, y, sample_weight=sample_weight, l2_reg_strength=l2_reg_strength
-    )
+    l1 = loss.loss(coef, X, y, sample_weight=sample_weight, l2_reg_strength=l2_reg_strength)
+    g1 = loss.gradient(coef, X, y, sample_weight=sample_weight, l2_reg_strength=l2_reg_strength)
     l2, g2 = loss.loss_gradient(
         coef, X, y, sample_weight=sample_weight, l2_reg_strength=l2_reg_strength
     )
@@ -154,12 +146,8 @@ def test_loss_grad_hess_are_the_same(
 
     # same for sparse X
     X = csr_container(X)
-    l1_sp = loss.loss(
-        coef, X, y, sample_weight=sample_weight, l2_reg_strength=l2_reg_strength
-    )
-    g1_sp = loss.gradient(
-        coef, X, y, sample_weight=sample_weight, l2_reg_strength=l2_reg_strength
-    )
+    l1_sp = loss.loss(coef, X, y, sample_weight=sample_weight, l2_reg_strength=l2_reg_strength)
+    g1_sp = loss.gradient(coef, X, y, sample_weight=sample_weight, l2_reg_strength=l2_reg_strength)
     l2_sp, g2_sp = loss.loss_gradient(
         coef, X, y, sample_weight=sample_weight, l2_reg_strength=l2_reg_strength
     )
@@ -186,9 +174,7 @@ def test_loss_grad_hess_are_the_same(
 @pytest.mark.parametrize("sample_weight", [None, "range"])
 @pytest.mark.parametrize("l2_reg_strength", [0, 1])
 @pytest.mark.parametrize("X_container", CSR_CONTAINERS + [None])
-def test_loss_gradients_hessp_intercept(
-    base_loss, sample_weight, l2_reg_strength, X_container
-):
+def test_loss_gradients_hessp_intercept(base_loss, sample_weight, l2_reg_strength, X_container):
     """Test that loss and gradient handle intercept correctly."""
     loss = LinearModelLoss(base_loss=base_loss(), fit_intercept=False)
     loss_inter = LinearModelLoss(base_loss=base_loss(), fit_intercept=True)
@@ -198,9 +184,7 @@ def test_loss_gradients_hessp_intercept(
     )
 
     X[:, -1] = 1  # make last column of 1 to mimic intercept term
-    X_inter = X[
-        :, :-1
-    ]  # exclude intercept column as it is added automatically by loss_inter
+    X_inter = X[:, :-1]  # exclude intercept column as it is added automatically by loss_inter
 
     if X_container is not None:
         X = X_container(X)
@@ -222,9 +206,7 @@ def test_loss_gradients_hessp_intercept(
     )
 
     # Note, that intercept gets no L2 penalty.
-    assert l == pytest.approx(
-        l_inter + 0.5 * l2_reg_strength * squared_norm(coef.T[-1])
-    )
+    assert l == pytest.approx(l_inter + 0.5 * l2_reg_strength * squared_norm(coef.T[-1]))
 
     g_inter_corrected = g_inter
     g_inter_corrected.T[-1] += l2_reg_strength * coef.T[-1]
@@ -242,9 +224,7 @@ def test_loss_gradients_hessp_intercept(
 @pytest.mark.parametrize("fit_intercept", [False, True])
 @pytest.mark.parametrize("sample_weight", [None, "range"])
 @pytest.mark.parametrize("l2_reg_strength", [0, 1])
-def test_gradients_hessians_numerically(
-    base_loss, fit_intercept, sample_weight, l2_reg_strength
-):
+def test_gradients_hessians_numerically(base_loss, fit_intercept, sample_weight, l2_reg_strength):
     """Test gradients and hessians with numerical derivatives.
 
     Gradient should equal the numerical derivatives of the loss function.

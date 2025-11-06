@@ -602,13 +602,16 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             t_star, metr = pick_threshold_from_oof(best_pipe_for_oof, X, y, tscv_local, pos_label=1)
         except Exception as e:
             print(f"⚠️ [FWD] OOF threshold selection failed ({e}) — falling back to 0.50.")
-            t_star, metr = 0.50, {
-                "precision": 0.0,
-                "recall": 0.0,
-                "f1": 0.0,
-                "proba_col_index": 1,
-                "pos_enc": 1,
-            }
+            t_star, metr = (
+                0.50,
+                {
+                    "precision": 0.0,
+                    "recall": 0.0,
+                    "f1": 0.0,
+                    "proba_col_index": 1,
+                    "pos_enc": 1,
+                },
+            )
 
         thr_payload = {
             "pos_orig": 1,

@@ -139,9 +139,7 @@ except ImportError:
 
             if encoding is not None and encoding.lower() == "unicode":
                 if xml_declaration:
-                    raise ValueError(
-                        "Serialisation to unicode must not request an XML declaration"
-                    )
+                    raise ValueError("Serialisation to unicode must not request an XML declaration")
                 write_declaration = False
                 encoding = "unicode"
             elif xml_declaration is None:

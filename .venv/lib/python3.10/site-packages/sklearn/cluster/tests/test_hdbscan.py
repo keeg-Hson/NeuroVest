@@ -215,9 +215,7 @@ def test_hdbscan_best_balltree_metric():
     """
     Tests that HDBSCAN using `BallTree` works.
     """
-    labels = HDBSCAN(
-        metric="seuclidean", metric_params={"V": np.ones(X.shape[1])}
-    ).fit_predict(X)
+    labels = HDBSCAN(metric="seuclidean", metric_params={"V": np.ones(X.shape[1])}).fit_predict(X)
     check_label_quality(labels)
 
 
@@ -313,9 +311,7 @@ def test_hdbscan_centers(algorithm):
         assert_allclose(center, medoid, rtol=1, atol=0.05)
 
     # Ensure that nothing is done for noise
-    hdb = HDBSCAN(
-        algorithm=algorithm, store_centers="both", min_cluster_size=X.shape[0]
-    ).fit(X)
+    hdb = HDBSCAN(algorithm=algorithm, store_centers="both", min_cluster_size=X.shape[0]).fit(X)
     assert hdb.centroids_.shape[0] == 0
     assert hdb.medoids_.shape[0] == 0
 

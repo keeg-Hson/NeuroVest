@@ -39,8 +39,7 @@ def test_variance_threshold(sparse_container):
 @pytest.mark.skipif(
     np.var(data2) == 0,
     reason=(
-        "This test is not valid for this platform, "
-        "as it relies on numerical instabilities."
+        "This test is not valid for this platform, " "as it relies on numerical instabilities."
     ),
 )
 @pytest.mark.parametrize(

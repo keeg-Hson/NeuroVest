@@ -40,20 +40,14 @@ def is_Default_Ignorable(u):
         or u == 0x034F  # Cf       SOFT HYPHEN
         or u == 0x061C  # Mn       COMBINING GRAPHEME JOINER
         or 0x115F <= u <= 0x1160  # Cf       ARABIC LETTER MARK
-        or 0x17B4  # Lo   [2] HANGUL CHOSEONG FILLER..HANGUL JUNGSEONG FILLER
-        <= u
-        <= 0x17B5
-        or 0x180B  # Mn   [2] KHMER VOWEL INHERENT AQ..KHMER VOWEL INHERENT AA
-        <= u
-        <= 0x180D
+        or 0x17B4 <= u <= 0x17B5  # Lo   [2] HANGUL CHOSEONG FILLER..HANGUL JUNGSEONG FILLER
+        or 0x180B <= u <= 0x180D  # Mn   [2] KHMER VOWEL INHERENT AQ..KHMER VOWEL INHERENT AA
         or u  # Mn   [3] MONGOLIAN FREE VARIATION SELECTOR ONE..MONGOLIAN FREE VARIATION SELECTOR THREE
         == 0x180E
         or u == 0x180F  # Cf       MONGOLIAN VOWEL SEPARATOR
         or 0x200B <= u <= 0x200F  # Mn       MONGOLIAN FREE VARIATION SELECTOR FOUR
         or 0x202A <= u <= 0x202E  # Cf   [5] ZERO WIDTH SPACE..RIGHT-TO-LEFT MARK
-        or 0x2060  # Cf   [5] LEFT-TO-RIGHT EMBEDDING..RIGHT-TO-LEFT OVERRIDE
-        <= u
-        <= 0x2064
+        or 0x2060 <= u <= 0x2064  # Cf   [5] LEFT-TO-RIGHT EMBEDDING..RIGHT-TO-LEFT OVERRIDE
         or u == 0x2065  # Cf   [5] WORD JOINER..INVISIBLE PLUS
         or 0x2066 <= u <= 0x206F  # Cn       <reserved-2065>
         or u == 0x3164  # Cf  [10] LEFT-TO-RIGHT ISOLATE..NOMINAL DIGIT SHAPES
@@ -71,8 +65,6 @@ def is_Default_Ignorable(u):
         or 0xE0020 <= u <= 0xE007F  # Cn  [30] <reserved-E0002>..<reserved-E001F>
         or 0xE0080 <= u <= 0xE00FF  # Cf  [96] TAG SPACE..CANCEL TAG
         or 0xE0100 <= u <= 0xE01EF  # Cn [128] <reserved-E0080>..<reserved-E00FF>
-        or 0xE01F0  # Mn [240] VARIATION SELECTOR-17..VARIATION SELECTOR-256
-        <= u
-        <= 0xE0FFF
+        or 0xE01F0 <= u <= 0xE0FFF  # Mn [240] VARIATION SELECTOR-17..VARIATION SELECTOR-256
         or False  # Cn [3600] <reserved-E01F0>..<reserved-E0FFF>
     )

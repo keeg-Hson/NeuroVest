@@ -34,9 +34,7 @@ def create_sample_data(dtype, n_pts=25, add_noise=False):
 @pytest.mark.parametrize("n_neighbors, radius", [(24, None), (None, np.inf)])
 @pytest.mark.parametrize("eigen_solver", eigen_solvers)
 @pytest.mark.parametrize("path_method", path_methods)
-def test_isomap_simple_grid(
-    global_dtype, n_neighbors, radius, eigen_solver, path_method
-):
+def test_isomap_simple_grid(global_dtype, n_neighbors, radius, eigen_solver, path_method):
     # Isomap should preserve distances when all neighbors are used
     n_pts = 25
     X = create_sample_data(global_dtype, n_pts=n_pts, add_noise=False)
@@ -59,9 +57,7 @@ def test_isomap_simple_grid(
     if n_neighbors is not None:
         G_iso = neighbors.kneighbors_graph(clf.embedding_, n_neighbors, mode="distance")
     else:
-        G_iso = neighbors.radius_neighbors_graph(
-            clf.embedding_, radius, mode="distance"
-        )
+        G_iso = neighbors.radius_neighbors_graph(clf.embedding_, radius, mode="distance")
     atol = 1e-5 if global_dtype == np.float32 else 0
     assert_allclose_dense_sparse(G, G_iso, atol=atol)
 
@@ -69,9 +65,7 @@ def test_isomap_simple_grid(
 @pytest.mark.parametrize("n_neighbors, radius", [(24, None), (None, np.inf)])
 @pytest.mark.parametrize("eigen_solver", eigen_solvers)
 @pytest.mark.parametrize("path_method", path_methods)
-def test_isomap_reconstruction_error(
-    global_dtype, n_neighbors, radius, eigen_solver, path_method
-):
+def test_isomap_reconstruction_error(global_dtype, n_neighbors, radius, eigen_solver, path_method):
     if global_dtype is np.float32:
         pytest.skip(
             "Skipping test due to numerical instabilities on float32 data"
@@ -103,9 +97,7 @@ def test_isomap_reconstruction_error(
     if n_neighbors is not None:
         G_iso = neighbors.kneighbors_graph(clf.embedding_, n_neighbors, mode="distance")
     else:
-        G_iso = neighbors.radius_neighbors_graph(
-            clf.embedding_, radius, mode="distance"
-        )
+        G_iso = neighbors.radius_neighbors_graph(clf.embedding_, radius, mode="distance")
     G_iso = G_iso.toarray()
     K_iso = centerer.fit_transform(-0.5 * G_iso**2)
 
@@ -127,9 +119,7 @@ def test_transform(global_dtype, n_neighbors, radius):
     X = X.astype(global_dtype, copy=False)
 
     # Compute isomap embedding
-    iso = manifold.Isomap(
-        n_components=n_components, n_neighbors=n_neighbors, radius=radius
-    )
+    iso = manifold.Isomap(n_components=n_components, n_neighbors=n_neighbors, radius=radius)
     X_iso = iso.fit_transform(X)
 
     # Re-embed a noisy version of the points
@@ -177,9 +167,7 @@ def test_pipeline_with_nearest_neighbors_transformer(global_dtype):
         ),
         manifold.Isomap(n_neighbors=n_neighbors, metric="precomputed"),
     )
-    est_compact = manifold.Isomap(
-        n_neighbors=n_neighbors, neighbors_algorithm=algorithm
-    )
+    est_compact = manifold.Isomap(n_neighbors=n_neighbors, neighbors_algorithm=algorithm)
 
     Xt_chain = est_chain.fit_transform(X)
     Xt_compact = est_compact.fit_transform(X)
@@ -228,9 +216,7 @@ def test_isomap_clone_bug():
 @pytest.mark.parametrize("eigen_solver", eigen_solvers)
 @pytest.mark.parametrize("path_method", path_methods)
 @pytest.mark.parametrize("csr_container", CSR_CONTAINERS)
-def test_sparse_input(
-    global_dtype, eigen_solver, path_method, global_random_seed, csr_container
-):
+def test_sparse_input(global_dtype, eigen_solver, path_method, global_random_seed, csr_container):
     # TODO: compare results on dense and sparse data as proposed in:
     # https://github.com/scikit-learn/scikit-learn/pull/23585#discussion_r968388186
     X = csr_container(

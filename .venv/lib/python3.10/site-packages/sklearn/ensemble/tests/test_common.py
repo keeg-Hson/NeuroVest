@@ -93,9 +93,7 @@ def test_ensemble_heterogeneous_estimators_behavior(X, y, estimator):
     estimator.fit(X, y)
     assert len(estimator.named_estimators) == 3
     assert len(estimator.named_estimators_) == 3
-    assert sorted(list(estimator.named_estimators_.keys())) == sorted(
-        ["lr", "svm", "rf"]
-    )
+    assert sorted(list(estimator.named_estimators_.keys())) == sorted(["lr", "svm", "rf"])
 
     # check that set_params() does not add a new attribute
     estimator_new_params = clone(estimator)
@@ -118,9 +116,7 @@ def test_ensemble_heterogeneous_estimators_behavior(X, y, estimator):
     assert len(estimator_dropped.named_estimators) == 3
     assert estimator_dropped.named_estimators.svm == "drop"
     assert len(estimator_dropped.named_estimators_) == 3
-    assert sorted(list(estimator_dropped.named_estimators_.keys())) == sorted(
-        ["lr", "svm", "rf"]
-    )
+    assert sorted(list(estimator_dropped.named_estimators_.keys())) == sorted(["lr", "svm", "rf"])
     for sub_est in estimator_dropped.named_estimators_:
         # check that the correspondence is correct
         assert not isinstance(sub_est, type(estimator.named_estimators.svm))
@@ -128,10 +124,7 @@ def test_ensemble_heterogeneous_estimators_behavior(X, y, estimator):
     # check that we can set the parameters of the underlying classifier
     estimator.set_params(svm__C=10.0)
     estimator.set_params(rf__max_depth=5)
-    assert (
-        estimator.get_params()["svm__C"]
-        == estimator.get_params()["svm"].get_params()["C"]
-    )
+    assert estimator.get_params()["svm__C"] == estimator.get_params()["svm"].get_params()["C"]
     assert (
         estimator.get_params()["rf__max_depth"]
         == estimator.get_params()["rf"].get_params()["max_depth"]

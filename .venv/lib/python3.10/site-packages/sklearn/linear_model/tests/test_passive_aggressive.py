@@ -134,9 +134,7 @@ def test_classifier_correctness(loss, csr_container):
     assert_array_almost_equal(clf1.w, clf2.coef_.ravel(), decimal=2)
 
 
-@pytest.mark.parametrize(
-    "response_method", ["predict_proba", "predict_log_proba", "transform"]
-)
+@pytest.mark.parametrize("response_method", ["predict_proba", "predict_log_proba", "transform"])
 def test_classifier_undefined_methods(response_method):
     clf = PassiveAggressiveClassifier(max_iter=100)
     with pytest.raises(AttributeError):
@@ -148,9 +146,7 @@ def test_class_weights():
     X2 = np.array([[-1.0, -1.0], [-1.0, 0], [-0.8, -1.0], [1.0, 1.0], [1.0, 0.0]])
     y2 = [1, 1, 1, -1, -1]
 
-    clf = PassiveAggressiveClassifier(
-        C=0.1, max_iter=100, class_weight=None, random_state=100
-    )
+    clf = PassiveAggressiveClassifier(C=0.1, max_iter=100, class_weight=None, random_state=100)
     clf.fit(X2, y2)
     assert_array_equal(clf.predict([[0.2, -1.0]]), np.array([1]))
 
@@ -182,9 +178,7 @@ def test_equal_class_weight():
     clf_balanced = PassiveAggressiveClassifier(C=0.1, tol=None, class_weight="balanced")
     clf_balanced.fit(X2, y2)
 
-    clf_weighted = PassiveAggressiveClassifier(
-        C=0.1, tol=None, class_weight={0: 0.5, 1: 0.5}
-    )
+    clf_weighted = PassiveAggressiveClassifier(C=0.1, tol=None, class_weight={0: 0.5, 1: 0.5})
     clf_weighted.fit(X2, y2)
 
     # should be similar up to some epsilon due to learning rate schedule
@@ -269,9 +263,7 @@ def test_regressor_undefined_methods():
 
 
 # TODO(1.7): remove
-@pytest.mark.parametrize(
-    "Estimator", [PassiveAggressiveClassifier, PassiveAggressiveRegressor]
-)
+@pytest.mark.parametrize("Estimator", [PassiveAggressiveClassifier, PassiveAggressiveRegressor])
 def test_passive_aggressive_deprecated_average(Estimator):
     est = Estimator(average=0)
     with pytest.warns(FutureWarning, match="average=0"):

@@ -495,9 +495,7 @@ class FontBuilder(object):
         """
         self._initTableWithValues("OS/2", _OS2Defaults, values)
         if "xAvgCharWidth" not in values:
-            assert (
-                "hmtx" in self.font
-            ), "the 'hmtx' table must be setup before the 'OS/2' table"
+            assert "hmtx" in self.font, "the 'hmtx' table must be setup before the 'OS/2' table"
             self.font["OS/2"].recalcAvgCharWidth(self.font)
         if not (
             "ulUnicodeRange1" in values
@@ -505,9 +503,7 @@ class FontBuilder(object):
             or "ulUnicodeRange3" in values
             or "ulUnicodeRange3" in values
         ):
-            assert (
-                "cmap" in self.font
-            ), "the 'cmap' table must be setup before the 'OS/2' table"
+            assert "cmap" in self.font, "the 'cmap' table must be setup before the 'OS/2' table"
             self.font["OS/2"].recalcUnicodeRanges(self.font)
 
     def setupCFF(self, psName, fontInfo, charStringsDict, privateDict):
@@ -547,9 +543,7 @@ class FontBuilder(object):
             scale = 1 / self.font["head"].unitsPerEm
             topDict.FontMatrix = [scale, 0, 0, scale, 0, 0]
 
-        charStrings = CharStrings(
-            None, topDict.charset, globalSubrs, private, fdSelect, fdArray
-        )
+        charStrings = CharStrings(None, topDict.charset, globalSubrs, private, fdSelect, fdArray)
         for glyphName, charString in charStringsDict.items():
             charString.private = private
             charString.globalSubrs = globalSubrs
@@ -783,9 +777,7 @@ class FontBuilder(object):
                     bag[vorg] = 1
                 else:
                     bag[vorg] += 1
-            defaultVerticalOrigin = sorted(
-                bag, key=lambda vorg: bag[vorg], reverse=True
-            )[0]
+            defaultVerticalOrigin = sorted(bag, key=lambda vorg: bag[vorg], reverse=True)[0]
         self._initTableWithValues(
             "VORG",
             {},
@@ -862,9 +854,7 @@ class FontBuilder(object):
         if "fvar" not in self.font:
             raise KeyError("'fvar' table is missing; can't add FeatureVariations.")
 
-        featureVars.addFeatureVariations(
-            self.font, conditionalSubstitutions, featureTag=featureTag
-        )
+        featureVars.addFeatureVariations(self.font, conditionalSubstitutions, featureTag=featureTag)
 
     def setupCOLR(
         self,
@@ -1003,9 +993,7 @@ def addFvar(font, axes, instances):
             name = dict(en=name)
 
         inst = NamedInstance()
-        inst.subfamilyNameID = nameTable.addMultilingualName(
-            name, ttFont=font, mac=macNames
-        )
+        inst.subfamilyNameID = nameTable.addMultilingualName(name, ttFont=font, mac=macNames)
         if psname is not None:
             inst.postscriptNameID = nameTable.addName(psname, platforms=platforms)
         inst.coordinates = coordinates

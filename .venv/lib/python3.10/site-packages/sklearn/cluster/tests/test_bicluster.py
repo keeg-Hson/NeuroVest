@@ -70,16 +70,12 @@ def test_spectral_coclustering(global_random_seed, csr_container):
         "init": ["k-means++"],
         "n_init": [10],
     }
-    S, rows, cols = make_biclusters(
-        (30, 30), 3, noise=0.1, random_state=global_random_seed
-    )
+    S, rows, cols = make_biclusters((30, 30), 3, noise=0.1, random_state=global_random_seed)
     S -= S.min()  # needs to be nonnegative before making it sparse
     S = np.where(S < 1, 0, S)  # threshold some values
     for mat in (S, csr_container(S)):
         for kwargs in ParameterGrid(param_grid):
-            model = SpectralCoclustering(
-                n_clusters=3, random_state=global_random_seed, **kwargs
-            )
+            model = SpectralCoclustering(n_clusters=3, random_state=global_random_seed, **kwargs)
             model.fit(mat)
 
             assert model.rows_.shape == (3, 30)
@@ -93,9 +89,7 @@ def test_spectral_coclustering(global_random_seed, csr_container):
 @pytest.mark.parametrize("csr_container", CSR_CONTAINERS)
 def test_spectral_biclustering(global_random_seed, csr_container):
     # Test Kluger methods on a checkerboard dataset.
-    S, rows, cols = make_checkerboard(
-        (30, 30), 3, noise=0.5, random_state=global_random_seed
-    )
+    S, rows, cols = make_checkerboard((30, 30), 3, noise=0.5, random_state=global_random_seed)
 
     non_default_params = {
         "method": ["scale", "log"],
@@ -199,25 +193,17 @@ def test_project_and_cluster(global_random_seed, csr_container):
 
 def test_perfect_checkerboard(global_random_seed):
     # XXX Previously failed on build bot (not reproducible)
-    model = SpectralBiclustering(
-        3, svd_method="arpack", random_state=global_random_seed
-    )
+    model = SpectralBiclustering(3, svd_method="arpack", random_state=global_random_seed)
 
-    S, rows, cols = make_checkerboard(
-        (30, 30), 3, noise=0, random_state=global_random_seed
-    )
+    S, rows, cols = make_checkerboard((30, 30), 3, noise=0, random_state=global_random_seed)
     model.fit(S)
     assert consensus_score(model.biclusters_, (rows, cols)) == 1
 
-    S, rows, cols = make_checkerboard(
-        (40, 30), 3, noise=0, random_state=global_random_seed
-    )
+    S, rows, cols = make_checkerboard((40, 30), 3, noise=0, random_state=global_random_seed)
     model.fit(S)
     assert consensus_score(model.biclusters_, (rows, cols)) == 1
 
-    S, rows, cols = make_checkerboard(
-        (30, 40), 3, noise=0, random_state=global_random_seed
-    )
+    S, rows, cols = make_checkerboard((30, 40), 3, noise=0, random_state=global_random_seed)
     model.fit(S)
     assert consensus_score(model.biclusters_, (rows, cols)) == 1
 

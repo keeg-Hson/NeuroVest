@@ -153,9 +153,7 @@ def computeMegaCmap(merger, cmapTables):
                     # Char previously mapped to oldgid but oldgid is already remapped to a different
                     # gid, because of another Unicode character.
                     # TODO: Try harder to do something about these.
-                    log.warning(
-                        "Dropped mapping from codepoint %#06X to glyphId '%s'", uni, gid
-                    )
+                    log.warning("Dropped mapping from codepoint %#06X to glyphId '%s'", uni, gid)
 
     merger.uvsDict = computeMegaUvs(merger, chosenUvsTables)
 

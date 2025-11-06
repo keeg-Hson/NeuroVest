@@ -275,9 +275,7 @@ def spline_to_curves(q, costs, tolerance=0.5, all_cubic=False):
     assert len(q) >= 3, "quadratic spline requires at least 3 points"
 
     # Elevate quadratic segments to cubic
-    elevated_quadratics = [
-        elevate_quadratic(*q[i : i + 3]) for i in range(0, len(q) - 2, 2)
-    ]
+    elevated_quadratics = [elevate_quadratic(*q[i : i + 3]) for i in range(0, len(q) - 2, 2)]
 
     # Find sharp corners; they have to be oncurves for sure.
     forced = set()
@@ -391,9 +389,7 @@ def main():
     reconstruct_tolerance = tolerance * 1
     curve = generate_curve()
     quadratics = curve_to_quadratic(curve, tolerance)
-    print(
-        "cu2qu tolerance %g. qu2cu tolerance %g." % (tolerance, reconstruct_tolerance)
-    )
+    print("cu2qu tolerance %g. qu2cu tolerance %g." % (tolerance, reconstruct_tolerance))
     print("One random cubic turned into %d quadratics." % len(quadratics))
     curves = quadratic_to_curves([quadratics], reconstruct_tolerance)
     print("Those quadratics turned back into %d cubics. " % len(curves))

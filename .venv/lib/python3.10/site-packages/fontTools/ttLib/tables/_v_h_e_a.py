@@ -52,9 +52,7 @@ class table__v_h_e_a(DefaultTable.DefaultTable):
 
     def compile(self, ttFont):
         if ttFont.recalcBBoxes and (
-            ttFont.isLoaded("glyf")
-            or ttFont.isLoaded("CFF ")
-            or ttFont.isLoaded("CFF2")
+            ttFont.isLoaded("glyf") or ttFont.isLoaded("CFF ") or ttFont.isLoaded("CFF2")
         ):
             self.recalc(ttFont)
         self.tableVersion = fi2ve(self.tableVersion)
@@ -89,9 +87,7 @@ class table__v_h_e_a(DefaultTable.DefaultTable):
                 cs = charStrings[name]
                 bounds = cs.calcBounds(charStrings)
                 if bounds is not None:
-                    boundsHeightDict[name] = int(
-                        math.ceil(bounds[3]) - math.floor(bounds[1])
-                    )
+                    boundsHeightDict[name] = int(math.ceil(bounds[3]) - math.floor(bounds[1]))
 
         if boundsHeightDict:
             minTopSideBearing = float("inf")

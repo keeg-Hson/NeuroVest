@@ -209,9 +209,7 @@ def fetch_rcv1(
         files = []
         for each in XY_METADATA:
             logger.info("Downloading %s" % each.url)
-            file_path = _fetch_remote(
-                each, dirname=rcv1_dir, n_retries=n_retries, delay=delay
-            )
+            file_path = _fetch_remote(each, dirname=rcv1_dir, n_retries=n_retries, delay=delay)
             files.append(GzipFile(filename=file_path))
 
         Xy = load_svmlight_files(files, n_features=N_FEATURES)
@@ -233,9 +231,7 @@ def fetch_rcv1(
         sample_id = joblib.load(sample_id_path)
 
     # load target (y), categories, and sample_id_bis
-    if download_if_missing and (
-        not exists(sample_topics_path) or not exists(topics_path)
-    ):
+    if download_if_missing and (not exists(sample_topics_path) or not exists(topics_path)):
         logger.info("Downloading %s" % TOPICS_METADATA.url)
         topics_archive_path = _fetch_remote(
             TOPICS_METADATA, dirname=rcv1_dir, n_retries=n_retries, delay=delay
@@ -312,9 +308,7 @@ def fetch_rcv1(
     if return_X_y:
         return X, y
 
-    return Bunch(
-        data=X, target=y, sample_id=sample_id, target_names=categories, DESCR=fdescr
-    )
+    return Bunch(data=X, target=y, sample_id=sample_id, target_names=categories, DESCR=fdescr)
 
 
 def _inverse_permutation(p):

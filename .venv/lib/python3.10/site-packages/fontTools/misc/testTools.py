@@ -34,8 +34,7 @@ def parseXML(xmlSnippet):
         xml += b"".join(tobytes(s, "utf-8") for s in xmlSnippet)
     else:
         raise TypeError(
-            "expected string or sequence of strings; found %r"
-            % type(xmlSnippet).__name__
+            "expected string or sequence of strings; found %r" % type(xmlSnippet).__name__
         )
     xml += b"</root>"
     reader.parser.Parse(xml, 1)

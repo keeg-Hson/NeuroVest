@@ -42,9 +42,7 @@ def check_results(kernel, bandwidth, atol, rtol, X, Y, dens_true):
     kde = KernelDensity(kernel=kernel, bandwidth=bandwidth, atol=atol, rtol=rtol)
     log_dens = kde.fit(X).score_samples(Y)
     assert_allclose(np.exp(log_dens), dens_true, atol=atol, rtol=max(1e-7, rtol))
-    assert_allclose(
-        np.exp(kde.score(Y)), np.prod(dens_true), atol=atol, rtol=max(1e-7, rtol)
-    )
+    assert_allclose(np.exp(kde.score(Y)), np.prod(dens_true), atol=atol, rtol=max(1e-7, rtol))
 
 
 @pytest.mark.parametrize(

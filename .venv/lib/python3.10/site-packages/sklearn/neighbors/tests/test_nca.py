@@ -40,9 +40,7 @@ def test_simple_example():
     """
     X = np.array([[0, 0], [0, 1], [2, 0], [2, 1]])
     y = np.array([1, 0, 1, 0])
-    nca = NeighborhoodComponentsAnalysis(
-        n_components=2, init="identity", random_state=42
-    )
+    nca = NeighborhoodComponentsAnalysis(n_components=2, init="identity", random_state=42)
     nca.fit(X, y)
     X_t = nca.transform(X)
     assert_array_equal(pairwise_distances(X_t).argsort()[:, 1], np.array([2, 3, 0, 1]))
@@ -346,8 +344,7 @@ def test_warm_start_effectiveness():
     diff_warm = np.sum(np.abs(transformation_warm_plus_one - transformation_warm))
     diff_cold = np.sum(np.abs(transformation_cold_plus_one - transformation_cold))
     assert diff_warm < 3.0, (
-        "Transformer changed significantly after one "
-        "iteration even though it was warm-started."
+        "Transformer changed significantly after one " "iteration even though it was warm-started."
     )
 
     assert diff_cold > diff_warm, (
@@ -357,9 +354,7 @@ def test_warm_start_effectiveness():
     )
 
 
-@pytest.mark.parametrize(
-    "init_name", ["pca", "lda", "identity", "random", "precomputed"]
-)
+@pytest.mark.parametrize("init_name", ["pca", "lda", "identity", "random", "precomputed"])
 def test_verbose(init_name, capsys):
     # assert there is proper output when verbose = 1, for every initialization
     # except auto because auto will call one of the others
@@ -393,8 +388,7 @@ def test_verbose(init_name, capsys):
         # The following regex will match for instance:
         # '[NeighborhoodComponentsAnalysis]  0    6.988936e+01   0.01'
         assert re.match(
-            r"\[NeighborhoodComponentsAnalysis\] *\d+ *\d\.\d{6}e"
-            r"[+|-]\d+\ *\d+\.\d{2}",
+            r"\[NeighborhoodComponentsAnalysis\] *\d+ *\d\.\d{6}e" r"[+|-]\d+\ *\d+\.\d{2}",
             line,
         )
     assert re.match(
@@ -453,9 +447,7 @@ def test_one_class():
     X = iris_data[iris_target == 0]
     y = iris_target[iris_target == 0]
 
-    nca = NeighborhoodComponentsAnalysis(
-        max_iter=30, n_components=X.shape[1], init="identity"
-    )
+    nca = NeighborhoodComponentsAnalysis(max_iter=30, n_components=X.shape[1], init="identity")
     nca.fit(X, y)
     assert_array_equal(X, nca.transform(X))
 

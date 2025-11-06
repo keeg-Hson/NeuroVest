@@ -365,9 +365,7 @@ class KernelPCA(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimator
             )
 
         # make sure that the eigenvalues are ok and fix numerical issues
-        self.eigenvalues_ = _check_psd_eigenvalues(
-            self.eigenvalues_, enable_warnings=False
-        )
+        self.eigenvalues_ = _check_psd_eigenvalues(self.eigenvalues_, enable_warnings=False)
 
         # flip eigenvectors' sign to enforce deterministic output
         self.eigenvectors_, _ = svd_flip(u=self.eigenvectors_, v=None)
@@ -405,9 +403,7 @@ class KernelPCA(ClassNamePrefixFeaturesOutMixin, TransformerMixin, BaseEstimator
 
     def _fit_inverse_transform(self, X_transformed, X):
         if hasattr(X, "tocsr"):
-            raise NotImplementedError(
-                "Inverse transform not implemented for sparse matrices!"
-            )
+            raise NotImplementedError("Inverse transform not implemented for sparse matrices!")
 
         n_samples = X_transformed.shape[0]
         K = self._get_kernel(X_transformed)

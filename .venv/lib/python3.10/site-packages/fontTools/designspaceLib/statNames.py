@@ -52,9 +52,7 @@ class StatNames:
     styleMapStyleName: Optional[RibbiStyleName]
 
 
-def getStatNames(
-    doc: DesignSpaceDocument, userLocation: SimpleLocationDict
-) -> StatNames:
+def getStatNames(doc: DesignSpaceDocument, userLocation: SimpleLocationDict) -> StatNames:
     """Compute the family, style, PostScript names of the given ``userLocation``
     using the document's STAT information.
 
@@ -96,9 +94,7 @@ def getStatNames(
         # whenever a translation is missing.
         labels = _getAxisLabelsForUserLocation(doc.axes, userLocation)
         if labels:
-            languages = set(
-                language for label in labels for language in label.labelNames
-            )
+            languages = set(language for label in labels for language in label.labelNames)
             languages.add("en")
             for language in languages:
                 styleName = " ".join(
@@ -197,9 +193,7 @@ def _getAxisLabelsForUserLocation(
             None,
         )
         if label is None:
-            LOGGER.debug(
-                f"Document needs a label for axis '{axisName}', user value '{userValue}'."
-            )
+            LOGGER.debug(f"Document needs a label for axis '{axisName}', user value '{userValue}'.")
         else:
             labels.append(label)
 

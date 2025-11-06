@@ -93,9 +93,7 @@ def test_max_iter():
     # Compute a wavelet dictionary
     D_multi = np.r_[
         tuple(
-            ricker_matrix(
-                width=w, resolution=resolution, n_components=n_components // 5
-            )
+            ricker_matrix(width=w, resolution=resolution, n_components=n_components // 5)
             for w in (10, 50, 100, 500, 1000)
         )
     ]
@@ -108,9 +106,7 @@ def test_max_iter():
 
     # check that the underlying model fails to converge
     with pytest.warns(ConvergenceWarning):
-        model = SparseCoder(
-            D_multi, transform_algorithm=transform_algorithm, transform_max_iter=1
-        )
+        model = SparseCoder(D_multi, transform_algorithm=transform_algorithm, transform_max_iter=1)
         model.fit_transform(X)
 
     # check that the underlying model converges w/o warnings
@@ -241,9 +237,7 @@ def test_dict_learning_lassocd_readonly_data():
         )
         with ignore_warnings(category=ConvergenceWarning):
             code = dico.fit(X_read_only).transform(X_read_only)
-        assert_array_almost_equal(
-            np.dot(code, dico.components_), X_read_only, decimal=2
-        )
+        assert_array_almost_equal(np.dot(code, dico.components_), X_read_only, decimal=2)
 
 
 def test_dict_learning_nonzero_coefs():
@@ -264,16 +258,12 @@ def test_dict_learning_nonzero_coefs():
 
 def test_dict_learning_split():
     n_components = 5
-    dico = DictionaryLearning(
-        n_components, transform_algorithm="threshold", random_state=0
-    )
+    dico = DictionaryLearning(n_components, transform_algorithm="threshold", random_state=0)
     code = dico.fit(X).transform(X)
     dico.split_sign = True
     split_code = dico.transform(X)
 
-    assert_array_almost_equal(
-        split_code[:, :n_components] - split_code[:, n_components:], code
-    )
+    assert_array_almost_equal(split_code[:, :n_components] - split_code[:, n_components:], code)
 
 
 def test_dict_learning_online_shapes():
@@ -448,18 +438,16 @@ def test_dict_learning_online_verbosity():
 
 def test_dict_learning_online_estimator_shapes():
     n_components = 5
-    dico = MiniBatchDictionaryLearning(
-        n_components, batch_size=4, max_iter=5, random_state=0
-    )
+    dico = MiniBatchDictionaryLearning(n_components, batch_size=4, max_iter=5, random_state=0)
     dico.fit(X)
     assert dico.components_.shape == (n_components, n_features)
 
 
 def test_dict_learning_online_overcomplete():
     n_components = 12
-    dico = MiniBatchDictionaryLearning(
-        n_components, batch_size=4, max_iter=5, random_state=0
-    ).fit(X)
+    dico = MiniBatchDictionaryLearning(n_components, batch_size=4, max_iter=5, random_state=0).fit(
+        X
+    )
     assert dico.components_.shape == (n_components, n_features)
 
 
@@ -504,9 +492,7 @@ def test_dict_learning_online_partial_fit():
         tol=0.0,
         random_state=0,
     ).fit(X)
-    dict2 = MiniBatchDictionaryLearning(
-        n_components, alpha=1, dict_init=V, random_state=0
-    )
+    dict2 = MiniBatchDictionaryLearning(n_components, alpha=1, dict_init=V, random_state=0)
     for i in range(10):
         for sample in X:
             dict2.partial_fit(sample[np.newaxis, :])
@@ -601,9 +587,7 @@ def test_sparse_coder_estimator_clone():
     rng = np.random.RandomState(0)
     V = rng.randn(n_components, n_features)  # random init
     V /= np.sum(V**2, axis=1)[:, np.newaxis]
-    coder = SparseCoder(
-        dictionary=V, transform_algorithm="lasso_lars", transform_alpha=0.001
-    )
+    coder = SparseCoder(dictionary=V, transform_algorithm="lasso_lars", transform_alpha=0.001)
     cloned = clone(coder)
     assert id(cloned) != id(coder)
     np.testing.assert_allclose(cloned.dictionary, coder.dictionary)
@@ -642,9 +626,7 @@ def test_sparse_coder_common_transformer():
 
     check_transformer_data_not_an_array(sc.__class__.__name__, sc)
     check_transformer_general(sc.__class__.__name__, sc)
-    check_transformer_general_memmap = partial(
-        check_transformer_general, readonly_memmap=True
-    )
+    check_transformer_general_memmap = partial(check_transformer_general, readonly_memmap=True)
     check_transformer_general_memmap(sc.__class__.__name__, sc)
     check_transformers_unfitted(sc.__class__.__name__, sc)
 
@@ -678,9 +660,7 @@ def test_update_dict():
     assert_allclose(newd_batch, newd_online)
 
 
-@pytest.mark.parametrize(
-    "algorithm", ("lasso_lars", "lasso_cd", "lars", "threshold", "omp")
-)
+@pytest.mark.parametrize("algorithm", ("lasso_lars", "lasso_cd", "lars", "threshold", "omp"))
 @pytest.mark.parametrize("data_type", (np.float32, np.float64))
 # Note: do not check integer input because `lasso_lars` and `lars` fail with
 # `ValueError` in `_lars_path_solver`
@@ -688,15 +668,11 @@ def test_sparse_encode_dtype_match(data_type, algorithm):
     n_components = 6
     rng = np.random.RandomState(0)
     dictionary = rng.randn(n_components, n_features)
-    code = sparse_encode(
-        X.astype(data_type), dictionary.astype(data_type), algorithm=algorithm
-    )
+    code = sparse_encode(X.astype(data_type), dictionary.astype(data_type), algorithm=algorithm)
     assert code.dtype == data_type
 
 
-@pytest.mark.parametrize(
-    "algorithm", ("lasso_lars", "lasso_cd", "lars", "threshold", "omp")
-)
+@pytest.mark.parametrize("algorithm", ("lasso_lars", "lasso_cd", "lars", "threshold", "omp"))
 def test_sparse_encode_numerical_consistency(algorithm):
     # verify numerical consistency among np.float32 and np.float64
     rtol = 1e-4
@@ -723,9 +699,7 @@ def test_sparse_coder_dtype_match(data_type, transform_algorithm):
     n_components = 6
     rng = np.random.RandomState(0)
     dictionary = rng.randn(n_components, n_features)
-    coder = SparseCoder(
-        dictionary.astype(data_type), transform_algorithm=transform_algorithm
-    )
+    coder = SparseCoder(dictionary.astype(data_type), transform_algorithm=transform_algorithm)
     code = coder.transform(X.astype(data_type))
     assert code.dtype == data_type
 
