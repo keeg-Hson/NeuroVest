@@ -5,16 +5,6 @@ prediction_log.txt
 
 models/
 
-# data + outputs
-outputs/
-data/_archive/
-data/features/
-data_cache/
-logs/
-*.parquet
-*.feather
-*.tmp
-*.csv.zip
 
 # local env
 .venv/
@@ -24,3 +14,21 @@ __pycache__/
 # databases
 *.duckdb
 
+# env & caches
+.venv/
+__pycache__/
+*.pyc
+
+# data & outputs
+outputs/
+logs/
+data/_archive/
+data/features/
+data_cache/
+*.parquet
+*.feather
+*.duckdb
+*.csv.zip
+
+# os/editor
+.DS_Store
