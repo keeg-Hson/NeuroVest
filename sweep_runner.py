@@ -38,9 +38,7 @@ def main():
     combos = itertools.product(CONFIDENCE_RANGE, CRASH_RANGE, SPIKE_RANGE)
 
     for conf, crash, spike in combos:
-        print(
-            f"\n🚦 Backtest with thresholds — " f"confidence={conf}, crash={crash}, spike={spike}"
-        )
+        print(f"\n🚦 Backtest with thresholds — confidence={conf}, crash={crash}, spike={spike}")
 
         trades, metrics, _ = run_backtest(
             window_days=BACKTEST_WINDOW_DAYS,
