@@ -8,6 +8,10 @@ Upgrades in this patch:
 - Conditional calibration: only calibrate if probability dispersion is healthy
 - Choose best of BASE vs CAL on holdout AUC
 - Save threshold by balanced accuracy and 'invert_proba' if flipping helps
+
+Feature pipeline:
+- Uses utils.add_features + utils.finalize_features for rich price + external features.
+- Ensures consistency with train.py / predict.py feature engineering.
 """
 
 from __future__ import annotations
@@ -24,68 +28,40 @@ from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.metrics import balanced_accuracy_score, classification_report, roc_auc_score
 from sklearn.model_selection import TimeSeriesSplit, train_test_split
 
-from config import MODELS_DIR, SPY_DAILY_CSV, TRAIN_CFG
+from config import MODELS_DIR, TRAIN_CFG
+from utils import add_features, finalize_features, load_SPY_data
 
-# --------------------------- Features (match predict.py) ---------------------------
+# --------------------------- Features (match main pipeline) ---------------------------
 
 
-def _rich_price_features(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.copy()
-    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-    df = df.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
+def _build_rich_features_and_labels() -> tuple[pd.DataFrame, pd.Series, list[str]]:
+    """
+    Load SPY history, build rich features via utils.add_features, then construct
+    a binary forward-returns label using TRAIN_CFG horizon/fees.
+    """
+    # Canonical price history
+    raw = load_SPY_data().copy()  # Date index, OHLCV columns
+    raw = raw.sort_index()
+    raw = raw[~raw.index.isna()]
 
-    price_col = None
-    for c in ["Adj Close", "AdjClose", "Close"]:
-        if c in df.columns:
-            price_col = c
-            break
-    if price_col is None:
-        cands = [c for c in df.columns if "close" in str(c).lower()]
-        if not cands:
-            raise SystemExit("No price column found in SPY.csv (need Adj Close or Close).")
-        price_col = cands[0]
+    # Add features; df_feat carries Close and any external signals if present
+    df_feat, feature_cols = add_features(raw.reset_index().rename(columns={"index": "Date"}))
 
-    px = pd.to_numeric(df[price_col], errors="coerce")
-    out = pd.DataFrame({"Date": df["Date"], "Close": px})
+    # Ensure Close is present for labeling
+    if "Close" not in df_feat.columns:
+        raise SystemExit("Expected 'Close' in feature dataframe for label construction.")
 
-    # returns
-    for n in [1, 2, 3, 5, 10, 20]:
-        out[f"ret_{n}"] = px.pct_change(n, fill_method=None)
+    # Binary label: 1 if next h-day net return exceeds hurdle
+    label = _build_labels(df_feat)
 
-    # moving-average deviations
-    for n in [5, 10, 20, 50, 100, 200]:
-        ma = px.rolling(n, min_periods=n).mean()
-        out[f"sma_{n}"] = ma / px - 1.0
+    # Finalize features (impute, clean infinities) for the current feature set
+    X = finalize_features(df_feat, feature_cols)
 
-    # volatility
-    for n in [5, 10, 20]:
-        out[f"vol_{n}"] = px.pct_change(fill_method=None).rolling(n, min_periods=n).std()
+    # Attach Date for meta/splitting; keep aligned index
+    X = X.copy()
+    X["Date"] = df_feat.index
 
-    # RSI(2) and RSI(14)
-    d = px.diff()
-    for n in [2, 14]:
-        up = d.clip(lower=0.0).rolling(n, min_periods=n).mean()
-        down = (-d.clip(upper=0.0)).rolling(n, min_periods=n).mean().replace(0, 1e-12)
-        rs = up / down
-        out[f"rsi{n}"] = 100.0 - (100.0 / (1.0 + rs))
-
-    # MACD(12,26,9)
-    ema12 = px.ewm(span=12, adjust=False).mean()
-    ema26 = px.ewm(span=26, adjust=False).mean()
-    macd = ema12 - ema26
-    signal = macd.ewm(span=9, adjust=False).mean()
-    out["macd"] = macd
-    out["macd_signal"] = signal
-    out["macd_hist"] = macd - signal
-
-    # Bollinger %b (20,2)
-    ma20 = px.rolling(20, min_periods=20).mean()
-    sd20 = px.rolling(20, min_periods=20).std()
-    upper = ma20 + 2 * sd20
-    lower = ma20 - 2 * sd20
-    out["pct_b"] = (px - lower) / (upper - lower)
-
-    return out
+    return X, label, feature_cols
 
 
 def _build_labels(feat_df: pd.DataFrame) -> pd.Series:
@@ -95,7 +71,7 @@ def _build_labels(feat_df: pd.DataFrame) -> pd.Series:
     h = int(TRAIN_CFG.get("horizon", 5))
     fee_bps = float(TRAIN_CFG.get("fee_bps", 1.5))
     slip_bps = float(TRAIN_CFG.get("slippage_bps", 2.0))
-    edge_bps = float(TRAIN_CFG.get("min_edge_bps", 10.0))  # slightly higher default than 5
+    edge_bps = float(TRAIN_CFG.get("min_edge_bps", 10.0))
     hurdle = (fee_bps + slip_bps + edge_bps) / 10_000.0
 
     px = feat_df["Close"].astype(float)
@@ -134,16 +110,11 @@ def _threshold_sweep_balacc(
 def train_model() -> None:
     warnings.filterwarnings("ignore", category=FutureWarning)
 
-    # Load SPY
-    df = pd.read_csv(SPY_DAILY_CSV, low_memory=False)
-
-    # Features + label
-    feat_df = _rich_price_features(df)
-    label = _build_labels(feat_df)
+    # Features + label (rich features from utils.add_features)
+    feat_df, label, feature_cols = _build_rich_features_and_labels()
 
     # Build X/y, drop NaNs where needed
-    feature_cols = [c for c in feat_df.columns if c not in ["Date", "Close"]]
-    full = feat_df[["Date"] + feature_cols].copy()
+    full = feat_df.copy()
     full["Label"] = label
     full = full.dropna(subset=feature_cols + ["Label"]).reset_index(drop=True)
 
