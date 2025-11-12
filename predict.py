@@ -9,26 +9,16 @@ probabilities, applies a decision threshold, and writes predictions to logs.
 
 Label convention
 ----------------
-Legacy logs use a 3-class convention:
-    0 = CRASH
+Unified 3-class convention:
+    0 = SPIKE
     1 = NORMAL
-    2 = SPIKE
+    2 = CRASH
 
 The active forward-returns model is binary internally ({0,1} = no-trade/trade).
-To remain compatible with legacy outputs, binary predictions are mapped to:
+To remain compatible with 3-class outputs, binary predictions are mapped to:
     0 → 1 (NORMAL)
-    1 → 2 (SPIKE)
-CRASH (0) exists only in ground truth under this binary setup.
-
-Threshold resolution
---------------------
-Decision threshold is resolved in this order:
-  1) File at THRESH_PATH (from environment)
-  2) models/thresholds_fwd.json
-  3) configs/best_thresholds.json
-  4) models/thresholds.json
-If none are available, falls back to PREDICT_CFG (default 0.55).
-The threshold is clamped to [0.10, 0.90].
+    1 → 0 (SPIKE)
+CRASH (2) is reserved for explicit crash labels and is not emitted by the binary model.
 """
 
 from __future__ import annotations
@@ -196,8 +186,15 @@ def _feature_coverage_guard(X: pd.DataFrame, saved_feats: list[str], min_coverag
 # Mapping & scoring helpers
 # =============================================================================
 def _binary_to_legacy(pred_bin: int) -> int:
-    """Maps binary forward-returns decision to legacy 0/1/2: 0→1 (NORMAL), 1→2 (SPIKE)."""
-    return 2 if int(pred_bin) == 1 else 1
+    """
+    Map binary forward-returns decision to 3-class 0/1/2:
+
+      binary 1 → 0 (SPIKE)
+      binary 0 → 1 (NORMAL)
+
+    CRASH (2) is not emitted by this mapping.
+    """
+    return 0 if int(pred_bin) == 1 else 1
 
 
 def _assert_binary_model(model) -> None:
@@ -267,7 +264,7 @@ def _ensure_columns(df: pd.DataFrame, cols: Iterable[str]) -> pd.DataFrame:
 
 def _append_single(pred_012: int, p1: float, when: pd.Timestamp) -> None:
     """
-    Appends/updates a single day in logs/labeled_predictions.csv (legacy {0,1,2}).
+    Appends/updates a single day in logs/labeled_predictions.csv (0=SPIKE,1=NORMAL,2=CRASH).
     """
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
     path = LOGS_DIR / "labeled_predictions.csv"
@@ -309,7 +306,7 @@ def _append_single(pred_012: int, p1: float, when: pd.Timestamp) -> None:
 def _backfill_full(model, saved_feats: list[str], variant: str) -> None:
     """
     Scores all valid dates and (re)writes logs/labeled_predictions.csv.
-    Preserves existing Label. Outputs legacy 0/1/2 Prediction.
+    Preserves existing Label. Outputs 0=SPIKE,1=NORMAL,2=CRASH Prediction.
     """
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
     out_path = LOGS_DIR / "labeled_predictions.csv"
@@ -349,7 +346,7 @@ def _backfill_full(model, saved_feats: list[str], variant: str) -> None:
         print("[debug] applied invert_proba: using (1 - p1) for decisions")
 
     pred_bin = (p1 >= float(thresholds.get("p_min", 0.55))).astype(int)
-    pred_012 = np.where(pred_bin == 1, 2, 1).astype(int)
+    pred_012 = np.where(pred_bin == 1, 0, 1).astype(int)
 
     out = (
         pd.DataFrame(
@@ -374,10 +371,10 @@ def _backfill_full(model, saved_feats: list[str], variant: str) -> None:
 
     out = _ensure_columns(out, _REQUIRED_COLS)
 
-    n_crash = int((out["Prediction"] == 0).sum())
+    n_spike = int((out["Prediction"] == 0).sum())
     n_norm = int((out["Prediction"] == 1).sum())
-    n_spike = int((out["Prediction"] == 2).sum())
-    print(f"[debug] legacy preds — crash=0:{n_crash} normal=1:{n_norm} spike=2:{n_spike}")
+    n_crash = int((out["Prediction"] == 2).sum())
+    print(f"[debug] preds — spike=0:{n_spike} normal=1:{n_norm} crash=2:{n_crash}")
     print(f"[debug] writing preds to {out_path.resolve()}")
 
     out.to_csv(out_path, index=False)
@@ -390,7 +387,7 @@ def _backfill_full(model, saved_feats: list[str], variant: str) -> None:
 def live_predict() -> tuple[int, float, pd.Timestamp]:
     """
     Returns (binary_decision, p(long=1), timestamp) using the latest row in SPY_DAILY_CSV.
-    Caller maps to legacy 0/1/2 if needed.
+    Caller maps to 0=SPIKE,1=NORMAL,2=CRASH if needed.
     """
     raw = pd.read_csv(SPY_DAILY_CSV, low_memory=False)
     raw["Date"] = pd.to_datetime(raw["Date"], errors="coerce")
@@ -440,7 +437,7 @@ def main(argv: list[str] | None = None) -> int:
 
     pred_bin, prob, when = _score_latest(model, X, variant)
     pred_012 = _binary_to_legacy(pred_bin)
-    label_human = {0: "CRASH", 1: "NORMAL", 2: "SPIKE"}[pred_012]
+    label_human = {0: "SPIKE", 1: "NORMAL", 2: "CRASH"}[pred_012]
     print(
         f"[predict] {pd.to_datetime(when).date()}  p(long=1)={prob:.4f}  "
         f"binary={pred_bin}  legacy={pred_012} ({label_human})"
