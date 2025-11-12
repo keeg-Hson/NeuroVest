@@ -6,7 +6,9 @@ Wraps runnable scripts into a single CLI with subcommands:
   data        → update SPY data (update_spy_data.py) or bootstrap downloads
   labels      → generate labels (generate_labels.py)
   train       → train model (train_from_labels.py)
-  predict     → run predictions (predict.py)
+  predict     → run predictions (predict.py) [FULL backfill with --backfill]
+  predict-live→ append a single live row (predict.py without --backfill)
+  thresh-sweep→ sweep balanced accuracy; write configs/best_thresholds.json (with invert_proba); re-run predict backfill
   backtest    → full trade sim (backtest.py), with pass-through flags
   backtest-opt→ backtest optimizer mode (backtest.py --optimize ...)
   eval        → evaluate predictions (evaluate.py)
@@ -16,20 +18,7 @@ Wraps runnable scripts into a single CLI with subcommands:
   live        → live loop (live_loop.py)
   sanitize    → clean dirty CSVs in data/
   features    → build a canonical feature table (single CSV/Parquet)
-  all         → 🔥 run EVERYTHING sequentially (sanitize → data → labels → train → predict → backtest → eval → tearsheet)
-
-Usage examples:
-  python3 neurovest_cli.py data update
-  python3 neurovest_cli.py labels
-  python3 neurovest_cli.py train
-  python3 neurovest_cli.py predict
-  python3 neurovest_cli.py backtest -- --use-regime-filter --lookahead 5 --tp-atr 1.25 --sl-atr 0.75
-  python3 neurovest_cli.py backtest-opt -- --optimize --apply-best --opt-min-trades 30
-  python3 neurovest_cli.py eval
-  python3 neurovest_cli.py tearsheet
-  python3 neurovest_cli.py run-all
-  python3 neurovest_cli.py features --price-csv data/SPY.csv --external-dir data_cache --horizon 5
-  python3 neurovest_cli.py all
+  all         → run EVERYTHING sequentially; optional --auto-threshold
 """
 
 from __future__ import annotations
@@ -43,6 +32,7 @@ from textwrap import dedent
 
 import numpy as np
 import pandas as pd
+from sklearn.metrics import balanced_accuracy_score, roc_auc_score
 
 # ---------- helpers ----------
 
@@ -51,6 +41,7 @@ DATA = ROOT / "data"
 LOGS = ROOT / "logs"
 MODELS = ROOT / "models"
 OUT = ROOT / "outputs"
+CONFIGS = ROOT / "configs"
 
 SCRIPTS = {
     "update_spy_data": ROOT / "update_spy_data.py",
@@ -74,7 +65,7 @@ def _exists(p: Path) -> bool:
 
 
 def _ensure_dirs():
-    for d in (DATA, LOGS, MODELS, OUT):
+    for d in (DATA, LOGS, MODELS, OUT, CONFIGS):
         d.mkdir(parents=True, exist_ok=True)
 
 
@@ -138,21 +129,110 @@ def cmd_train(_: argparse.Namespace) -> None:
     _run_py(SCRIPTS["train_from_labels"], check=False)
 
 
-def cmd_predict(_: argparse.Namespace) -> None:
+def cmd_predict(args: argparse.Namespace) -> None:
+    _ensure_dirs()
+    if getattr(args, "backfill", False):
+        _run_py(SCRIPTS["predict"], extra_args=["--backfill"], check=False)
+    else:
+        _run_py(SCRIPTS["predict"], check=False)
+
+
+def cmd_predict_live(_: argparse.Namespace) -> None:
     _ensure_dirs()
     _run_py(SCRIPTS["predict"], check=False)
 
 
+def _sweep_best_threshold(csv_path: Path) -> tuple[float, bool, float, float]:
+    """
+    Choose threshold that maximizes BALANCED ACCURACY on current labeled_predictions.csv.
+    Also detect if probabilities should be inverted (AUC < 0.5 and flipped AUC > 0.5).
+
+    Returns: (best_threshold, invert_proba, best_bal_acc, plain_accuracy_at_best)
+    """
+    # normalize/derive Actuals if needed
+    _run_py(SCRIPTS["evaluate"], check=False)
+
+    df = pd.read_csv(csv_path, low_memory=False)
+    if "Actual_Event" not in df.columns:
+        raise SystemExit("Actual_Event not present after evaluate; cannot sweep threshold.")
+    if "Proba" not in df.columns:
+        raise SystemExit("Proba column not present in predictions; cannot sweep threshold.")
+
+    y = df["Actual_Event"].astype(int)
+    p = pd.to_numeric(df["Proba"], errors="coerce")
+    mask = ~(y.isna() | p.isna())
+    y, p = y[mask].to_numpy(), p[mask].to_numpy()
+
+    # Decide inversion by AUC
+    inv = False
+    try:
+        auc = roc_auc_score(y, p)
+        auc_flip = roc_auc_score(y, 1.0 - p)
+        if auc < 0.5 and auc_flip > 0.5:
+            inv = True
+            p = 1.0 - p
+            print(
+                f"[thresh-sweep] probability inversion enabled (AUC={auc:.4f} → flipped={auc_flip:.4f})"
+            )
+        else:
+            print(
+                f"[thresh-sweep] probability inversion not used (AUC={auc:.4f}, flipped={auc_flip:.4f})"
+            )
+    except Exception as e:
+        print(f"[thresh-sweep] AUC computation failed: {e}; proceeding without inversion")
+
+    # Sweep thresholds for balanced accuracy
+    grid = np.arange(0.25, 0.7500001, 0.005)
+    best_thr, best_bal, best_acc = 0.55, -1.0, -1.0
+    for thr in grid:
+        pred = (p >= thr).astype(int)
+        bal = balanced_accuracy_score(y, pred)
+        acc = (pred == y).mean()
+        if bal > best_bal:
+            best_thr, best_bal, best_acc = float(thr), float(bal), float(acc)
+
+    print(
+        f"[thresh-sweep] best threshold={best_thr:.3f}  bal_acc={best_bal:.4f}  acc={best_acc:.4f}"
+    )
+    return best_thr, inv, best_bal, best_acc
+
+
+def cmd_thresh_sweep(_: argparse.Namespace) -> None:
+    """
+    Sweep balanced accuracy over current predictions, possibly set invert_proba,
+    write configs/best_thresholds.json, then re-run predict backfill.
+    """
+    _ensure_dirs()
+    labeled = LOGS / "labeled_predictions.csv"
+    if not labeled.exists():
+        # Ensure we have predictions to sweep
+        cmd_predict(_)
+
+    best_thr, inv, best_bal, best_acc = _sweep_best_threshold(labeled)
+
+    CONFIGS.mkdir(parents=True, exist_ok=True)
+    tgt = CONFIGS / "best_thresholds.json"
+    with open(tgt, "w") as f:
+        json.dump({"spike_thresh": best_thr, "invert_proba": bool(inv)}, f, indent=2)
+    print(f"[thresh-sweep] wrote {tgt} with spike_thresh={best_thr:.3f}  invert_proba={bool(inv)}")
+
+    # Re-apply by rebuilding predictions with the new threshold/inversion
+    cmd_predict(argparse.Namespace(backfill=True))
+
+
 def cmd_backtest(args: argparse.Namespace) -> None:
     _ensure_dirs()
-    passthru = args.rest or []
-    _run_py(SCRIPTS["backtest"], extra_args=passthru, check=False)
+    rest = args.rest or []
+    # strip a standalone "--" if present so backtest.py doesn't receive it
+    rest = [x for x in rest if x != "--"]
+    _run_py(SCRIPTS["backtest"], extra_args=rest, check=False)
 
 
 def cmd_backtest_opt(args: argparse.Namespace) -> None:
     _ensure_dirs()
-    # ensure optimizer flags exist; pass the rest through as-is
     rest = args.rest or []
+    # strip a standalone "--" if present
+    rest = [x for x in rest if x != "--"]
     if "--optimize" not in rest:
         rest = ["--optimize", "--apply-best"] + rest
     _run_py(SCRIPTS["backtest"], extra_args=rest, check=False)
@@ -326,12 +406,13 @@ def cmd_features(args: argparse.Namespace) -> None:
         sig = ema(m, 9)
         return m, sig, m - sig
 
-    def trange(h, l, c):
-        pc = c.shift(1)
-        return pd.concat([(h - l), (h - pc).abs(), (l - pc).abs()], axis=1).max(axis=1)
+    def trange(high, low, close):
+        pc = close.shift(1)
+        return pd.concat([(high - low), (high - pc).abs(), (low - pc).abs()], axis=1).max(axis=1)
 
-    def atr(h, l, c, w=14):
-        return trange(h, l, c).ewm(alpha=1 / w, adjust=False).mean()
+    def atr(high, low, close, w=14):
+        return trange(high, low, close).ewm(alpha=1 / w, adjust=False).mean()
+
 
     def boll(s, w=20, n=2.0):
         m = sma(s, w)
@@ -448,19 +529,16 @@ def cmd_features(args: argparse.Namespace) -> None:
 
 def cmd_all(args: argparse.Namespace) -> None:
     """
-    Run: sanitize → (bootstrap|update) → labels → train → predict → (opt backtest or fast) → eval → tearsheet
+    Run: sanitize → (bootstrap|update) → labels → train → predict → [auto-threshold] → backtest → eval → tearsheet
     """
     _ensure_dirs()
 
     # 1) sanitize
     if not args.no_sanitize:
-        cmd_sanitize(args)  # reuse sanitizer
+        cmd_sanitize(args)
 
     # 2) data (bootstrap or update)
-    if args.bootstrap:
-        ns = argparse.Namespace(action="bootstrap")
-    else:
-        ns = argparse.Namespace(action="update")
+    ns = argparse.Namespace(action="bootstrap" if args.bootstrap else "update")
     cmd_data(ns)
 
     # 3) labels
@@ -469,13 +547,16 @@ def cmd_all(args: argparse.Namespace) -> None:
     # 4) train
     cmd_train(ns)
 
-    # 5) predict
-    cmd_predict(ns)
+    # 5) predict (full backfill by default in all-in-one)
+    cmd_predict(argparse.Namespace(backfill=True))
+
+    # 5.5) optional threshold sweep then re-apply
+    if args.auto_threshold:
+        cmd_thresh_sweep(ns)
 
     # 6) backtest
     rest = args.rest or []
     if args.fast:
-        # quick run without optimizer; add some sane defaults unless user overrides
         default_bt = [
             "--use-regime-filter",
             "--lookahead",
@@ -491,7 +572,6 @@ def cmd_all(args: argparse.Namespace) -> None:
         ]
         cmd_backtest(argparse.Namespace(rest=(default_bt + rest)))
     else:
-        # optimizer on + apply-best; user flags appended after --
         default_opt = [
             "--optimize",
             "--apply-best",
@@ -537,7 +617,24 @@ def build_parser() -> argparse.ArgumentParser:
     # labels/train/predict
     sub.add_parser("labels", help="run generate_labels.py").set_defaults(func=cmd_labels)
     sub.add_parser("train", help="run train_from_labels.py").set_defaults(func=cmd_train)
-    sub.add_parser("predict", help="run predict.py").set_defaults(func=cmd_predict)
+
+    sp_predict = sub.add_parser("predict", help="run predict.py (FULL backfill with --backfill)")
+    sp_predict.add_argument(
+        "--backfill",
+        action="store_true",
+        help="Score full history and rewrite logs/labeled_predictions.csv",
+    )
+    sp_predict.set_defaults(func=cmd_predict)
+
+    sub.add_parser("predict-live", help="append a single live row").set_defaults(
+        func=cmd_predict_live
+    )
+
+    # threshold sweep
+    sub.add_parser(
+        "thresh-sweep",
+        help="sweep balanced accuracy → configs/best_thresholds.json (with invert_proba) → backfill",
+    ).set_defaults(func=cmd_thresh_sweep)
 
     # backtest (pass-through)
     bp = sub.add_parser("backtest", help="run backtest.py (pass-through flags with --)")
@@ -570,7 +667,7 @@ def build_parser() -> argparse.ArgumentParser:
     # all-in-one
     ap = sub.add_parser(
         "all",
-        help="run the whole pipeline (sanitize → data → labels → train → predict → backtest → eval → tearsheet)",
+        help="run the whole pipeline (sanitize → data → labels → train → predict → [auto-threshold] → backtest → eval → tearsheet)",
     )
     ap.add_argument(
         "--fast", action="store_true", help="skip optimizer; quick backtest with sane defaults"
@@ -581,6 +678,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="bootstrap fresh downloads instead of update_spy_data.py",
     )
     ap.add_argument("--no-sanitize", action="store_true", help="skip the sanitize step")
+    ap.add_argument(
+        "--auto-threshold",
+        action="store_true",
+        help="sweep best threshold (balanced accuracy) and re-apply before backtest/eval",
+    )
     ap.add_argument("rest", nargs=argparse.REMAINDER, help="flags after -- passed to backtest.py")
     ap.set_defaults(func=cmd_all)
 
