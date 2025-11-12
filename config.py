@@ -23,6 +23,7 @@ TRAIN_CFG = {
     "horizon": 5,
     "fee_bps": 1.5,
     "slippage_bps": 2.0,
+    "min_edge_bps": 10.0,
     "long_only": True,
     "pos_threshold": 0.0,
     "min_weight": 0.25,
