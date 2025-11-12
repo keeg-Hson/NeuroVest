@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-
 socket.setdefaulttimeout(float(os.getenv("NET_TIMEOUT", "3")))
 
 # --- canonical data locations ---
@@ -23,7 +22,6 @@ CSV_PATH = os.path.join(DATA_DIR, "SPY.csv")
 def update_spy_data():
     """
     Hook for run_all.py step_refresh_data().
-    If you already have a real price refresh elsewhere, call it here.
     For now we just touch/load SPY to mark the step successful.
     """
     try:
@@ -44,7 +42,6 @@ def update_yfinance_data():
 
 # -------------------------------------------------------------------------------------
 
-
 # --- Ensure folders exist ---
 os.makedirs("logs", exist_ok=True)
 os.makedirs("graphs", exist_ok=True)
@@ -54,12 +51,23 @@ LOG_FILE = "logs/daily_predictions.csv"
 LABELED_LOG_FILE = "logs/labeled_predictions.csv"
 
 
-# --- Ensure labeled_predictions.csv exists ---
+# --- Ensure labeled_predictions.csv exists (schema aligned with predict.py) ---
 def init_labeled_log_file():
     if not os.path.exists(LABELED_LOG_FILE):
-        print("[Init] Creating blank labeled_predictions.csv")
-        with open(LABELED_LOG_FILE, "w") as f:
-            f.write("Timestamp,Prediction,Crash_Conf,Spike_Conf,Close_Price,Actual_Event\n")
+        print("[Init] Creating blank labeled_predictions.csv (predict.py schema)")
+        headers = [
+            "Date",
+            "Label",
+            "Pred",
+            "Prediction",
+            "Proba",
+            "Spike_Conf",
+            "Crash_Conf",
+            "Confidence",
+        ]
+        with open(LABELED_LOG_FILE, "w", newline="") as f:
+            w = csv.writer(f)
+            w.writerow(headers)
 
 
 # --- Feature List ---
@@ -105,12 +113,8 @@ def get_feature_list():
 
 def in_human_speak(label):
     """
-    Convert your internal labels to human-readable strings.
-
-    Accepts ints or strings. Your codebase convention has:
-      0 = NORMAL (often filtered out before training)
-      1 = CRASH
-      2 = SPIKE
+    Convert internal labels to human-readable strings.
+    0 = NORMAL, 1 = CRASH, 2 = SPIKE
     """
     try:
         if isinstance(label, str) and label.isdigit():
@@ -133,9 +137,6 @@ def in_human_speak(label):
 
 
 # --- Log prediction to file ---
-# --- Log prediction to file ---
-
-
 def log_prediction_to_file(
     timestamp,
     prediction,
@@ -147,8 +148,6 @@ def log_prediction_to_file(
     low=None,
     log_path="logs/daily_predictions.csv",
 ):
-    import os
-
     os.makedirs(os.path.dirname(log_path), exist_ok=True)
     file_exists = os.path.isfile(log_path)
 
@@ -173,7 +172,6 @@ def log_prediction_to_file(
     except Exception:
         date_str = str(timestamp)
 
-    # regime / snapshot hashes
     regime = os.getenv("REGIME_TAG", "")
 
     def _hash_file(pth):
@@ -210,15 +208,15 @@ def log_prediction_to_file(
         "FeatSnapshot": feat_snapshot,
     }
 
-    # de-dupe: avoid appending if the last row has same Date/Prediction/Close
+    # De-dupe: compare to last row's Date/Prediction/Close
     try:
         if os.path.isfile(log_path) and os.path.getsize(log_path) > 0:
             with open(log_path, newline="") as _f:
                 rdr = csv.DictReader(_f)
                 last = None
-                for _last in rdr:
-                    pass
-            if _last:
+                for r in rdr:
+                    last = r
+            if last:
                 same_date = str(last.get("Date")) == str(row["Date"])
                 same_pred = str(last.get("Prediction")) == str(row["Prediction"])
                 same_close = str(last.get("Close")) == str(row["Close"])
@@ -268,13 +266,13 @@ def label_real_outcomes_from_log(crash_thresh=-0.005, spike_thresh=0.005):
     print(f"[DEBUG] read {len(df)} rows from {LOG_FILE}")
     print(df.tail())
 
+    # last write wins per Timestamp
     df.drop_duplicates(subset=["Timestamp"], keep="last", inplace=True)
 
     if len(df) < 2:
         print("[⏭] Not enough data to label real outcomes — skipping for now.")
         return
 
-    # Your log_prediction_to_file() writes 'Close' (not 'Close_Price')
     price_col = "Close"
     if price_col not in df.columns:
         raise KeyError(
@@ -284,19 +282,16 @@ def label_real_outcomes_from_log(crash_thresh=-0.005, spike_thresh=0.005):
     df["Next_Close"] = df[price_col].shift(-1)
     df["Future_Return"] = (df["Next_Close"] - df[price_col]) / df[price_col]
 
+    # thresholds are parameters but keep the defaults for consistency
     df["Actual_Event"] = np.select(
-        [df["Future_Return"] < -0.005, df["Future_Return"] > 0.005], [1, 2], default=0
+        [df["Future_Return"] < crash_thresh, df["Future_Return"] > spike_thresh],
+        [1, 2],
+        default=0,
     )
 
     df.dropna(subset=["Future_Return"], inplace=True)
     df.to_csv(LABELED_LOG_FILE, index=False)
     print(f"[DEBUG] wrote {len(df)} rows to {LABELED_LOG_FILE}")
-    # print(f"[Labeling] Return: {future_return:.4f} → Event: {actual_event}")
-
-    print("[✅] Labeled outcomes written to logs/labeled_predictions.csv")
-
-    # backup_logs()
-    df.to_csv(LABELED_LOG_FILE, index=False)
     print("[✅] Labeled outcomes written to logs/labeled_predictions.csv")
 
     backup_logs()
@@ -304,18 +299,24 @@ def label_real_outcomes_from_log(crash_thresh=-0.005, spike_thresh=0.005):
 
 def backup_logs():
     """Make timestamped copies of your two main CSVs into ./backups/"""
-    ts = datetime.datetime.now().strftime("%Y%m%d_%H%M")
+    ts = datetime.now().strftime("%Y%m%d_%H%M")
     os.makedirs("backups", exist_ok=True)
-    shutil.copy(LOG_FILE, f"backups/daily_predictions_{ts}.csv")
-    shutil.copy(LABELED_LOG_FILE, f"backups/labeled_predictions_{ts}.csv")
+
+    def _safe_copy(src, dst):
+        try:
+            if os.path.exists(src) and os.path.getsize(src) > 0:
+                shutil.copy(src, dst)
+        except Exception as e:
+            print(f"[backup] skip {src}: {e}")
+
+    _safe_copy(LOG_FILE, f"backups/daily_predictions_{ts}.csv")
+    _safe_copy(LABELED_LOG_FILE, f"backups/labeled_predictions_{ts}.csv")
 
 
 def summarize_trades(trades, initial_balance=10000, save_plot_path=None):
     """
     Summarizes trade results: final balance, win rate, trade count.
     Compatible with trades from both simulate_trades() and run_backtest().
-
-    Returns dict with balance, win rate, and equity curve.
     """
     if not trades:
         return {
@@ -373,8 +374,6 @@ def expected_value(prob_long, avg_gain, avg_loss, fee_bps=1.5, slippage_bps=2.0)
 
 
 # --- injected minimal helpers ---
-
-
 def add_features(df):
     import pandas as pd
 
@@ -409,12 +408,6 @@ def add_features(df):
     d["ATR_14"] = tr.ewm(alpha=1 / 14, adjust=False).mean()
     d["Dist_High20_ATR"] = (d["Close"] - d["High"].rolling(20).max()) / (d["ATR_14"] + 1e-9)
 
-    d["ZMomentum"] = (d["Close"] - d["Close"].rolling(10).mean()) / (
-        d["Close"].rolling(10).std() + 1e-9
-    )
-    d["Acceleration"] = (d["Close"] - d["Close"].shift(10)).diff()
-    d["Gap_Pct"] = (d["Open"] - d["Close"].shift()) / (d["Close"].shift() + 1e-9)
-
     try:
         from external_signals import add_external_signals as _add_ext
 
@@ -448,24 +441,20 @@ def add_features(df):
 
 
 def finalize_features(df, feature_cols):
-    import numpy as np
-
     out = df.copy()
     for c in feature_cols:
         if c not in out.columns:
             out[c] = np.nan
     out = out[feature_cols]
     out = out.replace([np.inf, -np.inf], np.nan)
+    # median impute per-column (scalar), safe for TS when used inside CV/pipelines
     out = out.fillna(out.median(numeric_only=True))
     return out
 
 
 # --- injected missing helpers (safe) ---
-
-
 def send_telegram_alert(text, token=None, chat_id=None):
     import json
-    import os
 
     try:
         import requests
@@ -503,8 +492,6 @@ def notify_user(prediction, crash_conf, spike_conf):
 
 
 # === Forward-returns labeling & safety helpers =====================================
-
-
 def add_forward_returns_and_labels(
     df: pd.DataFrame,
     price_col: str = "Close",
@@ -514,35 +501,23 @@ def add_forward_returns_and_labels(
     long_only: bool = True,
     pos_threshold: float = 0.0,
 ):
-    """
-    Adds:
-      - 'fwd_price': price shifted -horizon
-      - 'fwd_ret_raw': (fwd_price / Close) - 1
-      - 'fwd_ret_net': fees/slippage adjusted forward return
-      - 'horizon_forward': the lookahead horizon (int)
-      - 'y': 1 if forward trade is positive (>= pos_threshold), else 0 (long_only)
-             If long_only=False, you can extend to 3-class, but train.py expects {0,1}.
-    """
     d = df.copy()
     if price_col not in d.columns:
         raise KeyError(f"[add_forward_returns_and_labels] '{price_col}' not in df.")
 
     d[price_col] = pd.to_numeric(d[price_col], errors="coerce")
-    cost = (float(fee_bps) + float(slippage_bps)) * 1e-4  # per round-trip, conservative
+    cost = (float(fee_bps) + float(slippage_bps)) * 1e-4
 
     d["fwd_price"] = d[price_col].shift(-int(horizon))
     d["fwd_ret_raw"] = (d["fwd_price"] / d[price_col]) - 1.0
-    # Subtract costs on both sides (entry/exit) once; adjust if model fills separately
     d["fwd_ret_net"] = d["fwd_ret_raw"] - cost
-
     d["horizon_forward"] = int(horizon)
 
-    # Binary label: trade (1) vs no-trade (0)
-    if long_only:
-        d["y"] = (d["fwd_ret_net"] >= float(pos_threshold)).astype(int)
-    else:
-        d["y"] = (d["fwd_ret_net"] >= float(pos_threshold)).astype(int)
-
+    d["y"] = (
+        (d["fwd_ret_net"] >= float(pos_threshold)).astype(int)
+        if long_only
+        else (d["fwd_ret_net"] >= float(pos_threshold)).astype(int)
+    )
     return d
 
 
@@ -553,26 +528,16 @@ def compute_sample_weights(
     power: float = 1.0,
     long_only: bool = True,
 ):
-    """
-    Profit-aware weights. More positive forward return ⇒ larger weight.
-    - If 'fwd_ret_net' missing, returns ones.
-    - Clipped to [min_weight, max_weight].
-    """
     n = len(df)
     if n == 0:
         return np.array([], dtype=float)
-
     if "fwd_ret_net" not in df.columns:
         return np.ones(n, dtype=float)
 
     r = pd.to_numeric(df["fwd_ret_net"], errors="coerce").fillna(0.0).to_numpy()
-
-    # Emphasize positive outcomes; non-positive stay closer to min_weight
     pos = np.maximum(r, 0.0)
-    # Normalize by a small scale to avoid exploding weights; 1% is a decent default scale
     scale = 0.01
     w = 1.0 + (pos / scale) ** float(power)
-
     w = np.clip(w, float(min_weight), float(max_weight))
     return w
 
@@ -583,10 +548,6 @@ def ensure_no_future_leakage(
     target_cols: list[str],
     horizon_col: str = "horizon_forward",
 ):
-    """
-    Sanity checks that features don't include forward-looking columns.
-    Will raise if obviously leaky columns are present.
-    """
     blacklist = {
         "y",
         "fwd_price",
@@ -599,13 +560,9 @@ def ensure_no_future_leakage(
     }
     feats = set(map(str, feature_cols))
     leaks = feats & blacklist
-    # Also catch any features that *look* forward-y by name
     leaks |= {c for c in feats if c.lower().startswith(("fwd_", "future_"))}
-
     if leaks:
         raise RuntimeError(f"[ensure_no_future_leakage] Leaky features detected: {sorted(leaks)}")
-
-    # Optional: could check that all features use only information up to t (e.g., via lags).
     return True
 
 
@@ -617,11 +574,6 @@ def label_events_triple_barrier(
     sl_mult: float = 1.0,
     t_max: int = 10,
 ):
-    """
-    Minimal stub. Produces an Event column of zeros so training will fall back
-    to forward-returns (train.py already handles 'not enough class diversity').
-    Replace with your full triple-barrier labeling when ready.
-    """
     out = df.copy()
     out["Event"] = 0
     return out
@@ -629,15 +581,9 @@ def label_events_triple_barrier(
 
 # ================================================================================
 
-# --- SPY data loader ---
-# import pandas as pd, os
-# DATA_DIR = "data"
-# CSV_PATH = os.path.join(DATA_DIR, "SPY.csv")
-
 
 # === Canonical SPY loader =====================
 def load_SPY_data() -> pd.DataFrame:
-    # read header once to decide the columns to parse
     header = pd.read_csv(CSV_PATH, nrows=1, low_memory=False)
     want = ["Date", "Open", "High", "Low", "Close", "Adj Close", "Volume"]
     usecols = [c for c in want if c in header.columns]
@@ -648,11 +594,9 @@ def load_SPY_data() -> pd.DataFrame:
         parse_dates=["Date"],
         low_memory=False,
     )
-
     df = df.dropna(subset=["Date"])
     df = df.sort_values("Date").drop_duplicates(subset=["Date"], keep="last").set_index("Date")
 
-    # basic sanity checks
     if not isinstance(df.index, pd.DatetimeIndex):
         raise AssertionError("SPY loader: index is not DatetimeIndex")
     if df.index.tz is not None:
@@ -669,26 +613,18 @@ def load_SPY_data() -> pd.DataFrame:
     return df
 
 
-# =======================================================================
-
-
 # =========================
 # Canonical loader + helpers
 # =========================
-
-
 def safe_read_csv(path, prefer_index=None, **kwargs):
     """Read CSV; if prefer_index is provided, set it if present. Ignores unsupported kwargs."""
-    import pandas as pd
-
-    # Drop 'prefer_index' if someone passed it via kwargs by mistake
-    kwargs.pop("prefer_index", None)
     df = pd.read_csv(path, **kwargs)
     if prefer_index and prefer_index in df.columns:
         df = df.set_index(prefer_index)
     return df
 
 
+# v2 helpers kept for compatibility (not wired by default)
 def _add_forward_returns_and_labels_v2(
     df: pd.DataFrame,
     price_col: str = "Close",
@@ -698,33 +634,23 @@ def _add_forward_returns_and_labels_v2(
     long_only: bool = True,
     pos_threshold: float = 0.0,
 ) -> pd.DataFrame:
-    """
-    Build forward-returns labels:
-      - fwd_price, fwd_ret_raw, fwd_ret_net
-      - y ∈ {0,1} for forward_returns (1 = take-trade), or { -1,0,1 } if long_only=False
-    """
     out = df.copy()
     if price_col not in out.columns:
         raise RuntimeError(f"add_forward_returns_and_labels: missing price_col '{price_col}'")
 
     out["fwd_price"] = out[price_col].shift(-horizon)
     out["fwd_ret_raw"] = out["fwd_price"] / out[price_col] - 1.0
-
-    # simple round-trip costs
     c = (fee_bps + slippage_bps) / 1e4
     out["fwd_ret_net"] = (1.0 + out["fwd_ret_raw"]) * (1.0 - c) - 1.0
 
     if long_only:
-        # 1 = trade if forward net return >= threshold; else 0 = no-trade
         out["y"] = (out["fwd_ret_net"] >= float(pos_threshold)).astype(int)
     else:
-        # ternary label: go short if sufficiently negative, otherwise long if >= pos_threshold
         neg_thr = -abs(float(pos_threshold))
         out["y"] = 0
         out.loc[out["fwd_ret_net"] >= float(pos_threshold), "y"] = 1
         out.loc[out["fwd_ret_net"] <= neg_thr, "y"] = -1
 
-    # horizon stamp (helps leakage checks)
     out["horizon_forward"] = int(horizon)
     return out
 
@@ -736,31 +662,19 @@ def _compute_sample_weights_v2(
     power: float = 1.0,
     long_only: bool = True,
 ) -> np.ndarray:
-    """
-    Emphasize samples with larger |forward net return|.
-    Bounded in [min_weight, max_weight].
-    """
-    import numpy as _np
-
     dfx = df_labeled
     if "fwd_ret_net" not in dfx.columns:
         raise RuntimeError(
             "compute_sample_weights: missing fwd_ret_net (call add_forward_returns_and_labels first)"
         )
-
-    mag = _np.abs(_np.asarray(dfx["fwd_ret_net"].fillna(0.0)))
+    mag = np.abs(np.asarray(dfx["fwd_ret_net"].fillna(0.0)))
     if power != 1.0:
         mag = mag ** float(power)
-
-    # normalize to [0,1] then scale into [min,max]
     if mag.max() > 0:
         mag = mag / mag.max()
     w = min_weight + (max_weight - min_weight) * mag
-
-    # optional: downweight "no-trade" (y=0) slightly in long_only regime
     if long_only and "y" in dfx.columns:
-        w = _np.where(dfx["y"].values == 0, _np.maximum(min_weight, 0.8 * w), w)
-
+        w = np.where(dfx["y"].values == 0, np.maximum(min_weight, 0.8 * w), w)
     return w
 
 
@@ -770,21 +684,12 @@ def _ensure_no_future_leakage_v2(
     target_cols: list[str],
     horizon_col: str = "horizon_forward",
 ) -> None:
-    """
-    Very fast structural checks that your model inputs can't peek forward.
-    - Forbids fwd/*future columns in features
-    - Ensures horizon stamp exists if present in pipeline
-    """
     forbidden = {"y", "fwd_price", "fwd_ret_raw", "fwd_ret_net", horizon_col}
     leaky = sorted(forbidden.intersection(set(feature_cols)))
     if leaky:
         raise RuntimeError(f"Leakage: features contain forward-looking columns: {leaky}")
-
-    # If horizon stamp exists, it must *NOT* be in features
     if horizon_col in feature_cols:
         raise RuntimeError(f"Leakage: '{horizon_col}' is in features")
-
-    # Targets should be present
     missing_targets = [c for c in target_cols if c not in df.columns]
     if missing_targets:
         raise RuntimeError(f"Missing target columns: {missing_targets}")
