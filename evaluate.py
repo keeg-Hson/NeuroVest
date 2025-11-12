@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-# evaluate.py - robust evaluation with auto-derivation of Actuals from SPY prices
+"""
+evaluate.py - robust evaluation with class-aware PredLong and correct threshold sourcing.
+
+Key changes:
+- If a legacy class column exists (0=Crash, 1=Normal, 2=Spike), derive PredLong as (class == 2).
+- Threshold/inversion resolution now prioritizes:
+    1) configs/best_thresholds.json (spike_thresh, invert_proba)
+    2) models/thresholds_fwd.json    (p_min or spike_thresh)
+    3) models/thresholds.json        (threshold or p_min)
+- If no class column is usable, fall back to Proba or (Spike_Conf vs Crash_Conf) with the resolved threshold.
+"""
 
 from __future__ import annotations
 
@@ -37,33 +47,42 @@ def _train_hurdle() -> float:
 
 
 def _resolve_eval_threshold_and_inversion() -> tuple[float, bool, str]:
+    """
+    Priority order:
+      1) configs/best_thresholds.json        -> keys: spike_thresh, invert_proba
+      2) models/thresholds_fwd.json (forward)-> keys: p_min or spike_thresh
+      3) models/thresholds.json (generic)    -> keys: threshold or p_min
+    Clamps threshold into [0.10, 0.90].
+    """
     candidates = [
-        Path("configs/best_thresholds.json"),  # {"spike_thresh": 0.53, "invert_proba": true}
-        Path("models/thresholds.json"),  # {"threshold": 0.55}
-        Path("models/thresholds_fwd.json"),  # {"p_min": 0.60}
+        Path("configs/best_thresholds.json"),
+        Path("models/thresholds_fwd.json"),
+        Path("models/thresholds.json"),
     ]
     thr, invert, src = None, False, "fallback"
+
     for p in candidates:
         try:
             obj = json.loads(Path(p).read_text())
-            if p.name == "best_thresholds.json":
-                if obj.get("spike_thresh") is not None:
-                    thr = float(obj["spike_thresh"])
-                    invert = bool(obj.get("invert_proba", False))
-                    src = str(p)
-                    break
-            elif "threshold" in obj:
-                thr = float(obj["threshold"])
+            if "spike_thresh" in obj and obj["spike_thresh"] is not None:
+                thr = float(obj["spike_thresh"])
                 src = str(p)
-                break
-            elif "p_min" in obj:
+            elif "p_min" in obj and obj["p_min"] is not None:
                 thr = float(obj["p_min"])
                 src = str(p)
+            elif "threshold" in obj and obj["threshold"] is not None:
+                thr = float(obj["threshold"])
+                src = str(p)
+            if "invert_proba" in obj and obj["invert_proba"] is not None:
+                invert = bool(obj["invert_proba"])
+            if thr is not None:
                 break
         except Exception:
             pass
+
     if thr is None:
         thr = 0.55
+
     thr = max(0.10, min(0.90, float(thr)))
     print(f"[debug] evaluate threshold = {thr:.3f} (source: {src})")
     print(f"[debug] probability inversion {'ON' if invert else 'OFF'}")
@@ -94,9 +113,10 @@ def _from_csv_pipeline() -> pd.DataFrame:
     return pd.read_csv(LABELED_LOG, low_memory=False)
 
 
-def _first_present(df: pd.DataFrame, candidates: Iterable[str]) -> str | None:
+def _first_present(columns: Iterable[str], candidates: Iterable[str]) -> str | None:
+    cols = set(columns)
     for c in candidates:
-        if c in df.columns:
+        if c in cols:
             return c
     return None
 
@@ -153,8 +173,10 @@ def _ensure_targets(df: pd.DataFrame) -> pd.DataFrame:
         raise SystemExit("Missing 'Date' column in labeled_predictions.csv.")
     df["Date"] = pd.to_datetime(df["Date"], errors="coerce").dt.date
 
-    # Actual_Event
-    actual_col = _first_present(df, ["Actual_Event", "Actual_Event_1d", "Actual", "Target", "y"])
+    # -------- Actual_Event (derive from forward returns or existing) --------
+    actual_col = _first_present(
+        df.columns, ["Actual_Event", "Actual_Event_1d", "Actual", "Target", "y"]
+    )
     if actual_col is not None:
         df["Actual_Event"] = _coerce_binary_series(df[actual_col])
     else:
@@ -188,36 +210,41 @@ def _ensure_targets(df: pd.DataFrame) -> pd.DataFrame:
             df["Actual_Event"] = (pd.to_numeric(df[col_name], errors="coerce") > hurdle).astype(int)
             print(f"[debug] derived Actual_Event with H={H}, hurdle={hurdle:.5f} (source: {src})")
 
-    # PredLong from Proba (with threshold + inversion)
-    thr, invert, _ = _resolve_eval_threshold_and_inversion()
-    if "Proba" in df.columns:
-        p = pd.to_numeric(df["Proba"], errors="coerce")
-        if invert:
-            p = 1.0 - p
-        df["PredLong"] = (p >= thr).astype(int)
-        print(
-            f"[debug] PredLong derived from Proba using threshold={thr:.3f}{' (inverted)' if invert else ''}"
-        )
-    else:
-        pred_col = _first_present(df, ["PredLong", "Prediction", "Pred", "Signal", "Position"])
-        if pred_col is None:
-            if {"Spike_Conf", "Crash_Conf"} <= set(df.columns):
-                sc = pd.to_numeric(df["Spike_Conf"], errors="coerce")
-                cc = pd.to_numeric(df["Crash_Conf"], errors="coerce")
-                df["PredLong"] = ((sc >= 0.5) & (sc >= cc)).astype(int)
-            elif "ProbaLong" in df.columns:
-                p = pd.to_numeric(df["ProbaLong"], errors="coerce")
-                if invert:
-                    p = 1.0 - p
-                df["PredLong"] = (p >= thr).astype(int)
-            else:
-                raise SystemExit(
-                    "Missing columns for evaluation: could not find/derive 'PredLong'."
-                )
-        else:
-            df["PredLong"] = _coerce_binary_series(df[pred_col])
+    # -------- PredLong (class → proba/conf) --------
+    # 1) Try legacy class (2 = SPIKE/long)
+    pred_like = _first_present(df.columns, ["Prediction", "Pred", "Label"])
+    used_class = False
+    if pred_like is not None:
+        try:
+            pred_int = pd.to_numeric(df[pred_like], errors="coerce").astype("Int64")
+            uniques = set(pred_int.dropna().unique().tolist())
+            if uniques.issubset({0, 1, 2}) and len(uniques) > 0:
+                df["PredLong"] = (pred_int == 2).astype(int)
+                used_class = True
+                print(f"[debug] PredLong derived from legacy class '{pred_like}' (2=SPIKE → long)")
+        except Exception:
+            used_class = False
 
-    # Outcome
+    # 2) Fall back to Proba or Spike_Conf/Crash_Conf with threshold
+    if not used_class:
+        thr, invert, _ = _resolve_eval_threshold_and_inversion()
+        if "Proba" in df.columns:
+            p = pd.to_numeric(df["Proba"], errors="coerce")
+            if invert:
+                p = 1.0 - p
+            df["PredLong"] = (p >= thr).astype(int)
+            print(
+                f"[debug] PredLong derived from Proba using threshold={thr:.3f}{' (inverted)' if invert else ''}"
+            )
+        elif {"Spike_Conf", "Crash_Conf"} <= set(df.columns):
+            sc = pd.to_numeric(df["Spike_Conf"], errors="coerce")
+            cc = pd.to_numeric(df["Crash_Conf"], errors="coerce")
+            df["PredLong"] = ((sc >= thr) & (sc >= cc)).astype(int)
+            print(f"[debug] PredLong derived from Spike_Conf with threshold={thr:.3f}")
+        else:
+            raise SystemExit("Missing columns for evaluation: could not find/derive 'PredLong'.")
+
+    # -------- Outcome labels --------
     if "Outcome" not in df.columns:
 
         def _outcome_row(r):
@@ -273,7 +300,7 @@ def main():
         proba = pd.to_numeric(df.loc[sub.index, "Proba"], errors="coerce")
         if invert:
             proba = 1.0 - proba
-            print("[debug] probability inversion ON (source: configs/best_thresholds.json)")
+            print("[debug] probability inversion ON (threshold resolution)")
         auc = roc_auc_score(sub["Actual_Event"], proba)
         lab = "Proba (inverted)" if invert else "Proba"
         print(f"AUC (using {lab}): {auc:.4f}")
