@@ -2,21 +2,22 @@
 """
 backtest_module.py
 
-Evaluates and visualizes predictions against SPY. Robust to column names and
-merge suffixes. Can restrict to out-of-sample (OOS) via training split metadata.
+Evaluates and visualizes predictions against SPY under the legacy 0/1/2 convention:
+    0 = CRASH, 1 = NORMAL, 2 = SPIKE
+Backtests a simple long/flat rule that goes long on the next day when Prediction == 2.
 
-Env / CLI knobs (env has priority):
-- NEUROVEST_PREDICTIONS_CSV   : path to predictions (default: logs/labeled_predictions.csv)
-- NEUROVEST_BACKTEST_WINDOW_DAYS : int, only last N days (applied post OOS filter)
-- NEUROVEST_OOS_ONLY          : "1" to restrict metrics to OOS (uses models/split_meta.json)
+Config (env has priority over CLI):
+- NEUROVEST_PREDICTIONS_CSV        : path to predictions (default: logs/labeled_predictions.csv)
+- NEUROVEST_BACKTEST_WINDOW_DAYS   : int, only last N days (applied after OOS filter)
+- NEUROVEST_OOS_ONLY               : "1" to restrict metrics to OOS (uses models/split_meta.json)
 
 Outputs
 - outputs/backtest_plot.png
-- outputs/metrics.json (accuracy + classification report text)
+- outputs/metrics.json (accuracy + classification report text, if labels available)
 
 Expected prediction columns
 - "Prediction" (preferred), else falls back to "Pred" or "Label".
-- Optional label column: "True_Label" or "Label" for metric computation.
+- Optional ground-truth label column: "True_Label" or "Label" (legacy 0/1/2).
 """
 
 from __future__ import annotations
@@ -43,9 +44,9 @@ def _pick_first(columns: list[str], candidates: list[str]) -> str | None:
 
 
 def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
-    # Load SPY
+    # Load SPY prices
     spy = pd.read_csv(SPY_DAILY_CSV, low_memory=False, parse_dates=["Date"])
-    spy = spy.sort_values("Date").reset_index(drop=True)
+    spy = spy.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
 
     # Load predictions
     default_preds = LOGS_DIR / "labeled_predictions.csv"
@@ -54,89 +55,104 @@ def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
         raise SystemExit(f"Predictions file not found: {preds_path}")
 
     preds = pd.read_csv(preds_path, low_memory=False)
-    if "Date" in preds.columns:
-        preds["Date"] = pd.to_datetime(preds["Date"], errors="coerce")
-        preds = preds.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
+    if "Date" not in preds.columns:
+        raise SystemExit("Predictions file must include a 'Date' column.")
+    preds["Date"] = pd.to_datetime(preds["Date"], errors="coerce")
+    preds = preds.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
 
-    # Ensure we have a prediction-like column
+    # Ensure we have a prediction-like column (legacy 0/1/2)
     pred_col = _pick_first(preds.columns.tolist(), ["Prediction", "Pred", "Label"])
     if pred_col is None:
-        raise SystemExit(
-            "No prediction-like column found in predictions (need one of Prediction/Pred/Label)."
-        )
+        raise SystemExit("No prediction-like column found (need one of Prediction/Pred/Label).")
     if pred_col != "Prediction":
         preds["Prediction"] = preds[pred_col]
 
-    # Optional label remap (idempotent if file missing)
-    label_map_path = MODELS_DIR / "label_map_fwd.json"
-    if label_map_path.exists():
-        try:
-            with open(label_map_path) as f:
-                label_map = json.load(f)
-            preds["Prediction"] = preds["Prediction"].map(label_map).fillna(preds["Prediction"])
-        except Exception:
-            pass
+    # DO NOT remap via binary label maps here; backtest expects legacy 0/1/2
+    # (The predictor already writes legacy values when using forward-returns.)
+
+    # Coerce ints where possible
+    with pd.option_context("mode.chained_assignment", None):
+        preds["Prediction"] = pd.to_numeric(preds["Prediction"], errors="coerce").astype("Int64")
+        if "Label" in preds.columns:
+            preds["Label"] = pd.to_numeric(preds["Label"], errors="coerce").astype("Int64")
+        if "True_Label" in preds.columns:
+            preds["True_Label"] = pd.to_numeric(preds["True_Label"], errors="coerce").astype(
+                "Int64"
+            )
 
     return spy, preds
 
 
 def _apply_oos_and_window(merged: pd.DataFrame) -> pd.DataFrame:
-    """Apply OOS filter (if NEUROVEST_OOS_ONLY=1) and window filter (NEUROVEST_BACKTEST_WINDOW_DAYS)."""
+    """Apply OOS filter (if NEUROVEST_OOS_ONLY=1) and trailing window (NEUROVEST_BACKTEST_WINDOW_DAYS)."""
     df = merged.copy()
 
     # OOS filter
-    if os.getenv("NEUROVEST_OOS_ONLY", "0") == "1":
+    if os.getenv("NEUROVEST_OOS_ONLY", "0").strip() == "1":
         split_meta = MODELS_DIR / "split_meta.json"
         if split_meta.exists():
-            meta = json.loads(split_meta.read_text())
-            split_date = pd.to_datetime(meta["split_date"], errors="coerce")
-            if pd.notna(split_date):
-                df = df[df["Date"] >= split_date]
-                print(f"[eval] using OOS only from {split_date.date()}")
+            try:
+                meta = json.loads(split_meta.read_text())
+                split_date = pd.to_datetime(meta.get("split_date"), errors="coerce")
+                if pd.notna(split_date):
+                    df = df[df["Date"] >= split_date]
+                    print(f"[eval] OOS only from {split_date.date()}")
+                else:
+                    print(
+                        "[eval] split_meta.json found but split_date invalid; evaluating full history."
+                    )
+            except Exception as e:
+                print(f"[eval] split_meta.json unreadable ({e}); evaluating full history.")
         else:
             print("[eval] split_meta.json not found; evaluating full history.")
 
-    # Window filter
-    win = os.getenv("NEUROVEST_BACKTEST_WINDOW_DAYS")
+    # Trailing window filter
+    win = os.getenv("NEUROVEST_BACKTEST_WINDOW_DAYS", "").strip()
     if win:
         try:
             n = int(win)
-            if n > 0:
-                if not df.empty:
-                    latest = df["Date"].max()
-                    cutoff = latest - pd.Timedelta(days=n)
-                    df = df[df["Date"] >= cutoff]
-                    print(f"[eval] window: last {n} days (since {cutoff.date()})")
+            if n > 0 and not df.empty:
+                latest = df["Date"].max()
+                cutoff = latest - pd.Timedelta(days=n)
+                df = df[df["Date"] >= cutoff]
+                print(f"[eval] window: last {n} days (since {cutoff.date()})")
         except Exception:
             pass
 
     return df
 
 
-def plot_predictions(merged: pd.DataFrame, savepath: Path) -> None:
-    df = merged.copy()
-
-    # Pick a price column robustly
+def _choose_price_col(df: pd.DataFrame) -> str:
     price_col = _pick_first(
         df.columns.tolist(),
-        ["Close", "AdjClose", "Close_SPY", "AdjClose_SPY", "Close_y", "Close_x"],
+        ["Close", "AdjClose", "Adj Close", "Close_SPY", "AdjClose_SPY", "Close_y", "Close_x"],
     )
     if price_col is None:
         close_like = [c for c in df.columns if "close" in str(c).lower()]
         if not close_like:
             raise SystemExit("Could not find a Close/AdjClose column for plotting.")
         price_col = close_like[0]
+    return price_col
+
+
+def plot_predictions(merged: pd.DataFrame, savepath: Path) -> None:
+    df = merged.copy()
+    price_col = _choose_price_col(df)
+
+    # Legacy rule → position: long next day iff Prediction == 2 (SPIKE)
+    pos = (df["Prediction"].astype("Int64") == 2).astype(float)
+    pos_next = pos.shift(1).fillna(0.0)
 
     plt.figure(figsize=(12, 6))
-    plt.plot(df["Date"], df[price_col], label=f"SPY ({price_col})", alpha=0.7)
+    plt.plot(df["Date"], df[price_col], label=f"SPY ({price_col})", alpha=0.8)
 
-    # Shade long periods where Prediction==1
-    if "Prediction" in df.columns:
-        sig = df["Prediction"].fillna(0).astype(float)
-        ymin, ymax = df[price_col].min(), df[price_col].max()
-        plt.fill_between(df["Date"], ymin, ymax, where=sig > 0, alpha=0.09, label="Long")
+    # Shade long regions
+    ymin, ymax = df[price_col].min(), df[price_col].max()
+    plt.fill_between(
+        df["Date"], ymin, ymax, where=pos_next > 0, alpha=0.10, label="Long (next-day)"
+    )
 
-    # Optional event markers
+    # Optional event markers if present (for quick visual checks)
     for col, color, marker, label in [
         ("Spike", "green", "^", "Spike"),
         ("Crash", "red", "v", "Crash"),
@@ -144,9 +160,9 @@ def plot_predictions(merged: pd.DataFrame, savepath: Path) -> None:
         if col in df.columns:
             pts = df[df[col] == 1]
             if not pts.empty:
-                plt.scatter(pts["Date"], pts[price_col], c=color, marker=marker, s=50, label=label)
+                plt.scatter(pts["Date"], pts[price_col], c=color, marker=marker, s=45, label=label)
 
-    plt.title("SPY vs Predictions")
+    plt.title("SPY vs Predictions (Long next day when Prediction == 2)")
     plt.xlabel("Date")
     plt.ylabel("Price")
     plt.legend()
@@ -157,7 +173,10 @@ def plot_predictions(merged: pd.DataFrame, savepath: Path) -> None:
 
 
 def evaluate_predictions(df: pd.DataFrame) -> dict:
-    """Return metrics dict; prints report if labels available."""
+    """
+    Metrics compare legacy predictions (0/1/2) with legacy labels (0/1/2) if available.
+    This is label classification accuracy — not PnL. The trading rule uses only class 2 for longs.
+    """
     label_col = _pick_first(df.columns.tolist(), ["True_Label", "Label"])
     if label_col is None:
         print("[eval] No ground-truth labels (True_Label/Label) found — skipping metrics.")
@@ -192,16 +211,15 @@ def evaluate_predictions(df: pd.DataFrame) -> dict:
 def run_backtest() -> None:
     spy_df, preds_df = load_data()
 
-    # Normalize dates
+    # Normalize dates and merge on Date
     spy_df["Date"] = pd.to_datetime(spy_df["Date"], errors="coerce").dt.normalize()
     preds_df["Date"] = pd.to_datetime(preds_df["Date"], errors="coerce").dt.normalize()
     preds_df = preds_df.dropna(subset=["Date"])
 
-    # Merge (inner keeps common dates only)
     merged = pd.merge(spy_df, preds_df, on="Date", how="inner")
     merged = merged.sort_values("Date").reset_index(drop=True)
 
-    # Apply OOS + window filters
+    # Apply OOS + trailing window filters
     merged = _apply_oos_and_window(merged)
 
     print("Merged Columns:", merged.columns.tolist())
@@ -209,7 +227,7 @@ def run_backtest() -> None:
     # Plot
     plot_predictions(merged, OUT_DIR / "backtest_plot.png")
 
-    # Evaluate
+    # Evaluate class accuracy (optional)
     metrics = evaluate_predictions(merged)
 
     # Persist metrics
