@@ -1,4 +1,3 @@
-# train.py
 from dotenv import load_dotenv
 
 load_dotenv(".env", override=True)
@@ -50,24 +49,6 @@ FWD_BLACKLIST = {"y", "fwd_price", "fwd_ret_raw", "fwd_ret_net", "horizon_forwar
 if os.getenv("TRAIN_USE_FORWARD_RETURNS", "").strip() in {"1", "true", "True"}:
     TRAIN_CFG["use_forward_returns"] = True
 
-
-# === Public entry points expected by run_all.py ======================================
-def train_model(models=None, fast=False):
-    df = load_SPY_data()
-    return train_best_xgboost_model(df)
-
-
-def run(models=None, fast=False):
-    return train_model(models=models, fast=fast)
-
-
-def main(models=None, fast=False):
-    ok = train_model(models=models, fast=fast)
-    return 0 if ok else 1
-
-
-# =====================================================================================
-
 # --- tolerate unknown CLI args when invoked like: python -m train --models xgb
 import sys
 
@@ -75,6 +56,7 @@ if len(sys.argv) > 1:
     sys.argv = sys.argv[:1]
 
 
+# ====================== Time-series CV helpers ======================
 class PurgedWalkForwardSplit(BaseCrossValidator):
     def __init__(self, n_splits=5, min_train_size=250, test_size=None, embargo=3):
         self.n_splits = int(n_splits)
@@ -131,14 +113,11 @@ class PurgedWalkForwardSplit(BaseCrossValidator):
         return self.n_splits
 
 
-# Quiet warnings
 warnings.filterwarnings(
     "ignore", message=r"\[.*\] WARNING: .*Parameters: { \"use_label_encoder\" } are not used\."
 )
 xgb.set_config(verbosity=0)
 
-
-# Output dirs
 os.makedirs("logs", exist_ok=True)
 os.makedirs("models", exist_ok=True)
 
@@ -150,10 +129,7 @@ def _build_adaptive_cv(n_rows: int) -> BaseCrossValidator:
     remainder = max(1, n_rows - min_train)
     test_size = max(25, remainder // max(1, n_splits))
     return PurgedWalkForwardSplit(
-        n_splits=n_splits,
-        min_train_size=min_train,
-        test_size=test_size,
-        embargo=embargo,
+        n_splits=n_splits, min_train_size=min_train, test_size=test_size, embargo=embargo
     )
 
 
@@ -239,17 +215,11 @@ from sklearn.base import clone
 
 
 def pick_threshold_from_oof(pipe, X, y, cv, pos_label=1):
-    """
-    Time-series-safe OOF: iterate your CV splits, fit on train, predict_proba on test,
-    fill a single out-of-fold vector (no sample predicted more than once), then pick t*.
-    """
     n = len(X)
     proba_oof = np.full(n, np.nan, dtype=float)
     seen = np.zeros(n, dtype=bool)
-    classes_seen = None
-    col_idx = None
+    classes_seen, col_idx = None, None
 
-    # Use your existing generator
     for tr, te in _iter_splits(cv, n):
         est = clone(pipe)
         est.fit(X.iloc[tr], y.iloc[tr])
@@ -261,7 +231,6 @@ def pick_threshold_from_oof(pipe, X, y, cv, pos_label=1):
             except ValueError:
                 col_idx = 1 if probs.shape[1] > 1 else 0
 
-        # If a sample shows up twice (shouldn't), keep the first prediction
         write_mask = ~seen[te]
         idxs = np.asarray(te)[write_mask]
         if idxs.size:
@@ -295,11 +264,27 @@ def pick_threshold_from_oof(pipe, X, y, cv, pos_label=1):
     }
 
 
+# ====================== Public entry points ======================
+def train_model(models=None, fast=False):
+    df = load_SPY_data()
+    return train_best_xgboost_model(df)
+
+
+def run(models=None, fast=False):
+    return train_model(models=models, fast=fast)
+
+
+def main(models=None, fast=False):
+    ok = train_model(models=models, fast=fast)
+    return 0 if ok else 1
+
+
+# ====================== Trainer ======================
 def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     print("\n📊 Generating features...")
     df, all_feature_cols = add_features(df)
 
-    # Read top signals (optional)
+    # Optional: use logs/top_signals.txt if present (for inspection only)
     try:
         with open("logs/top_signals.txt") as f:
             raw_top = [
@@ -307,42 +292,18 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
                 for line in f.readlines()
                 if line.strip() and not line.startswith("Top")
             ]
-        print(f"✅ Loaded top signals: {raw_top}")
+        print(f"✅ Loaded top signals (for reference): {raw_top}")
     except FileNotFoundError:
-        print("⚠️ logs/top_signals.txt not found. Will fall back to generated feature list.")
+        print("⚠️ logs/top_signals.txt not found. Proceeding with the rich feature set.")
         raw_top = []
 
-    # Coverage thresholds scale with data size
     N = len(df)
     MIN_VALID_ROWS = max(5, min(60, int(N * 0.40)))
-    FORCE_MIN_ROWS = max(5, min(50, int(N * 0.30)))
 
-    top_signals = [s for s in raw_top if s in df.columns and df[s].notna().sum() >= MIN_VALID_ROWS]
-    print(f"✅ Filtered top signals with data: {top_signals}")
-
-    feature_cols = [c for c in all_feature_cols if c in top_signals]
-    print(f"🧪 Using top correlated signals only: {feature_cols}")
-
-    forced_externals = [
-        "Sector_MedianRet_20",
-        "Sector_Dispersion_20",
-        "Credit_Spread_20",
-        "TNX_Change_20",
-        "DXY_Change_20",
-        "News_Sent_Z20",
-        "Reddit_Sent_Z20",
+    # Use the full rich feature list from add_features, filtered only for data availability
+    feature_cols = [
+        c for c in all_feature_cols if c in df.columns and df[c].notna().sum() >= MIN_VALID_ROWS
     ]
-    forced_available = [
-        c for c in forced_externals if c in df.columns and df[c].notna().sum() >= FORCE_MIN_ROWS
-    ]
-
-    if not feature_cols:
-        print("⚠️ No top_signals survived coverage filter — fallback to all_feature_cols + forced.")
-        feature_cols = [
-            c for c in all_feature_cols if c in df.columns and df[c].notna().sum() >= MIN_VALID_ROWS
-        ]
-
-    feature_cols = feature_cols + [c for c in forced_available if c not in feature_cols]
 
     if not feature_cols:
         minimal_base = [
@@ -362,21 +323,17 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         feature_cols = [c for c in minimal_base if c in df.columns and df[c].notna().sum() >= 5]
 
     if not feature_cols:
-        raise RuntimeError(
-            "No features available after dynamic fallback. "
-            "Refresh data to increase history, or loosen coverage thresholds."
-        )
+        raise RuntimeError("No features available after dynamic fallback.")
 
     feature_cols = list(dict.fromkeys(feature_cols))
-    print(f"➕ Force-available externals: {forced_available}")
     print(
-        f"🧪 Final candidate features ({len(feature_cols)}): {feature_cols[:20]}{'...' if len(feature_cols) > 20 else ''}"
+        f"🧪 Final feature set ({len(feature_cols)}): {feature_cols[:20]}{'...' if len(feature_cols) > 20 else ''}"
     )
 
     # CLEAN features BEFORE labeling/splitting
     df = finalize_features(df, feature_cols)
 
-    # === Ensure Close exists for labeling ===
+    # Ensure Close exists for labeling
     import pandas as _pd
 
     try:
@@ -389,18 +346,15 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         if "Close" not in df.columns:
             raise RuntimeError(f"Could not attach Close for labeling: {_e}") from _e
     df = df.dropna(subset=["Close"])
-    # ========================================
 
-    # Recompute usable cols after finalize
     feature_cols = [c for c in feature_cols if c in df.columns and df[c].notna().any()]
 
-    # -------- Forward-returns branch --------
+    # ====== Forward-returns branch ======
     if TRAIN_CFG.get("use_forward_returns", False):
         df = df.replace([np.inf, -np.inf], np.nan)
-
         df = add_forward_returns_and_labels(
             df,
-            price_col=TRAIN_CFG["price_col"],  # "Close"
+            price_col=TRAIN_CFG["price_col"],
             horizon=TRAIN_CFG["horizon"],
             fee_bps=TRAIN_CFG["fee_bps"],
             slippage_bps=TRAIN_CFG["slippage_bps"],
@@ -408,7 +362,7 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             pos_threshold=TRAIN_CFG["pos_threshold"],
         )
 
-        # Build/align CLEAN input schema (no forward-looking columns)
+        # Build input schema (never include forward-looking columns)
         INPUT_SCHEMA_FPATH = "models/input_features_fwd.txt"
 
         def _clean_names(names):
@@ -419,21 +373,12 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
                 input_cols = _clean_names([line.strip() for line in f if line.strip()])
                 print(f"📄 Loaded prior input schema (cleaned) with {len(input_cols)} cols.")
         except Exception:
-            # First run: start from available feature cols + harmless basics
             base = list(dict.fromkeys(feature_cols + [c for c in ["Close"] if c in df.columns]))
             input_cols = _clean_names([c for c in base if c in df.columns])
 
-        # Enforce cleanliness and materialize any missing cols
-        input_cols = _clean_names(input_cols)
         for c in input_cols:
             if c not in df.columns:
                 df[c] = np.nan
-
-        # Hard fail if any leaky column still present anywhere
-        leaked = sorted(set(df.columns) & FWD_BLACKLIST)
-        if leaked:
-            # we can keep them in df for labeling, but never in X
-            pass  # no-op: just ensuring we don't include them in input_cols
 
         X = df[input_cols].astype(float).replace([np.inf, -np.inf], np.nan)
         y = df["y"].astype(int)
@@ -442,12 +387,6 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
 
         if any(c in FWD_BLACKLIST for c in X.columns):
             raise RuntimeError(f"Leaky features detected in X: {set(X.columns) & FWD_BLACKLIST}")
-
-        if len(X) < 2:
-            raise RuntimeError(
-                f"Not enough rows to train after NaN-filtering (have {len(X)}). "
-                f"Check SPY.csv length and NaNs in selected features."
-            )
 
         ensure_no_future_leakage(df, list(X.columns), ["y"], horizon_col="horizon_forward")
 
@@ -467,24 +406,20 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             else:
                 raise RuntimeError("Not enough rows to train. Need at least 2.")
 
+        # SMOTE optionally (guarded)
         try:
             use_smote, smote_step = _safe_smote_from_fold(y, tscv_local)
         except Exception:
             use_smote, smote_step = (False, "passthrough")
 
         xgb_common = dict(
-            random_state=42,
-            n_jobs=-1,
-            verbosity=0,
-            tree_method="hist",
-            use_label_encoder=False,
+            random_state=42, n_jobs=-1, verbosity=0, tree_method="hist", use_label_encoder=False
         )
         xgb_obj = dict(objective="binary:logistic", eval_metric="logloss")
 
         use_kbest = X.shape[1] >= 2
         if use_kbest:
             max_k = X.shape[1]
-            # Floor at 5 to avoid underfitting to a single feature
             k_choices = sorted(set([5, 8, 10, 12, max(5, max_k // 2), max_k]))
             k_choices = [k for k in k_choices if 5 <= k <= max_k]
             steps = [
@@ -497,11 +432,13 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             pipe = Pipeline(steps=steps)
             param_grid = {
                 "kbest__k": k_choices,
-                "clf__n_estimators": [150],
-                "clf__max_depth": [3, 5],
-                "clf__learning_rate": [0.05],
-                "clf__subsample": [0.8, 1.0],
-                "clf__colsample_bytree": [0.8, 1.0],
+                "clf__n_estimators": [200, 400],
+                "clf__max_depth": [3, 5, 7],
+                "clf__learning_rate": [0.03, 0.05],
+                "clf__subsample": [0.7, 0.9, 1.0],
+                "clf__colsample_bytree": [0.7, 0.9, 1.0],
+                "clf__min_child_weight": [1, 3, 5],
+                "clf__gamma": [0, 1],
             }
         else:
             steps = [
@@ -512,11 +449,13 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             ]
             pipe = Pipeline(steps=steps)
             param_grid = {
-                "clf__n_estimators": [150],
-                "clf__max_depth": [3, 5],
-                "clf__learning_rate": [0.05],
-                "clf__subsample": [0.8, 1.0],
-                "clf__colsample_bytree": [0.8, 1.0],
+                "clf__n_estimators": [200, 400],
+                "clf__max_depth": [3, 5, 7],
+                "clf__learning_rate": [0.03, 0.05],
+                "clf__subsample": [0.7, 0.9, 1.0],
+                "clf__colsample_bytree": [0.7, 0.9, 1.0],
+                "clf__min_child_weight": [1, 3, 5],
+                "clf__gamma": [0, 1],
             }
 
         sample_weight_profit = compute_sample_weights(
@@ -536,8 +475,8 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             verbose=2,
             error_score=0,
         )
-        grid_search.fit(X, y)
         print(f"[{datetime.now():%H:%M:%S}] starting GridSearchCV...")
+        grid_search.fit(X, y)
         print(f"[{datetime.now():%H:%M:%S}] gridsearch done.")
 
         print(f"\n✅ [FWD] Best Params: {grid_search.best_params_}")
@@ -566,11 +505,11 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
 
         try:
             cal = CalibratedClassifierCV(best_model_wn, cv=3, method="isotonic")
-            cal.fit(X, y)
+            cal.fit(X, y, sample_weight=w_final)
         except Exception as e:
             print(f"⚠️ [FWD] Isotonic calibration failed ({e}) — falling back to sigmoid.")
             cal = CalibratedClassifierCV(best_model_wn, cv=3, method="sigmoid")
-            cal.fit(X, y)
+            cal.fit(X, y, sample_weight=w_final)
 
         best_model = cal
 
@@ -579,8 +518,10 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         model_path_fwd = os.getenv(
             "MODEL_PATH_FWD", os.path.join(MODEL_DIR, "market_crash_model_fwd.pkl")
         )
-        joblib.dump(best_model, model_path_fwd)
-        print(f"💾 [FWD] Model saved to {model_path_fwd}")
+
+        payload = {"model": best_model, "features": list(X.columns)}
+        joblib.dump(payload, model_path_fwd)
+        print(f"💾 [FWD] Model saved to {model_path_fwd} (with feature schema)")
 
         label_values = sorted(pd.Series(y).unique().tolist())
         label_map = {int(v): int(v) for v in label_values}
@@ -597,20 +538,13 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         print("💾 [FWD] Label maps → models/label_map_fwd.json")
 
         try:
-            # Use the best gridsearch pipeline (pre reweight/refit) to get OOF probabilities
             best_pipe_for_oof = grid_search.best_estimator_
             t_star, metr = pick_threshold_from_oof(best_pipe_for_oof, X, y, tscv_local, pos_label=1)
         except Exception as e:
             print(f"⚠️ [FWD] OOF threshold selection failed ({e}) — falling back to 0.50.")
             t_star, metr = (
                 0.50,
-                {
-                    "precision": 0.0,
-                    "recall": 0.0,
-                    "f1": 0.0,
-                    "proba_col_index": 1,
-                    "pos_enc": 1,
-                },
+                {"precision": 0.0, "recall": 0.0, "f1": 0.0, "proba_col_index": 1, "pos_enc": 1},
             )
 
         thr_payload = {
@@ -633,11 +567,11 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
 
         print("✅ [FWD] Forward-returns training completed.")
         print(
-            "ℹ️ To use this model in predict.py, set MODEL_PATH to 'models/market_crash_model_fwd.pkl' and load thresholds from 'models/thresholds_fwd.json'."
+            "ℹ️ Predictor will automatically load this variant when PREDICT_VARIANT=forward_returns."
         )
         return True
 
-    # -------- Triple-barrier branch (unchanged) --------
+    # ====== Triple-barrier branch (unchanged logic, but save model WITH schema) ======
     from utils import label_events_triple_barrier
 
     df["Volatility"] = df["Close"].rolling(window=20).std()
@@ -646,11 +580,10 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
 
     df = label_events_triple_barrier(df, vol_col="ATR_14", pt_mult=1.0, sl_mult=1.0, t_max=10)
 
-    print(
-        (df if "Date" in df.columns else df.reset_index().rename(columns={"index": "Date"}))[
-            ["Date", "Close", "Event"]
-        ].tail(15)
-    )
+    view = (df if "Date" in df.columns else df.reset_index().rename(columns={"index": "Date"}))[
+        ["Date", "Close", "Event"]
+    ].tail(15)
+    print(view)
     print("\n📊 Distribution of Event labels (incl. NaNs):")
     print(df["Event"].value_counts(dropna=False))
     print("\n📊 Number of unique Events:")
@@ -679,7 +612,7 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
 
     print(f"\n🧹 Rows remaining after dropna: {len(df)}")
     if len(df) == 0:
-        print("❌ No data left after dropping NaNs. Check signal columns or event labeling.")
+        print("❌ No data left after dropping NaNs.")
         return False
 
     df = df[df["Event"] != 0].copy()
@@ -774,11 +707,11 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         use_label_encoder=False,
         scale_pos_weight=spw,
     )
-
-    if is_binary:
-        xgb_obj = dict(objective="binary:logistic", eval_metric="logloss")
-    else:
-        xgb_obj = dict(objective="multi:softprob", eval_metric="mlogloss", num_class=n_classes)
+    xgb_obj = (
+        dict(objective="binary:logistic", eval_metric="logloss")
+        if is_binary
+        else dict(objective="multi:softprob", eval_metric="mlogloss", num_class=n_classes)
+    )
 
     use_kbest = X.shape[1] >= 2
     if use_kbest:
@@ -795,11 +728,13 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         pipe = Pipeline(steps=steps)
         param_grid = {
             "kbest__k": k_choices,
-            "clf__n_estimators": [150],
-            "clf__max_depth": [3, 5],
-            "clf__learning_rate": [0.05],
-            "clf__subsample": [0.8, 1.0],
-            "clf__colsample_bytree": [0.8, 1.0],
+            "clf__n_estimators": [200, 400],
+            "clf__max_depth": [3, 5, 7],
+            "clf__learning_rate": [0.03, 0.05],
+            "clf__subsample": [0.7, 0.9, 1.0],
+            "clf__colsample_bytree": [0.7, 0.9, 1.0],
+            "clf__min_child_weight": [1, 3, 5],
+            "clf__gamma": [0, 1],
         }
     else:
         steps = [
@@ -810,11 +745,13 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         ]
         pipe = Pipeline(steps=steps)
         param_grid = {
-            "clf__n_estimators": [150],
-            "clf__max_depth": [3, 5],
-            "clf__learning_rate": [0.05],
-            "clf__subsample": [0.8, 1.0],
-            "clf__colsample_bytree": [0.8, 1.0],
+            "clf__n_estimators": [200, 400],
+            "clf__max_depth": [3, 5, 7],
+            "clf__learning_rate": [0.03, 0.05],
+            "clf__subsample": [0.7, 0.9, 1.0],
+            "clf__colsample_bytree": [0.7, 0.9, 1.0],
+            "clf__min_child_weight": [1, 3, 5],
+            "clf__gamma": [0, 1],
         }
 
     print("\n🔍 Starting Grid Search (time-series CV)...")
@@ -827,8 +764,8 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         verbose=2,
         error_score=0,
     )
-    grid_search.fit(X, y)
     print(f"[{datetime.now():%H:%M:%S}] starting GridSearchCV...")
+    grid_search.fit(X, y)
     print(f"[{datetime.now():%H:%M:%S}] gridsearch done.")
 
     print(f"\n✅ Best Params: {grid_search.best_params_}")
@@ -858,23 +795,23 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
 
     try:
         cal = CalibratedClassifierCV(best_model_wn, cv=3, method="isotonic")
-        cal.fit(X, y)
+        cal.fit(X, y, sample_weight=w)
     except Exception as e:
         print(f"⚠️ Isotonic calibration failed ({e}) — falling back to sigmoid.")
         cal = CalibratedClassifierCV(best_model_wn, cv=3, method="sigmoid")
-        cal.fit(X, y)
+        cal.fit(X, y, sample_weight=w)
 
     best_model = cal
-    joblib.dump(best_model, model_path)
 
-    # Importance export (shap or permutation)
+    payload = {"model": best_model, "features": list(X.columns)}
+    joblib.dump(payload, model_path)
+
     try:
         import numpy as _np
         import shap
 
         shap_est = None
         shap_X = None
-
         base_est = getattr(best_model, "base_estimator", None) or best_model
         if hasattr(base_est, "named_steps"):
             kb = base_est.named_steps.get("kbest", None)
@@ -976,7 +913,6 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
 
     print("\n📊 Predicted class counts (original labels):")
     print(y_pred_orig.value_counts())
-
     print("\n🧾 Classification report (original labels):")
     print(
         classification_report(
@@ -1035,7 +971,8 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
                 indent=2,
             )
         print(
-            f"💾 Saved decision threshold → models/thresholds.json: t={best_t:.3f} (Crash: P={best_prec:.3f}, R={best_rec:.3f}, F1={best_f1:.3f})"
+            f"💾 Saved decision threshold → models/thresholds.json: "
+            f"t={best_t:.3f} (Crash: P={best_prec:.3f}, R={best_rec:.3f}, F1={best_f1:.3f})"
         )
     except Exception as e:
         print(f"⚠️ AP (per-class) skipped: {e}")
@@ -1046,6 +983,7 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     return True
 
 
+# ====================== CLI ======================
 if __name__ == "__main__":
     print("📥 Loading SPY data...")
     df = load_SPY_data()
@@ -1060,4 +998,4 @@ if __name__ == "__main__":
     if success:
         from predict import run_predictions
 
-        run_predictions()
+        run_predictions()  # predict.py
