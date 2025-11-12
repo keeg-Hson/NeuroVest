@@ -1,4 +1,3 @@
-# utils.py
 import csv
 import os
 import shutil
@@ -114,7 +113,7 @@ def get_feature_list():
 def in_human_speak(label):
     """
     Convert internal labels to human-readable strings.
-    0 = NORMAL, 1 = CRASH, 2 = SPIKE
+    0 = SPIKE, 1 = NORMAL, 2 = CRASH
     """
     try:
         if isinstance(label, str) and label.isdigit():
@@ -123,12 +122,12 @@ def in_human_speak(label):
         pass
 
     mapping = {
-        0: "NORMAL",
-        1: "CRASH",
-        2: "SPIKE",
-        "0": "NORMAL",
-        "1": "CRASH",
-        "2": "SPIKE",
+        0: "SPIKE",
+        1: "NORMAL",
+        2: "CRASH",
+        "0": "SPIKE",
+        "1": "NORMAL",
+        "2": "CRASH",
         "NORMAL": "NORMAL",
         "CRASH": "CRASH",
         "SPIKE": "SPIKE",
@@ -237,7 +236,13 @@ def log_prediction_to_file(
     if VAR == "forward_returns":
         sig = "TRADE" if row["Prediction"] == 1 else "NO-TRADE"
     else:
-        sig = "BUY" if row["Prediction"] == 2 else ("SELL" if row["Prediction"] == 1 else "HOLD")
+        # 3-class convention: 0 = SPIKE (buy), 1 = NORMAL (hold), 2 = CRASH (sell)
+        if row["Prediction"] == 0:
+            sig = "BUY"
+        elif row["Prediction"] == 2:
+            sig = "SELL"
+        else:
+            sig = "HOLD"
 
     signals_path = "logs/signals.csv"
     signals_headers = ["Date", "Signal", "Confidence", "Price", "Spike_Conf", "Crash_Conf"]
@@ -282,11 +287,14 @@ def label_real_outcomes_from_log(crash_thresh=-0.005, spike_thresh=0.005):
     df["Next_Close"] = df[price_col].shift(-1)
     df["Future_Return"] = (df["Next_Close"] - df[price_col]) / df[price_col]
 
-    # thresholds are parameters but keep the defaults for consistency
+    # 3-class convention: 0 = SPIKE, 1 = NORMAL, 2 = CRASH
     df["Actual_Event"] = np.select(
-        [df["Future_Return"] < crash_thresh, df["Future_Return"] > spike_thresh],
-        [1, 2],
-        default=0,
+        [
+            df["Future_Return"] <= crash_thresh,
+            df["Future_Return"] >= spike_thresh,
+        ],
+        [2, 0],
+        default=1,
     )
 
     df.dropna(subset=["Future_Return"], inplace=True)
@@ -392,15 +400,36 @@ def add_features(df):
         if col in d.columns:
             d[col] = pd.to_numeric(d[col], errors="coerce")
 
+    # Basic return structure
     d["Daily_Return"] = d["Close"].pct_change()
     d["Return_Lag1"] = d["Close"].pct_change(1)
     d["Return_Lag3"] = d["Close"].pct_change(3)
     d["Return_Lag5"] = d["Close"].pct_change(5)
 
-    low14 = d["Low"].rolling(14).min()
-    high14 = d["High"].rolling(14).max()
-    d["Stoch_K"] = 100 * ((d["Close"] - low14) / ((high14 - low14) + 1e-9))
+    # Rolling volatility
+    d["Rolling_STD_5"] = d["Daily_Return"].rolling(5).std()
+    d["Volatility"] = d["Daily_Return"].rolling(20).std()
 
+    # Moving averages and MACD family
+    d["MA_20"] = d["Close"].rolling(20).mean()
+    d["EMA_12"] = d["Close"].ewm(span=12, adjust=False).mean()
+    d["EMA_26"] = d["Close"].ewm(span=26, adjust=False).mean()
+    d["MACD"] = d["EMA_12"] - d["EMA_26"]
+    d["MACD_Signal"] = d["MACD"].ewm(span=9, adjust=False).mean()
+    d["MACD_Histogram"] = d["MACD"] - d["MACD_Signal"]
+
+    # Bollinger bands and related features
+    bb_window = 20
+    bb_mean = d["Close"].rolling(bb_window).mean()
+    bb_std = d["Close"].rolling(bb_window).std()
+    bb_upper = bb_mean + 2.0 * bb_std
+    bb_lower = bb_mean - 2.0 * bb_std
+    denom_bb = bb_mean.replace(0, np.nan)
+    d["BB_Width"] = (bb_upper - bb_lower) / denom_bb
+    band_span = (bb_upper - bb_lower).replace(0, np.nan)
+    d["BB_PctB"] = (d["Close"] - bb_lower) / band_span
+
+    # ATR and derived features
     hl = (d["High"] - d["Low"]).abs()
     hc = (d["High"] - d["Close"].shift()).abs()
     lc = (d["Low"] - d["Close"].shift()).abs()
@@ -408,6 +437,65 @@ def add_features(df):
     d["ATR_14"] = tr.ewm(alpha=1 / 14, adjust=False).mean()
     d["Dist_High20_ATR"] = (d["Close"] - d["High"].rolling(20).max()) / (d["ATR_14"] + 1e-9)
 
+    # Stochastics
+    low14 = d["Low"].rolling(14).min()
+    high14 = d["High"].rolling(14).max()
+    d["Stoch_K"] = 100 * ((d["Close"] - low14) / ((high14 - low14) + 1e-9))
+    d["Stoch_D"] = d["Stoch_K"].rolling(3).mean()
+
+    # Gap percentage
+    d["Gap_Pct"] = (d["Open"] - d["Close"].shift(1)) / d["Close"].shift(1)
+
+    # OBV and volume-based features
+    price_diff = d["Close"].diff()
+    direction = np.sign(price_diff).fillna(0.0)
+    d["OBV"] = (direction * d["Volume"].fillna(0.0)).cumsum()
+    vol_roll = d["Volume"].rolling(20).mean()
+    d["Vol_Ratio"] = d["Volume"] / vol_roll
+
+    # Momentum and z-momentum
+    d["Price_Momentum_10"] = d["Close"].pct_change(10)
+    roll_mom_mean = d["Price_Momentum_10"].rolling(60).mean()
+    roll_mom_std = d["Price_Momentum_10"].rolling(60).std()
+    d["ZMomentum"] = (d["Price_Momentum_10"] - roll_mom_mean) / roll_mom_std
+
+    # Acceleration
+    d["Acceleration"] = d["Daily_Return"] - d["Daily_Return"].shift(1)
+
+    # RSI and derived features
+    delta = d["Close"].diff()
+    gain = delta.clip(lower=0.0)
+    loss = -delta.clip(upper=0.0)
+    avg_gain = gain.rolling(14).mean()
+    avg_loss = loss.rolling(14).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    d["RSI"] = 100.0 - (100.0 / (1.0 + rs))
+    d["RSI_Delta"] = d["RSI"].diff()
+    d["RSI_Lag_1"] = d["RSI"].shift(1)
+    d["RSI_Lag_3"] = d["RSI"].shift(3)
+    d["RSI_Lag_5"] = d["RSI"].shift(5)
+
+    # Higher-order return stats
+    d["Ret_Skew_20"] = d["Daily_Return"].rolling(20).skew()
+    d["Ret_Kurt_20"] = d["Daily_Return"].rolling(20).kurt()
+
+    # VWAP and deviation
+    typical_price = (d["High"] + d["Low"] + d["Close"]) / 3.0
+    cum_vol = d["Volume"].replace(0, np.nan).cumsum()
+    d["VWAP"] = (typical_price * d["Volume"]).cumsum() / cum_vol
+    d["VWAP_Dev"] = (d["Close"] - d["VWAP"]) / d["VWAP"]
+
+    # Volume scaled by ATR
+    d["Volume_per_ATR"] = d["Volume"] / (d["ATR_14"] + 1e-9)
+
+    # KC_Width via Keltner-like channel around an EMA
+    ema_price_20 = d["Close"].ewm(span=20, adjust=False).mean()
+    kc_upper = ema_price_20 + 2.0 * d["ATR_14"]
+    kc_lower = ema_price_20 - 2.0 * d["ATR_14"]
+    kc_span = (kc_upper - kc_lower).replace(0, np.nan)
+    d["KC_Width"] = kc_span / ema_price_20.replace(0, np.nan)
+
+    # External signals merged after core price features
     try:
         from external_signals import add_external_signals as _add_ext
 
@@ -415,14 +503,21 @@ def add_features(df):
     except Exception:
         pass
 
-    feature_cols = [
-        "ZMomentum",
-        "Acceleration",
-        "Return_Lag1",
-        "Return_Lag3",
-        "Return_Lag5",
-        "Daily_Return",
-        "Stoch_K",
+    # Interaction features that depend on sentiment and volume/RSI
+    if "News_Sent_Z20" in d.columns and "Vol_Ratio" in d.columns:
+        d["Sent_x_Vol"] = d["News_Sent_Z20"] * d["Vol_Ratio"]
+    if "RSI" in d.columns and "News_Sent_Z20" in d.columns:
+        d["RSI_x_NewsZ"] = d["RSI"] * d["News_Sent_Z20"]
+    if "RSI" in d.columns and "Reddit_Sent_Z20" in d.columns:
+        d["RSI_x_RedditZ"] = d["RSI"] * d["Reddit_Sent_Z20"]
+
+    # Second-order feature interactions
+    if "MACD" in d.columns and "RSI" in d.columns:
+        d["MACD_x_RSI"] = d["MACD"] * d["RSI"]
+
+    # Build the rich feature set: technical core + macro/sentiment extras
+    core_features = get_feature_list()
+    extra_features = [
         "Gap_Pct",
         "Dist_High20_ATR",
         "ATR_14",
@@ -435,7 +530,8 @@ def add_features(df):
         "News_Sent_Z20",
         "Reddit_Sent_Z20",
     ]
-    feature_cols = [c for c in feature_cols if c in d.columns]
+    candidate_features = list(dict.fromkeys(core_features + extra_features))
+    feature_cols = [c for c in candidate_features if c in d.columns]
     feature_cols = list(dict.fromkeys(feature_cols))
     return d, feature_cols
 
