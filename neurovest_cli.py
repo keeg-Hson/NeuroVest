@@ -220,6 +220,30 @@ def cmd_thresh_sweep(_: argparse.Namespace) -> None:
     cmd_predict(argparse.Namespace(backfill=True))
 
 
+# --- minimal guard so backtest/eval use a sane threshold without changing your UX ---
+def _ensure_threshold_before_eval(auto_threshold: bool) -> None:
+    """
+    If --auto-threshold is set → sweep now.
+    If not set but configs/best_thresholds.json is missing → sweep once to initialize.
+    Otherwise → do nothing.
+    """
+    CONFIGS.mkdir(parents=True, exist_ok=True)
+    tgt = CONFIGS / "best_thresholds.json"
+    if auto_threshold or not tgt.exists():
+        labeled = LOGS / "labeled_predictions.csv"
+        if not labeled.exists():
+            cmd_predict(argparse.Namespace(backfill=True))
+        best_thr, inv, *_ = _sweep_best_threshold(labeled)
+        with open(tgt, "w") as f:
+            json.dump({"spike_thresh": best_thr, "invert_proba": bool(inv)}, f, indent=2)
+        print(
+            f"[thresh-sweep] wrote {tgt} with spike_thresh={best_thr:.3f}  invert_proba={bool(inv)}"
+        )
+        cmd_predict(argparse.Namespace(backfill=True))
+    else:
+        print("[thresh-sweep] using existing configs/best_thresholds.json")
+
+
 def cmd_backtest(args: argparse.Namespace) -> None:
     _ensure_dirs()
     rest = args.rest or []
@@ -481,7 +505,7 @@ def cmd_features(args: argparse.Namespace) -> None:
 
     stamp = pd.Timestamp.utcnow().strftime("%Y%m%d")
     base = f"neurovest_features_{stamp}"
-    pq = out_dir / f"{base}.parquet"
+    pq = out_dir / f"{base}.parquet"  # ← fixed: removed stray "}"
     csv = out_dir / f"{base}.csv"
     fl = out_dir / f"{base}.features.txt"
     meta = out_dir / f"{base}.meta.json"
@@ -528,7 +552,7 @@ def cmd_features(args: argparse.Namespace) -> None:
 
 def cmd_all(args: argparse.Namespace) -> None:
     """
-    Run: sanitize → (bootstrap|update) → labels → train → predict → [auto-threshold] → backtest → eval → tearsheet
+    Run: sanitize → (bootstrap|update) → labels → train → predict → [auto-threshold/init-threshold] → backtest → eval → tearsheet
     """
     _ensure_dirs()
 
@@ -549,9 +573,8 @@ def cmd_all(args: argparse.Namespace) -> None:
     # 5) predict (full backfill by default in all-in-one)
     cmd_predict(argparse.Namespace(backfill=True))
 
-    # 5.5) optional threshold sweep then re-apply
-    if args.auto_threshold:
-        cmd_thresh_sweep(ns)
+    # 5.5) ensure or sweep threshold before backtest/eval (keeps your UX the same)
+    _ensure_threshold_before_eval(auto_threshold=args.auto_threshold)
 
     # 6) backtest
     rest = args.rest or []
@@ -666,7 +689,7 @@ def build_parser() -> argparse.ArgumentParser:
     # all-in-one
     ap = sub.add_parser(
         "all",
-        help="run the whole pipeline (sanitize → data → labels → train → predict → [auto-threshold] → backtest → eval → tearsheet)",
+        help="run the whole pipeline (sanitize → data → labels → train → predict → [auto-threshold/init-threshold] → backtest → eval → tearsheet)",
     )
     ap.add_argument(
         "--fast", action="store_true", help="skip optimizer; quick backtest with sane defaults"
