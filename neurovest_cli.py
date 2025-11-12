@@ -19,6 +19,15 @@ Wraps runnable scripts into a single CLI with subcommands:
   sanitize    → clean dirty CSVs in data/
   features    → build a canonical feature table (single CSV/Parquet)
   all         → run EVERYTHING sequentially; optional --auto-threshold
+
+Label convention (unified)
+--------------------------
+Predictions and evaluation use:
+    0 = SPIKE
+    1 = NORMAL
+    2 = CRASH
+
+Threshold sweeps treat the positive class as "SPIKE" under this convention.
 """
 
 from __future__ import annotations
@@ -145,11 +154,15 @@ def cmd_predict_live(_: argparse.Namespace) -> None:
 def _sweep_best_threshold(csv_path: Path) -> tuple[float, bool, float, float]:
     """
     Choose threshold that maximizes BALANCED ACCURACY on current labeled_predictions.csv.
-    Also detect if probabilities should be inverted (AUC < 0.5 and flipped AUC > 0.5).
+    Uses the unified label convention (0=SPIKE,1=NORMAL,2=CRASH) and treats
+    the positive class as "SPIKE".
+
+    Also detects whether probabilities should be inverted (AUC < 0.5 and flipped AUC > 0.5).
 
     Returns: (best_threshold, invert_proba, best_bal_acc, plain_accuracy_at_best)
     """
     # normalize/derive Actuals if needed
+    _ensure_dirs()
     _run_py(SCRIPTS["evaluate"], check=False)
 
     df = pd.read_csv(csv_path, low_memory=False)
@@ -158,12 +171,36 @@ def _sweep_best_threshold(csv_path: Path) -> tuple[float, bool, float, float]:
     if "Proba" not in df.columns:
         raise SystemExit("Proba column not present in predictions; cannot sweep threshold.")
 
-    y = df["Actual_Event"].astype(int)
+    # Raw multi-class labels under unified convention: 0=SPIKE,1=NORMAL,2=CRASH
+    y_raw = pd.to_numeric(df["Actual_Event"], errors="coerce")
+
+    # Derive a binary target for thresholding.
+    # Primary rule under unified mapping: positive class = SPIKE (0).
+    # If labels are strictly binary {0,1} or {1,2}, fall back to "max label is positive" as a safety net.
+    y_unique = set(int(v) for v in y_raw.dropna().unique())
+
+    if y_unique.issuperset({0, 1, 2}):
+        # Explicit 3-class case → SPIKE vs non-SPIKE
+        y = (y_raw == 0).astype(int)
+    elif y_unique == {0, 1}:
+        # Binary case with 0/1 → treat 1 as positive
+        y = (y_raw == 1).astype(int)
+    elif y_unique == {1, 2}:
+        # Binary case with 1/2 → treat 2 as positive
+        y = (y_raw == 2).astype(int)
+    else:
+        # Fallback: treat the maximum label value as the positive class
+        max_lab = max(y_unique) if y_unique else 1
+        y = (y_raw == max_lab).astype(int)
+
     p = pd.to_numeric(df["Proba"], errors="coerce")
     mask = ~(y.isna() | p.isna())
     y, p = y[mask].to_numpy(), p[mask].to_numpy()
 
-    # Decide inversion by AUC
+    if y.size == 0:
+        raise SystemExit("No valid (y, p) pairs for threshold sweep after filtering NaNs.")
+
+    # Decide inversion by AUC on the derived binary target
     inv = False
     try:
         auc = roc_auc_score(y, p)
@@ -205,8 +242,8 @@ def cmd_thresh_sweep(_: argparse.Namespace) -> None:
     _ensure_dirs()
     labeled = LOGS / "labeled_predictions.csv"
     if not labeled.exists():
-        # Ensure we have predictions to sweep
-        cmd_predict(_)
+        # Ensure there are predictions to sweep
+        cmd_predict(argparse.Namespace(backfill=True))
 
     best_thr, inv, best_bal, best_acc = _sweep_best_threshold(labeled)
 
@@ -220,7 +257,7 @@ def cmd_thresh_sweep(_: argparse.Namespace) -> None:
     cmd_predict(argparse.Namespace(backfill=True))
 
 
-# --- minimal guard so backtest/eval use a sane threshold without changing your UX ---
+# --- minimal guard so backtest/eval use a sane threshold without changing CLI UX ---
 def _ensure_threshold_before_eval(auto_threshold: bool) -> None:
     """
     If --auto-threshold is set → sweep now.
@@ -247,7 +284,6 @@ def _ensure_threshold_before_eval(auto_threshold: bool) -> None:
 def cmd_backtest(args: argparse.Namespace) -> None:
     _ensure_dirs()
     rest = args.rest or []
-    # strip a standalone "--" if present so backtest.py doesn't receive it
     rest = [x for x in rest if x != "--"]
     _run_py(SCRIPTS["backtest"], extra_args=rest, check=False)
 
@@ -255,7 +291,6 @@ def cmd_backtest(args: argparse.Namespace) -> None:
 def cmd_backtest_opt(args: argparse.Namespace) -> None:
     _ensure_dirs()
     rest = args.rest or []
-    # strip a standalone "--" if present
     rest = [x for x in rest if x != "--"]
     if "--optimize" not in rest:
         rest = ["--optimize", "--apply-best"] + rest
@@ -294,14 +329,13 @@ DATE_CANDIDATES = ["Date", "DATE", "date", "observation_date", "timestamp", "ds"
 
 def _load_any_csv(path: Path) -> pd.DataFrame:
     df = pd.read_csv(path, low_memory=False)
-    # fix "Ticker == Date" header-as-row
     if (
         "Ticker" in df.columns
         and isinstance(df["Ticker"].iloc[0], str)
         and df["Ticker"].iloc[0].lower() == "date"
     ):
         df = df.iloc[1:].reset_index(drop=True)
-    date_col = None
+    date_col = None  # detect a viable date column
     for cand in DATE_CANDIDATES:
         if cand in df.columns:
             dt = pd.to_datetime(df[cand], errors="coerce")
@@ -319,7 +353,6 @@ def _pick_ohlcv(df: pd.DataFrame) -> pd.DataFrame:
     exact = ["Open", "High", "Low", "Close", "Adj Close", "Volume"]
     if all(c in df.columns for c in exact):
         return df[["Date"] + exact].copy()
-    # fallback: first 6 numeric columns
     numcols = [c for c in df.columns if c != "Date" and pd.api.types.is_numeric_dtype(df[c])]
     if len(numcols) >= 6:
         out = pd.concat([df[["Date"]], df[numcols[:6]]], axis=1)
@@ -365,7 +398,6 @@ def cmd_features(args: argparse.Namespace) -> None:
     if not price_path.exists():
         raise SystemExit(f"Price CSV not found: {price_path}")
 
-    # Load SPY (Yahoo schema)
     usecols = ["Date", "Open", "High", "Low", "Close", "Adj Close", "Volume"]
     price_df = pd.read_csv(price_path, usecols=lambda c: c in usecols, low_memory=False)
     price_df["Date"] = pd.to_datetime(price_df["Date"], errors="coerce")
@@ -378,12 +410,10 @@ def cmd_features(args: argparse.Namespace) -> None:
 
     base = price_df.copy()
 
-    # Merge external signals (optional)
     if ext_dir and ext_dir.exists():
         for csv in sorted(ext_dir.glob("*.csv")):
             try:
                 x = pd.read_csv(csv, low_memory=False)
-                # detect date col
                 for cand in DATE_CANDIDATES:
                     if cand in x.columns:
                         x[cand] = pd.to_datetime(x[cand], errors="coerce")
@@ -405,7 +435,6 @@ def cmd_features(args: argparse.Namespace) -> None:
             except Exception as e:
                 print(f"[warn] external merge failed for {csv.name}: {e}")
 
-    # features
     close = base["Adj Close"] if "Adj Close" in base.columns else base["Close"]
     high, low, vol = base["High"], base["Low"], base["Volume"]
 
@@ -472,13 +501,11 @@ def cmd_features(args: argparse.Namespace) -> None:
     feats["px_over_sma20"] = close / feats["sma_20"] - 1.0
     feats["px_over_sma50"] = close / feats["sma_50"] - 1.0
 
-    # label
     H = int(args.horizon)
     fwd_ret = close.shift(-H) / close - 1.0
     y = (fwd_ret >= float(args.min_return)).astype("Int64")
     y.iloc[-H:] = pd.NA
 
-    # assemble
     out = pd.DataFrame(index=feats.index)
     out["date"] = out.index
     out["ticker"] = args.ticker
@@ -487,7 +514,6 @@ def cmd_features(args: argparse.Namespace) -> None:
     out = out.join(feats)
     out["y_up_fwd"] = y
 
-    # time split
     n = len(out)
     ntr = int(n * 0.7)
     nval = int(n * 0.15)
@@ -497,22 +523,21 @@ def cmd_features(args: argparse.Namespace) -> None:
     split.iloc[ntr + nval :] = "test"
     out["split"] = split
 
-    # drop NaNs/unlabeled
     feat_cols = [c for c in out.columns if c not in ["date", "ticker", "y_up_fwd", "split"]]
     mask = out[feat_cols].notna().all(axis=1) & out["y_up_fwd"].notna()
     out = out.loc[mask].copy()
     out = out[["date", "ticker"] + feat_cols + ["y_up_fwd", "split"]]
 
     stamp = pd.Timestamp.utcnow().strftime("%Y%m%d")
-    base = f"neurovest_features_{stamp}"
-    pq = out_dir / f"{base}.parquet"  # ← fixed: removed stray "}"
-    csv = out_dir / f"{base}.csv"
-    fl = out_dir / f"{base}.features.txt"
-    meta = out_dir / f"{base}.meta.json"
+    base_name = f"neurovest_features_{stamp}"
+    pq = out_dir / f"{base_name}.parquet"
+    csv = out_dir / f"{base_name}.csv"
+    fl = out_dir / f"{base_name}.features.txt"
+    meta = out_dir / f"{base_name}.meta.json"
 
     wrote_parquet = False
     try:
-        out.to_parquet(pq, index=False)  # requires pyarrow/fastparquet
+        out.to_parquet(pq, index=False)
         wrote_parquet = True
     except Exception as e:
         print(f"[warn] parquet write failed: {e}; writing CSV only")
@@ -556,27 +581,16 @@ def cmd_all(args: argparse.Namespace) -> None:
     """
     _ensure_dirs()
 
-    # 1) sanitize
     if not args.no_sanitize:
         cmd_sanitize(args)
 
-    # 2) data (bootstrap or update)
     ns = argparse.Namespace(action="bootstrap" if args.bootstrap else "update")
     cmd_data(ns)
-
-    # 3) labels
     cmd_labels(ns)
-
-    # 4) train
     cmd_train(ns)
-
-    # 5) predict (full backfill by default in all-in-one)
     cmd_predict(argparse.Namespace(backfill=True))
-
-    # 5.5) ensure or sweep threshold before backtest/eval (keeps your UX the same)
     _ensure_threshold_before_eval(auto_threshold=args.auto_threshold)
 
-    # 6) backtest
     rest = args.rest or []
     if args.fast:
         default_bt = [
@@ -615,10 +629,7 @@ def cmd_all(args: argparse.Namespace) -> None:
         ]
         cmd_backtest(argparse.Namespace(rest=(default_opt + rest)))
 
-    # 7) eval
     cmd_eval(ns)
-
-    # 8) tearsheet
     cmd_tearsheet(ns)
 
 
@@ -629,14 +640,12 @@ def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description="NeuroVest one-file CLI")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    # data
     dp = sub.add_parser("data", help="data utilities")
     dp_sub = dp.add_subparsers(dest="action", required=True)
     dp_sub.add_parser("update", help="run update_spy_data.py")
     dp_sub.add_parser("bootstrap", help="download SPY/HYG/LQD/UUP/TNX/DXY via yfinance")
     dp.set_defaults(func=cmd_data)
 
-    # labels/train/predict
     sub.add_parser("labels", help="run generate_labels.py").set_defaults(func=cmd_labels)
     sub.add_parser("train", help="run train_from_labels.py").set_defaults(func=cmd_train)
 
@@ -652,13 +661,11 @@ def build_parser() -> argparse.ArgumentParser:
         func=cmd_predict_live
     )
 
-    # threshold sweep
     sub.add_parser(
         "thresh-sweep",
         help="sweep balanced accuracy → configs/best_thresholds.json (with invert_proba) → backfill",
     ).set_defaults(func=cmd_thresh_sweep)
 
-    # backtest (pass-through)
     bp = sub.add_parser("backtest", help="run backtest.py (pass-through flags with --)")
     bp.add_argument("rest", nargs=argparse.REMAINDER, help="flags after -- passed to backtest.py")
     bp.set_defaults(func=cmd_backtest)
@@ -673,10 +680,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser("schedule", help="run run_daily_pipeline.py").set_defaults(func=cmd_schedule)
     sub.add_parser("live", help="run live_loop.py").set_defaults(func=cmd_live)
 
-    # sanitize
     sub.add_parser("sanitize", help="repair messy data/*.csv").set_defaults(func=cmd_sanitize)
 
-    # features
     fp = sub.add_parser("features", help="materialize single feature table")
     fp.add_argument("--price-csv", default="data/SPY.csv")
     fp.add_argument("--external-dir", default="data_cache")
@@ -686,7 +691,6 @@ def build_parser() -> argparse.ArgumentParser:
     fp.add_argument("--ticker", default="SPY")
     fp.set_defaults(func=cmd_features)
 
-    # all-in-one
     ap = sub.add_parser(
         "all",
         help="run the whole pipeline (sanitize → data → labels → train → predict → [auto-threshold/init-threshold] → backtest → eval → tearsheet)",
