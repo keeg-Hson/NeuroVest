@@ -413,7 +413,6 @@ def cmd_features(args: argparse.Namespace) -> None:
     def atr(high, low, close, w=14):
         return trange(high, low, close).ewm(alpha=1 / w, adjust=False).mean()
 
-
     def boll(s, w=20, n=2.0):
         m = sma(s, w)
         sd = s.rolling(w).std()
