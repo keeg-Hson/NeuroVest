@@ -1,4 +1,22 @@
-# sweep_optimizer.py
+#!/usr/bin/env python3
+"""
+sweep_optimizer.py
+
+Grid search over Spike/Crash/confidence thresholds to optimize backtest metrics.
+
+Assumptions
+-----------
+- The prediction stack uses unified 3-class labels:
+      0 = SPIKE
+      1 = NORMAL
+      2 = CRASH
+- Backtest thresholds map to:
+      spike_thresh  → minimum Spike_Conf to treat as a spike event
+      crash_thresh  → minimum Crash_Conf to treat as a crash event
+- run_predictions(backfill=True) writes predictions to logs/daily_predictions.csv
+  (and related logs) but does not return a DataFrame.
+"""
+
 import json
 import os
 from collections.abc import Iterable
@@ -12,19 +30,43 @@ from predict import run_predictions
 os.makedirs("logs", exist_ok=True)
 os.makedirs("configs", exist_ok=True)
 
-# Dense ranges (adjust as you like)
+# Dense ranges (adjust as desired)
 SPIKE_GRID: Iterable[float] = np.arange(0.50, 0.91, 0.05)
 CRASH_GRID: Iterable[float] = np.arange(0.50, 0.91, 0.05)
 CONF_GRID: Iterable[float | None] = [None, 0.50, 0.60, 0.70, 0.80]
 
 OBJECTIVE = "final_balance"  # "avg_dollar_return" | "final_balance" | "total_return" | "win_rate" | "profit_factor"
-BACKTEST_WINDOW_DAYS = None  # set to N (e.g., 365) to speed up
+BACKTEST_WINDOW_DAYS = None  # set to N (e.g., 365) to restrict the backtest window
+
+
+def _ensure_predictions() -> pd.DataFrame:
+    """
+    Run prediction backfill and load daily_predictions to confirm data presence.
+    """
+    print("▶️ Generating predictions once up-front (backfill)...")
+    # Backfill writes logs/daily_predictions.csv and logs/labeled_predictions.csv.
+    run_predictions(backfill=True)
+
+    pred_path = "logs/daily_predictions.csv"
+    if not os.path.exists(pred_path) or os.path.getsize(pred_path) == 0:
+        print(f"🚫 Prediction log not found or empty at {pred_path}")
+        return pd.DataFrame()
+
+    try:
+        df = pd.read_csv(pred_path)
+    except Exception as e:
+        print(f"🚫 Failed to read {pred_path}: {e}")
+        return pd.DataFrame()
+
+    if df.empty:
+        print(f"🚫 Prediction log at {pred_path} is empty after backfill.")
+    else:
+        print(f"✅ Loaded {len(df)} prediction rows from {pred_path}")
+    return df
 
 
 def main():
-    # Generate predictions once
-    print("▶️ Generating predictions once up-front...")
-    pred_df = run_predictions()
+    pred_df = _ensure_predictions()
     if pred_df is None or pred_df.empty:
         print("🚫 No predictions available. Aborting sweep.")
         return
