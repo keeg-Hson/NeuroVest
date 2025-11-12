@@ -1,8 +1,41 @@
 #!/usr/bin/env python3
+"""
+NeuroVest — prediction runner (backfill + live)
+
+Purpose
+-------
+Loads a trained model, rebuilds the same features used during training, scores
+probabilities, applies a decision threshold, and writes predictions to logs.
+
+Label convention
+----------------
+Legacy logs use a 3-class convention:
+    0 = CRASH
+    1 = NORMAL
+    2 = SPIKE
+
+The active forward-returns model is binary internally ({0,1} = no-trade/trade).
+To remain compatible with legacy outputs, binary predictions are mapped to:
+    0 → 1 (NORMAL)
+    1 → 2 (SPIKE)
+CRASH (0) exists only in ground truth under this binary setup.
+
+Threshold resolution
+--------------------
+Decision threshold is resolved in this order:
+  1) File at THRESH_PATH (from environment)
+  2) models/thresholds_fwd.json
+  3) configs/best_thresholds.json
+  4) models/thresholds.json
+If none are available, falls back to PREDICT_CFG (default 0.55).
+The threshold is clamped to [0.10, 0.90].
+"""
+
 from __future__ import annotations
 
 import argparse
 import json
+import os
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -11,184 +44,144 @@ import numpy as np
 import pandas as pd
 
 from config import LOGS_DIR, MODELS_DIR, PREDICT_CFG, SPY_DAILY_CSV
+from utils import add_features, finalize_features  # must match training pipeline
 
 
 # =============================================================================
-# Public API (used by sweep scripts / CLI)
+# Public API
 # =============================================================================
 def run_predictions(backfill: bool = True) -> None:
     """
-    Entry point for external callers (e.g., sweep_optimizer.py).
-    If backfill=True, scores full history and rewrites logs/labeled_predictions.csv.
+    When backfill=True, scores full history and rewrites logs/labeled_predictions.csv.
     Otherwise, appends a single live row.
     """
-    model_path = MODELS_DIR / "market_crash_model.pkl"
-    model, saved_feats = _load_model_and_features(model_path)
+    model_path, variant = _resolve_model_path()
+    model, saved_feats = _load_model_and_features(model_path, variant)
+    _assert_binary_model(model)
     if backfill:
-        _backfill_full(model, saved_feats)
+        _backfill_full(model, saved_feats, variant)
     else:
-        pred, prob, when = live_predict()
-        _append_single(pred, prob, when)
+        pred_bin, prob, when = live_predict()
+        pred_012 = _binary_to_legacy(pred_bin)
+        _append_single(pred_012, prob, when)
 
 
 # =============================================================================
-# Feature engineering (keep aligned with training)
+# Resolve variant/model/thresholds
 # =============================================================================
-def _nv_simple_features(raw_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Minimal daily features matching the trainer:
-    ret_1, ret_5, sma_5, sma_20, vol_10, rsi14 (0-100 scale).
-    (Kept for compatibility; production uses _rich_price_features below.)
-    """
-    df = raw_df.copy()
-
-    # Normalize Date
-    if "Date" not in df.columns:
-        # best-effort alias
-        for c in df.columns:
-            if str(c).strip().lower() == "date":
-                df = df.rename(columns={c: "Date"})
-                break
-    if "Date" not in df.columns:
-        raise SystemExit("Input price table is missing a 'Date' column.")
-    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-    df = df.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
-
-    # Price column — prefer exact, then fuzzy
-    candidates = [c for c in df.columns if str(c).lower() in ("adj close", "adjclose", "close")]
-    if not candidates:
-        candidates = [c for c in df.columns if "close" in str(c).lower()]
-    if not candidates:
-        raise SystemExit(
-            "No price column found (expected one of: 'Adj Close', 'AdjClose', 'Close')."
-        )
-    px = pd.to_numeric(df[candidates[0]], errors="coerce")
-
-    out = pd.DataFrame({"Date": df["Date"]})
-
-    # Returns / overlays (use fill_method=None to avoid pandas FutureWarnings)
-    out["ret_1"] = px.pct_change(1, fill_method=None)
-    out["ret_5"] = px.pct_change(5, fill_method=None)
-    out["sma_5"] = px.rolling(5, min_periods=5).mean() / px - 1.0
-    out["sma_20"] = px.rolling(20, min_periods=20).mean() / px - 1.0
-    out["vol_10"] = px.pct_change(fill_method=None).rolling(10, min_periods=10).std()
-
-    # RSI(14)
-    d = px.diff()
-    gain = d.clip(lower=0.0).rolling(14, min_periods=14).mean()
-    loss = (-d.clip(upper=0.0)).rolling(14, min_periods=14).mean().replace(0, 1e-12)
-    rs = gain / loss
-    out["rsi14"] = 100.0 - (100.0 / (1.0 + rs))
-
-    return out
+def _resolve_model_path() -> tuple[Path, str]:
+    variant = os.getenv("PREDICT_VARIANT", "forward_returns").strip().lower()
+    if variant.startswith("forward"):
+        return (MODELS_DIR / "market_crash_model_fwd.pkl"), "forward"
+    return (MODELS_DIR / "market_crash_model.pkl"), "generic"
 
 
-def _rich_price_features(raw_df: pd.DataFrame) -> pd.DataFrame:
-    """
-    More complete daily feature set (ret_N, sma_N pct devs, vol_N, RSI(2/14), MACD(12,26,9), %b).
-    This dramatically reduces zero-filled columns vs training.
-    """
-    df = raw_df.copy()
-    if "Date" not in df.columns:
-        raise SystemExit("Missing 'Date' in price table.")
-    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
-    df = df.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
-
-    # pick price: prefer Adj Close -> Close
-    price_col = None
-    for c in ["Adj Close", "AdjClose", "Close"]:
-        if c in df.columns:
-            price_col = c
-            break
-    if price_col is None:
-        cands = [c for c in df.columns if "close" in str(c).lower()]
-        if not cands:
-            raise SystemExit("No price column found.")
-        price_col = cands[0]
-
-    px = pd.to_numeric(df[price_col], errors="coerce")
-    out = pd.DataFrame({"Date": df["Date"]})
-
-    # returns
-    for n in [1, 2, 3, 5, 10, 20]:
-        out[f"ret_{n}"] = px.pct_change(n, fill_method=None)
-
-    # moving-average deviations
-    for n in [5, 10, 20, 50, 100, 200]:
-        ma = px.rolling(n, min_periods=n).mean()
-        out[f"sma_{n}"] = ma / px - 1.0
-
-    # volatility
-    for n in [5, 10, 20]:
-        out[f"vol_{n}"] = px.pct_change(fill_method=None).rolling(n, min_periods=n).std()
-
-    # RSI(2) and RSI(14)
-    d = px.diff()
-    for n in [2, 14]:
-        up = d.clip(lower=0.0).rolling(n, min_periods=n).mean()
-        down = (-d.clip(upper=0.0)).rolling(n, min_periods=n).mean().replace(0, 1e-12)
-        rs = up / down
-        out[f"rsi{n}"] = 100.0 - (100.0 / (1.0 + rs))
-
-    # MACD(12,26,9)
-    ema12 = px.ewm(span=12, adjust=False).mean()
-    ema26 = px.ewm(span=26, adjust=False).mean()
-    macd = ema12 - ema26
-    signal = macd.ewm(span=9, adjust=False).mean()
-    out["macd"] = macd
-    out["macd_signal"] = signal
-    out["macd_hist"] = macd - signal
-
-    # Bollinger %b (20,2)
-    ma20 = px.rolling(20, min_periods=20).mean()
-    sd20 = px.rolling(20, min_periods=20).std()
-    upper = ma20 + 2 * sd20
-    lower = ma20 - 2 * sd20
-    out["pct_b"] = (px - lower) / (upper - lower)
-
-    return out
-
-
-def _load_model_and_features(path: Path) -> tuple[object, list[str]]:
+def _load_model_and_features(path: Path, variant: str) -> tuple[object, list[str]]:
     if not path.exists():
         raise SystemExit(f"Model file not found: {path}")
     obj = joblib.load(path)
     # Newer save format: dict with model + features
     if isinstance(obj, dict) and "model" in obj:
         return obj["model"], list(obj.get("features", []))
-    # Legacy: bare estimator
-    return obj, []
+    # Legacy: bare estimator; fallback to saved feature list file
+    ftxt = MODELS_DIR / ("input_features_fwd.txt" if variant == "forward" else "input_features.txt")
+    saved_feats = []
+    if ftxt.exists():
+        saved_feats = [ln.strip() for ln in ftxt.read_text().splitlines() if ln.strip()]
+    return obj, saved_feats
+
+
+def _load_thresholds(variant: str) -> dict[str, float]:
+    """
+    Threshold precedence (first found wins):
+      THRESH_PATH (env), models/thresholds_fwd.json, configs/best_thresholds.json, models/thresholds.json.
+    """
+    env_path = os.getenv("THRESH_PATH")
+    if env_path and os.path.exists(env_path):
+        try:
+            with open(env_path) as f:
+                obj = json.load(f)
+            t = obj.get("threshold") or obj.get("spike_thresh") or obj.get("p_min")
+            inv = bool(obj.get("invert_proba", False))
+            if t is not None:
+                t = float(t)
+                t = max(0.10, min(0.90, t))
+                print(f"[debug] using threshold {t:.6f} from THRESH_PATH={env_path}")
+                print(f"[debug] invert_proba={inv}")
+                return {"p_min": t, "invert_proba": inv}
+        except Exception as e:
+            print(f"[warn] failed to read THRESH_PATH={env_path}: {e}")
+
+    fallbacks = [
+        MODELS_DIR / "thresholds_fwd.json",
+        Path("configs/best_thresholds.json"),
+        MODELS_DIR / "thresholds.json",
+    ]
+    for p in fallbacks:
+        try:
+            with open(p) as f:
+                obj = json.load(f)
+            t = obj.get("threshold") or obj.get("spike_thresh") or obj.get("p_min")
+            inv = bool(obj.get("invert_proba", False))
+            if t is not None:
+                t = float(t)
+                t = max(0.10, min(0.90, t))
+                print(f"[debug] using threshold {t:.6f} from {p}")
+                print(f"[debug] invert_proba={inv}")
+                return {"p_min": t, "invert_proba": inv}
+        except Exception:
+            pass
+
+    t = float(PREDICT_CFG.get("p_min", 0.55))
+    t = max(0.10, min(0.90, t))
+    print(f"[debug] using default threshold {t:.6f} (PREDICT_CFG/default)")
+    print("[debug] invert_proba=False")
+    return {"p_min": t, "invert_proba": False}
+
+
+# =============================================================================
+# Feature engineering — identical to training
+# =============================================================================
+def _build_inference_features_from_prices(
+    raw_df: pd.DataFrame, saved_feats: list[str]
+) -> pd.DataFrame:
+    """
+    Uses utils.add_features + utils.finalize_features, then aligns to the saved schema.
+    Carries 'Date' through for logging.
+    """
+    df_feat, all_cols = add_features(raw_df)
+    cols = saved_feats if saved_feats else all_cols
+    df_feat = finalize_features(df_feat, cols)
+    if "Date" not in df_feat.columns:
+        df_feat = df_feat.reset_index().rename(columns={"index": "Date"})
+    return df_feat
 
 
 def _align_features(feat_df: pd.DataFrame, saved_feats: list[str]) -> pd.DataFrame:
     """
-    Ensure columns/ordering match the training schema.
+    Ensures columns/ordering match the training schema.
     Missing features get 0.0; extras are dropped. Preserves 'Date' if present.
     """
     df = feat_df.copy()
     if not saved_feats:
-        # Fallback: keep numeric cols only (drop Date)
         return df.drop(columns=["Date"], errors="ignore").select_dtypes(include=[np.number])
-
     for c in saved_feats:
         if c not in df.columns:
             df[c] = 0.0
-
     cols = (["Date"] + saved_feats) if "Date" in df.columns else saved_feats
     return df[cols]
 
 
 def _feature_coverage_guard(X: pd.DataFrame, saved_feats: list[str], min_coverage: float = 0.8):
     """
-    Abort if too many expected features are missing (and got zero-filled) or NaN.
-    Coverage = fraction of saved_feats that are present and have non-zero variance.
+    Aborts if too many expected features are missing (or have zero variance).
+    Coverage = fraction of saved_feats present with non-zero variance.
     """
     if not saved_feats:
         return
     present = [c for c in saved_feats if c in X.columns]
     if not present:
         raise SystemExit("No overlap between saved training features and current feature set.")
-    # zero-variance = suspicious (likely zero-filled)
     var = X[present].astype(float).var(numeric_only=True)
     good = (var > 0).sum()
     coverage = good / max(1, len(saved_feats))
@@ -200,82 +193,34 @@ def _feature_coverage_guard(X: pd.DataFrame, saved_feats: list[str], min_coverag
 
 
 # =============================================================================
-# Thresholds / Scoring
+# Mapping & scoring helpers
 # =============================================================================
-def _load_thresholds() -> dict[str, float]:
-    """
-    Prefer tuned sweep → generic model thresholds → forward-returns thresholds.
-    Also read optional 'invert_proba' flag if present in configs/best_thresholds.json.
-    Clamp threshold to [0.10, 0.90] to avoid pathological all-ones/all-zeros.
-    """
-    candidates = [
-        Path(
-            "configs/best_thresholds.json"
-        ),  # may contain {"spike_thresh": ..., "invert_proba": true/false}
-        MODELS_DIR / "thresholds.json",  # {"threshold": ...}
-        MODELS_DIR / "thresholds_fwd.json",  # {"p_min": ...} legacy
-    ]
-    t = None
-    inv = False
-    src = "PREDICT_CFG"
-    for p in candidates:
-        try:
-            with open(p) as f:
-                obj = json.load(f)
-            # threshold
-            if "spike_thresh" in obj and obj["spike_thresh"] is not None:
-                t = float(obj["spike_thresh"])
-                src = str(p)
-            elif "threshold" in obj:
-                t = float(obj["threshold"])
-                src = str(p)
-            elif "p_min" in obj:
-                t = float(obj["p_min"])
-                src = str(p)
-            # inversion flag (only meaningful in configs/best_thresholds.json)
-            if "invert_proba" in obj and obj["invert_proba"] is not None:
-                inv = bool(obj["invert_proba"])
-            if t is not None:
-                break
-        except Exception:
-            pass
+def _binary_to_legacy(pred_bin: int) -> int:
+    """Maps binary forward-returns decision to legacy 0/1/2: 0→1 (NORMAL), 1→2 (SPIKE)."""
+    return 2 if int(pred_bin) == 1 else 1
 
-    if t is None:
-        t = float(PREDICT_CFG.get("p_min", 0.55))
 
-    t_clamped = max(0.10, min(0.90, t))
-    if abs(t_clamped - t) > 1e-9:
-        print(f"[debug] threshold {t:.6f} from {src} clamped → {t_clamped:.6f}")
-    else:
-        print(f"[debug] using threshold {t_clamped:.6f} from {src}")
-
-    print(f"[debug] invert_proba={inv}")
-    return {"p_min": t_clamped, "invert_proba": inv}
+def _assert_binary_model(model) -> None:
+    classes = list(getattr(model, "classes_", [0, 1]))
+    if not set(classes) <= {0, 1}:
+        raise SystemExit(f"Expected binary model classes {{0,1}}, got {classes}")
 
 
 def _map_proba_to_p1(model, X_last: pd.DataFrame) -> float:
-    """
-    Return probability for class=1 (long). If model has no predict_proba,
-    degrade to a pseudo-probability.
-    """
     if hasattr(model, "predict_proba"):
         probs = model.predict_proba(X_last)[0]
         classes_enc = list(getattr(model, "classes_", [0, 1]))
-        # robust mapping in case class order isn't [0,1]
         if 1 in classes_enc:
-            p1 = float(probs[classes_enc.index(1)])
-        else:
-            p1 = float(probs[-1])
-        return p1
-    # Fallback for margin-only estimators
+            return float(probs[classes_enc.index(1)])
+        return float(probs[-1])
     pred_plain = int(model.predict(X_last)[0])
     return 0.7 if pred_plain == 1 else 0.3
 
 
-def _score_latest(model, X: pd.DataFrame) -> tuple[int, float, pd.Timestamp]:
+def _score_latest(model, X: pd.DataFrame, variant: str) -> tuple[int, float, pd.Timestamp]:
     """
-    Grab last row, compute p(long=1), optionally invert, apply threshold,
-    and return (decision, p1_used_for_decision, timestamp).
+    Takes the last row, computes p(long=1), applies the threshold, and returns
+    (binary_decision, p1, timestamp).
     """
     X_last = X.tail(1).drop(columns=["Date"], errors="ignore").astype(float)
     if X_last.isna().any(axis=None):
@@ -285,7 +230,7 @@ def _score_latest(model, X: pd.DataFrame) -> tuple[int, float, pd.Timestamp]:
         X_last = X_valid
 
     p1_raw = _map_proba_to_p1(model, X_last)
-    cfg = _load_thresholds()
+    cfg = _load_thresholds(variant)
     p1 = 1.0 - p1_raw if cfg.get("invert_proba", False) else p1_raw
     decision = int(p1 >= float(cfg.get("p_min", 0.55)))
 
@@ -320,10 +265,9 @@ def _ensure_columns(df: pd.DataFrame, cols: Iterable[str]) -> pd.DataFrame:
     return out
 
 
-def _append_single(decision: int, p1: float, when: pd.Timestamp) -> None:
+def _append_single(pred_012: int, p1: float, when: pd.Timestamp) -> None:
     """
-    Append/update a single day’s prediction into logs/labeled_predictions.csv.
-    Ensures all expected columns exist.
+    Appends/updates a single day in logs/labeled_predictions.csv (legacy {0,1,2}).
     """
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
     path = LOGS_DIR / "labeled_predictions.csv"
@@ -335,13 +279,12 @@ def _append_single(decision: int, p1: float, when: pd.Timestamp) -> None:
 
     df = _ensure_columns(df, _REQUIRED_COLS)
 
-    # Update or append row for 'when'
     row_mask = df["Date"] == pd.to_datetime(when)
     row = {
         "Date": pd.to_datetime(when),
         "Label": df.loc[row_mask, "Label"].iloc[0] if row_mask.any() else pd.NA,
-        "Pred": int(decision),
-        "Prediction": int(decision),
+        "Pred": int(pred_012),
+        "Prediction": int(pred_012),
         "Proba": float(p1),
         "Spike_Conf": float(p1),
         "Crash_Conf": float(1.0 - p1),
@@ -355,66 +298,65 @@ def _append_single(decision: int, p1: float, when: pd.Timestamp) -> None:
         df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
 
     df = df.sort_values("Date").reset_index(drop=True)
-
-    # NEW: absolute path visibility
     print(f"[debug] writing preds to {path.resolve()}")
-
     df.to_csv(path, index=False)
     print(f"[predict] wrote → {path}")
 
 
-def _backfill_full(model, saved_feats: list[str]) -> None:
+# =============================================================================
+# Backfill
+# =============================================================================
+def _backfill_full(model, saved_feats: list[str], variant: str) -> None:
     """
-    Score all valid dates and (re)write labeled_predictions.csv.
-    Preserves any existing Label values.
+    Scores all valid dates and (re)writes logs/labeled_predictions.csv.
+    Preserves existing Label. Outputs legacy 0/1/2 Prediction.
     """
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
     out_path = LOGS_DIR / "labeled_predictions.csv"
 
-    # Load raw SPY prices
     raw = pd.read_csv(SPY_DAILY_CSV, low_memory=False)
     raw["Date"] = pd.to_datetime(raw["Date"], errors="coerce")
     raw = raw.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
 
-    # Build + align (use rich features)
-    feat = _rich_price_features(raw)
+    feat = _build_inference_features_from_prices(raw, saved_feats)
     X = _align_features(feat, saved_feats)
     _feature_coverage_guard(X, saved_feats)
 
-    # Keep only rows without NaNs in model features
     feature_cols = [c for c in X.columns if c != "Date"]
     full = X.dropna(subset=feature_cols).copy()
     if full.empty:
         raise SystemExit("No rows to score after dropping NaN feature rows.")
 
-    # Score probabilities
     if hasattr(model, "predict_proba"):
         probs = model.predict_proba(full[feature_cols].astype(float))
         classes_enc = list(getattr(model, "classes_", [0, 1]))
+        if not set(classes_enc) <= {0, 1}:
+            raise SystemExit(f"Expected binary model classes {{0,1}}, got {classes_enc}")
         idx1 = classes_enc.index(1) if 1 in classes_enc else (len(classes_enc) - 1)
         p1 = probs[:, idx1].astype(float)
     else:
         preds = model.predict(full[feature_cols].astype(float)).astype(int)
         p1 = preds * 0.7 + (1 - preds) * 0.3
 
-    # Debug distribution of probabilities
     print(
-        f"[debug] p1 mean={float(np.mean(p1)):.4f} sd={float(np.std(p1)):.4f} min={float(np.min(p1)):.4f} max={float(np.max(p1)):.4f}"
+        f"[debug] p1 mean={float(np.mean(p1)):.4f} sd={float(np.std(p1)):.4f} "
+        f"min={float(np.min(p1)):.4f} max={float(np.max(p1)):.4f}"
     )
 
-    thresholds = _load_thresholds()
+    thresholds = _load_thresholds(variant)
     if thresholds.get("invert_proba", False):
         p1 = 1.0 - p1
         print("[debug] applied invert_proba: using (1 - p1) for decisions")
 
-    pred = (p1 >= float(thresholds.get("p_min", 0.55))).astype(int)
+    pred_bin = (p1 >= float(thresholds.get("p_min", 0.55))).astype(int)
+    pred_012 = np.where(pred_bin == 1, 2, 1).astype(int)
 
     out = (
         pd.DataFrame(
             {
                 "Date": full["Date"],
-                "Prediction": pred.astype(int),
-                "Pred": pred.astype(int),
+                "Prediction": pred_012,
+                "Pred": pred_012,
                 "Proba": p1.astype(float),
                 "Spike_Conf": p1.astype(float),
                 "Crash_Conf": (1.0 - p1).astype(float),
@@ -425,45 +367,44 @@ def _backfill_full(model, saved_feats: list[str]) -> None:
         .reset_index(drop=True)
     )
 
-    # Preserve existing Label if present
     if out_path.exists():
         prev = pd.read_csv(out_path, parse_dates=["Date"])
         prev = _ensure_columns(prev, _REQUIRED_COLS)
         out = out.merge(prev[["Date", "Label"]], on="Date", how="left")
 
-    # Ensure all required columns present
     out = _ensure_columns(out, _REQUIRED_COLS)
 
-    # NEW: final counts + absolute path
-    final_pos = int(out["Prediction"].sum())
-    print(f"[debug] final positives={final_pos} zeros={len(out) - final_pos}")
+    n_crash = int((out["Prediction"] == 0).sum())
+    n_norm = int((out["Prediction"] == 1).sum())
+    n_spike = int((out["Prediction"] == 2).sum())
+    print(f"[debug] legacy preds — crash=0:{n_crash} normal=1:{n_norm} spike=2:{n_spike}")
     print(f"[debug] writing preds to {out_path.resolve()}")
 
     out.to_csv(out_path, index=False)
-    print(f"[backfill] wrote → {out_path}  rows={len(out)}  positives={final_pos}")
+    print(f"[backfill] wrote → {out_path}  rows={len(out)}")
 
 
 # =============================================================================
-# Single live prediction (convenience)
+# Single live prediction
 # =============================================================================
 def live_predict() -> tuple[int, float, pd.Timestamp]:
     """
-    Return (decision, p(long=1), timestamp) using latest available row in SPY_DAILY_CSV.
+    Returns (binary_decision, p(long=1), timestamp) using the latest row in SPY_DAILY_CSV.
+    Caller maps to legacy 0/1/2 if needed.
     """
-    # Load raw SPY prices
     raw = pd.read_csv(SPY_DAILY_CSV, low_memory=False)
     raw["Date"] = pd.to_datetime(raw["Date"], errors="coerce")
     raw = raw.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
 
-    # Build features and align to training schema (use rich features)
-    feat = _rich_price_features(raw)
+    model_path, variant = _resolve_model_path()
+    model, saved_feats = _load_model_and_features(model_path, variant)
+    _assert_binary_model(model)
 
-    model_path = MODELS_DIR / "market_crash_model.pkl"
-    model, saved_feats = _load_model_and_features(model_path)
+    feat = _build_inference_features_from_prices(raw, saved_feats)
     X = _align_features(feat, saved_feats)
     _feature_coverage_guard(X, saved_feats)
 
-    return _score_latest(model, X)
+    return _score_latest(model, X, variant)
 
 
 # =============================================================================
@@ -481,27 +422,31 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-
-    model_path = MODELS_DIR / "market_crash_model.pkl"
-    model, saved_feats = _load_model_and_features(model_path)
+    model_path, variant = _resolve_model_path()
+    model, saved_feats = _load_model_and_features(model_path, variant)
+    _assert_binary_model(model)
 
     if args.backfill:
-        _backfill_full(model, saved_feats)
+        _backfill_full(model, saved_feats, variant)
         return 0
 
-    # Single live prediction
-    # read raw once (avoid double IO)
     raw = pd.read_csv(SPY_DAILY_CSV, low_memory=False)
     raw["Date"] = pd.to_datetime(raw["Date"], errors="coerce")
     raw = raw.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
 
-    feat = _rich_price_features(raw)
+    feat = _build_inference_features_from_prices(raw, saved_feats)
     X = _align_features(feat, saved_feats)
     _feature_coverage_guard(X, saved_feats)
 
-    pred, prob, when = _score_latest(model, X)
-    print(f"[predict] {pd.to_datetime(when).date()}  p(long=1)={prob:.4f}  decision={pred}")
-    _append_single(pred, prob, when)
+    pred_bin, prob, when = _score_latest(model, X, variant)
+    pred_012 = _binary_to_legacy(pred_bin)
+    label_human = {0: "CRASH", 1: "NORMAL", 2: "SPIKE"}[pred_012]
+    print(
+        f"[predict] {pd.to_datetime(when).date()}  p(long=1)={prob:.4f}  "
+        f"binary={pred_bin}  legacy={pred_012} ({label_human})"
+    )
+
+    _append_single(pred_012, prob, when)
     return 0
 
 
