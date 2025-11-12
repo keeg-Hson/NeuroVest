@@ -35,7 +35,6 @@ def _ensure_datetime_index_any(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df.index = idx
     df = df.sort_index()
-    # drop rows where index failed to parse (NaT)
     df = df[~df.index.isna()]
     return df
 
@@ -67,13 +66,22 @@ def _macd(series, fast=12, slow=26, signal=9):
     return m, sig, hist
 
 
-def _true_range(h, l, c):
-    pc = c.shift(1)
-    return pd.concat([(h - l), (h - pc).abs(), (l - pc).abs()], axis=1).max(axis=1)
+def _true_range(high, low, close):
+    """True range using current high/low and previous close."""
+    prev_close = close.shift(1)
+    return pd.concat(
+        [
+            high - low,
+            (high - prev_close).abs(),
+            (low - prev_close).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
 
 
-def _atr(h, l, c, w=14):
-    return _true_range(h, l, c).ewm(alpha=1 / w, adjust=False).mean()
+def _atr(high, low, close, w=14):
+    """Average True Range over a rolling window."""
+    return _true_range(high, low, close).ewm(alpha=1 / w, adjust=False).mean()
 
 
 def _boll(series, w=20, n=2.0):
@@ -82,10 +90,10 @@ def _boll(series, w=20, n=2.0):
     return ma + n * sd, ma, ma - n * sd
 
 
-def _stoch_kd(h, l, c, k=14, d=3):
-    ll = l.rolling(k).min()
-    hh = h.rolling(k).max()
-    K = 100 * (c - ll) / (hh - ll)
+def _stoch_kd(high, low, close, k=14, d=3):
+    lowest_low = low.rolling(k).min()
+    highest_high = high.rolling(k).max()
+    K = 100 * (close - lowest_low) / (highest_high - lowest_low)
     D = K.rolling(d).mean()
     return K, D
 
@@ -103,12 +111,10 @@ def _merge_external_if_available(df: pd.DataFrame, external_dir: Path) -> pd.Dat
         try:
             x = pd.read_csv(csv, low_memory=False)
             x = _ensure_datetime_index_any(x)
-            # numeric only, prefix with filename to avoid collisions
             num_cols = x.select_dtypes(include=[np.number]).columns.tolist()
             if not num_cols:
                 continue
             x = x[num_cols].add_prefix(csv.stem + "_").sort_index()
-            # causal asof join
             base = pd.merge_asof(base, x, left_index=True, right_index=True, direction="backward")
         except Exception as e:
             print(f"[warn] Failed to merge {csv.name}: {e}")
@@ -116,12 +122,16 @@ def _merge_external_if_available(df: pd.DataFrame, external_dir: Path) -> pd.Dat
 
 
 def build_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Build technical features and retain any external numeric signals from df.
+    """
     close = df["Adj Close"] if "Adj Close" in df.columns else df["Close"]
     high = df["High"]
     low = df["Low"]
     vol = df["Volume"]
 
     out = pd.DataFrame(index=df.index)
+
     # returns (explicitly disable fill to avoid FutureWarning)
     out["ret_1d"] = close.pct_change(1, fill_method=None)
     out["ret_5d"] = close.pct_change(5, fill_method=None)
@@ -165,6 +175,15 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     out["px_over_sma20"] = close / out["sma_20"] - 1.0
     out["px_over_sma50"] = close / out["sma_50"] - 1.0
 
+    # carry through external numeric signals (non-OHLCV, non-technical) as features
+    ohlcv_cols = {"Open", "High", "Low", "Close", "Adj Close", "Volume"}
+    existing_cols = set(df.columns)
+    extra_cols = [
+        c for c in existing_cols if c not in ohlcv_cols and pd.api.types.is_numeric_dtype(df[c])
+    ]
+    if extra_cols:
+        out = pd.concat([out, df[list(extra_cols)]], axis=1)
+
     return out
 
 
@@ -172,6 +191,27 @@ def make_label_forward_up(close: pd.Series, horizon: int, min_return: float = 0.
     fwd_ret = close.shift(-horizon) / close - 1.0
     y = (fwd_ret >= min_return).astype("Int64")
     y.iloc[-horizon:] = pd.NA  # drop unlabeled tail
+    return y
+
+
+def make_label_spike_normal_crash(
+    close: pd.Series,
+    horizon: int,
+    spike_return: float = 0.005,
+    crash_return: float = -0.005,
+) -> pd.Series:
+    """
+    3-class label with unified convention:
+      0 = SPIKE (forward return >= spike_return)
+      1 = NORMAL (between thresholds)
+      2 = CRASH (forward return <= crash_return)
+    """
+    fwd_ret = close.shift(-horizon) / close - 1.0
+    y = pd.Series(index=close.index, dtype="Int64")
+    y[fwd_ret >= spike_return] = 0
+    y[(fwd_ret < spike_return) & (fwd_ret > crash_return)] = 1
+    y[fwd_ret <= crash_return] = 2
+    y.iloc[-horizon:] = pd.NA
     return y
 
 
@@ -195,6 +235,8 @@ def main():
     ap.add_argument("--external_dir", default="data_cache")
     ap.add_argument("--horizon", type=int, default=5)
     ap.add_argument("--min_return", type=float, default=0.0)
+    ap.add_argument("--spike_return", type=float, default=0.005)
+    ap.add_argument("--crash_return", type=float, default=-0.005)
     ap.add_argument("--out_dir", default="data/features")
     ap.add_argument("--no_csv", action="store_true")
     ap.add_argument("--ticker", default="SPY")
@@ -210,7 +252,6 @@ def main():
     price_df = pd.read_csv(price_path, usecols=lambda c: c in wanted, low_memory=False)
     price_df = _ensure_datetime_index_any(price_df)
 
-    # keep only present columns in canonical order
     keep = [
         c for c in ["Open", "High", "Low", "Close", "Adj Close", "Volume"] if c in price_df.columns
     ]
@@ -220,12 +261,18 @@ def main():
     base = price_df.copy()
     base = _merge_external_if_available(base, ext_dir)
 
-    # Features
+    # Features: technicals + external numeric signals
     feats = build_features(pd.concat([base, price_df[["Open", "High", "Low", "Close"]]], axis=1))
 
-    # Label
+    # Label series
     close = price_df["Adj Close"] if "Adj Close" in price_df.columns else price_df["Close"]
-    y = make_label_forward_up(close, args.horizon, args.min_return)
+    y_up = make_label_forward_up(close, args.horizon, args.min_return)
+    y_3class = make_label_spike_normal_crash(
+        close,
+        args.horizon,
+        spike_return=args.spike_return,
+        crash_return=args.crash_return,
+    )
 
     # Assemble
     out = pd.DataFrame(index=feats.index)
@@ -235,16 +282,18 @@ def main():
         out[c.lower().replace(" ", "_")] = price_df[c]
     out = out.join(feats)
 
-    out["y_up_fwd"] = y
+    out["y_up_fwd"] = y_up
+    out["y_class_3"] = y_3class
     out["split"] = assign_time_splits(out.index)
 
     # Final clean: drop any rows with NaN features or unlabeled tail
-    feature_cols = [c for c in out.columns if c not in ["date", "ticker", "y_up_fwd", "split"]]
+    meta_cols = ["date", "ticker", "y_up_fwd", "y_class_3", "split"]
+    feature_cols = [c for c in out.columns if c not in meta_cols]
     mask = out[feature_cols].notna().all(axis=1) & out["y_up_fwd"].notna()
     out = out.loc[mask].copy()
 
     # Stable column order
-    out = out[["date", "ticker"] + feature_cols + ["y_up_fwd", "split"]]
+    out = out[["date", "ticker"] + feature_cols + ["y_up_fwd", "y_class_3", "split"]]
 
     # Write
     stamp = datetime.now(UTC).strftime("%Y%m%d")
@@ -254,13 +303,12 @@ def main():
     feat_path = out_dir / f"{base_name}.features.txt"
     meta_path = out_dir / f"{base_name}.meta.json"
 
-    # parquet (optional)
+    wrote_parquet = False
     try:
         out.to_parquet(pq_path, index=False)
         wrote_parquet = True
     except Exception as e:
         print(f"[warn] Parquet write failed ({e}); writing CSV only.")
-        wrote_parquet = False
 
     if not args.no_csv:
         out.to_csv(csv_path, index=False)
@@ -275,12 +323,15 @@ def main():
         "external_dir": str(ext_dir),
         "horizon_days": args.horizon,
         "min_return": args.min_return,
+        "spike_return": args.spike_return,
+        "crash_return": args.crash_return,
         "rows": int(len(out)),
         "features": feature_cols,
         "label_col": "y_up_fwd",
+        "label_3class_col": "y_class_3",
         "split_col": "split",
         "ticker": args.ticker,
-        "notes": "Causal engineered features + auto-merged external numeric signals.",
+        "notes": "Causal engineered features + auto-merged external numeric signals. 3-class labels use 0=SPIKE, 1=NORMAL, 2=CRASH.",
     }
     with open(meta_path, "w") as f:
         json.dump(meta, f, indent=2)

@@ -1,4 +1,22 @@
-# sweep_runner.py
+#!/usr/bin/env python3
+"""
+sweep_runner.py
+
+Grid-search over confidence / crash / spike thresholds and evaluate via backtest.
+
+Assumptions
+-----------
+- Predictions are written by run_predictions(backfill=True) into logs/daily_predictions.csv.
+- The prediction stack uses unified 3-class labels at the log level:
+      0 = SPIKE
+      1 = NORMAL
+      2 = CRASH
+- Backtest thresholds map to:
+      crash_thresh  → minimum Crash_Conf to treat as a crash event
+      spike_thresh  → minimum Spike_Conf to treat as a spike event
+      confidence_thresh → optional minimum overall confidence filter
+"""
+
 import itertools
 import json
 import os
@@ -17,18 +35,44 @@ CONFIDENCE_RANGE: list[float | None] = [None, 0.60, 0.65, 0.70, 0.75]
 CRASH_RANGE: list[float | None] = [0.20, 0.25, 0.30, 0.35, 0.40]
 SPIKE_RANGE: list[float | None] = [0.20, 0.25, 0.30, 0.35, 0.40]
 
-
-# Choose optimization objective: "avg_dollar_return" | "final_balance" | "total_return" | "profit_factor" | "win_rate"
-OBJECTIVE = "sharpe"  # was "avg_dollar_return"
+# Choose optimization objective:
+#   "avg_dollar_return" | "final_balance" | "total_return"
+#   | "profit_factor" | "win_rate" | "sharpe"
+OBJECTIVE = "sharpe"
 
 # Optional: limit backtest to last N days (set to None for full history)
 BACKTEST_WINDOW_DAYS = None
 
 
+def _ensure_predictions() -> pd.DataFrame:
+    """
+    Run prediction backfill and load daily_predictions to confirm data presence.
+    """
+    print("▶️ Generating predictions once up-front (backfill)...")
+    # Backfill writes logs/daily_predictions.csv and logs/labeled_predictions.csv.
+    run_predictions(backfill=True)
+
+    pred_path = "logs/daily_predictions.csv"
+    if not os.path.exists(pred_path) or os.path.getsize(pred_path) == 0:
+        print(f"🚫 Prediction log not found or empty at {pred_path}")
+        return pd.DataFrame()
+
+    try:
+        df = pd.read_csv(pred_path)
+    except Exception as e:
+        print(f"🚫 Failed to read {pred_path}: {e}")
+        return pd.DataFrame()
+
+    if df.empty:
+        print(f"🚫 Prediction log at {pred_path} is empty after backfill.")
+    else:
+        print(f"✅ Loaded {len(df)} prediction rows from {pred_path}")
+    return df
+
+
 def main():
     # 1) Produce predictions once (writes logs/daily_predictions.csv)
-    print("▶️ Generating predictions once up-front...")
-    pred_df = run_predictions()
+    pred_df = _ensure_predictions()
     if pred_df is None or pred_df.empty:
         print("🚫 No predictions available. Aborting sweep.")
         return
@@ -48,12 +92,10 @@ def main():
             simulate_mode=False,
         )
 
-        # If backtest returned nothing, skip
         if not isinstance(metrics, dict) or metrics.get("trades", 0) == 0:
             print("ℹ️ No trades for this combo — skipping.")
             continue
 
-        # Derive helpful aggregates
         final_balance = (1.0 + metrics.get("total_return", 0.0)) * CAPITAL_BASE
         avg_dollar_return = trades["dollar_return"].mean() if not trades.empty else 0.0
 
@@ -66,7 +108,9 @@ def main():
             score = metrics.get("profit_factor", 0.0)
         elif OBJECTIVE == "win_rate":
             score = metrics.get("win_rate", 0.0)
-        else:  # default
+        elif OBJECTIVE == "sharpe":
+            score = metrics.get("sharpe", 0.0)
+        else:  # default to avg_dollar_return
             score = avg_dollar_return
 
         row = {
@@ -92,9 +136,8 @@ def main():
     # 3) Save + report
     df = pd.DataFrame(results).sort_values("score", ascending=False)
 
-    # drop exact duplicates of thresholds+score to clean leaderboard noise
+    # Drop exact duplicates of thresholds+score to clean leaderboard noise
     df = df.drop_duplicates(subset=["confidence_thresh", "crash_thresh", "spike_thresh", "score"])
-    df.to_csv("logs/threshold_search.csv", index=False)
 
     out_csv = "logs/threshold_search.csv"
     df.to_csv(out_csv, index=False)
