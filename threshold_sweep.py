@@ -14,6 +14,7 @@ Outputs:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import subprocess
@@ -23,14 +24,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-# 1) Make sure prices are fresh
-subprocess.run([sys.executable, "update_spy_data.py"], check=False)
-
-# 2) Import backtest AFTER potential env setup
-from backtest import run_backtest
-
 DB_PATH = Path("neurovest.duckdb")
 PRED_CSV = Path("logs/daily_predictions.csv")
+
 os.makedirs("configs", exist_ok=True)
 os.makedirs("logs", exist_ok=True)
 
@@ -38,7 +34,9 @@ os.makedirs("logs", exist_ok=True)
 def _detect_spike_range() -> tuple[float, float]:
     """Return (lo, hi) for Spike_Conf from either DuckDB or CSV; fallback to sane defaults."""
     lo, hi = 0.50, 0.75  # safe defaults
-    try:
+
+    # Try DuckDB or CSV; on any failure, keep defaults and continue to padding logic
+    with contextlib.suppress(Exception):
         if DB_PATH.exists():
             import duckdb
 
@@ -53,8 +51,7 @@ def _detect_spike_range() -> tuple[float, float]:
                 s = pd.to_numeric(df["Spike_Conf"], errors="coerce").dropna()
                 if not s.empty:
                     lo, hi = float(s.min()), float(s.max())
-    except Exception:
-        pass
+
     # pad slightly and clamp to [0,1]
     pad = 0.02
     lo = max(0.0, lo - pad)
@@ -83,6 +80,7 @@ def _score_row(metrics: dict, trades_df: pd.DataFrame | None) -> float:
 
 def sweep(
     spike_grid: list[float],
+    run_backtest,
     min_trades: int = 20,
     window_days: int | None = None,
     lookahead: int = 5,
@@ -95,7 +93,7 @@ def sweep(
         trades, metrics, _ = run_backtest(
             window_days=window_days,
             spike_thresh=t,
-            crash_thresh=None,  # ignore crash;no crash_conf
+            crash_thresh=None,  # ignore crash; no crash_conf
             confidence_thresh=None,  # avoid double-gating; spike only
             lookahead=lookahead,
             tp_atr=tp_atr,
@@ -139,7 +137,13 @@ def sweep(
     return df
 
 
-if __name__ == "__main__":
+def main() -> None:
+    # 1) Make sure prices are fresh before importing backtest
+    subprocess.run([sys.executable, "update_spy_data.py"], check=False)
+
+    # 2) Import backtest AFTER potential env setup (no E402: inside function)
+    from backtest import run_backtest
+
     lo, hi = _detect_spike_range()
     print(f"🔎 Detected Spike_Conf range ≈ [{lo}, {hi}]")
     # build a grid across that real range
@@ -147,6 +151,7 @@ if __name__ == "__main__":
 
     df = sweep(
         spike_grid=spike_grid,
+        run_backtest=run_backtest,
         min_trades=20,
         window_days=None,  # or 365*5 to focus on recent
         lookahead=5,
@@ -174,3 +179,7 @@ if __name__ == "__main__":
         print(best_json)
     else:
         print("\n⚠️ No viable combo met min_trades; try lowering min_trades or widening the grid.")
+
+
+if __name__ == "__main__":
+    main()
