@@ -2,22 +2,31 @@
 """
 backtest_module.py
 
-Evaluates and visualizes predictions against SPY under the legacy 0/1/2 convention:
-    0 = CRASH, 1 = NORMAL, 2 = SPIKE
-Backtests a simple long/flat rule that goes long on the next day when Prediction == 2.
+Purpose
+-------
+Evaluates and visualizes predictions against SPY under the 3-class convention:
+    0 = CRASH
+    1 = NORMAL
+    2 = SPIKE
 
-Config (env has priority over CLI):
-- NEUROVEST_PREDICTIONS_CSV        : path to predictions (default: logs/labeled_predictions.csv)
-- NEUROVEST_BACKTEST_WINDOW_DAYS   : int, only last N days (applied after OOS filter)
-- NEUROVEST_OOS_ONLY               : "1" to restrict metrics to OOS (uses models/split_meta.json)
+Implements a simple long/flat rule that goes long on the next day when
+Prediction == 2 (SPIKE).
+
+Config (env has priority over CLI)
+----------------------------------
+NEUROVEST_PREDICTIONS_CSV      : path to predictions (default: logs/labeled_predictions.csv)
+NEUROVEST_BACKTEST_WINDOW_DAYS : int, only last N days (applied after OOS filter)
+NEUROVEST_OOS_ONLY             : "1" to restrict metrics to OOS (uses models/split_meta.json)
 
 Outputs
-- outputs/backtest_plot.png
-- outputs/metrics.json (accuracy + classification report text, if labels available)
+-------
+outputs/backtest_plot.png
+outputs/metrics.json (classification accuracy + report when labels are available)
 
 Expected prediction columns
-- "Prediction" (preferred), else falls back to "Pred" or "Label".
-- Optional ground-truth label column: "True_Label" or "Label" (legacy 0/1/2).
+---------------------------
+"Prediction" (preferred), else falls back to "Pred" or "Label".
+Optional ground-truth label column: "True_Label" or "Label" (0/1/2).
 """
 
 from __future__ import annotations
@@ -28,7 +37,12 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import (
+    accuracy_score,
+    balanced_accuracy_score,
+    classification_report,
+    f1_score,
+)
 
 from config import LOGS_DIR, MODELS_DIR, SPY_DAILY_CSV
 
@@ -44,6 +58,10 @@ def _pick_first(columns: list[str], candidates: list[str]) -> str | None:
 
 
 def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Loads SPY price history and prediction logs, normalizes date columns,
+    and enforces the 0=CRASH,1=NORMAL,2=SPIKE convention on Prediction.
+    """
     # Load SPY prices
     spy = pd.read_csv(SPY_DAILY_CSV, low_memory=False, parse_dates=["Date"])
     spy = spy.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
@@ -60,15 +78,12 @@ def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     preds["Date"] = pd.to_datetime(preds["Date"], errors="coerce")
     preds = preds.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
 
-    # Ensure we have a prediction-like column (legacy 0/1/2)
+    # Ensure there is a prediction-like column (0=CRASH,1=NORMAL,2=SPIKE)
     pred_col = _pick_first(preds.columns.tolist(), ["Prediction", "Pred", "Label"])
     if pred_col is None:
         raise SystemExit("No prediction-like column found (need one of Prediction/Pred/Label).")
     if pred_col != "Prediction":
         preds["Prediction"] = preds[pred_col]
-
-    # DO NOT remap via binary label maps here; backtest expects legacy 0/1/2
-    # (The predictor already writes legacy values when using forward-returns.)
 
     # Coerce ints where possible
     with pd.option_context("mode.chained_assignment", None):
@@ -80,11 +95,31 @@ def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
                 "Int64"
             )
 
+    # Sanity check: enforce 0/1/2 class set on Prediction
+    valid_preds = preds["Prediction"].dropna().astype(int)
+    unique_preds = set(valid_preds.unique().tolist())
+    if not unique_preds.issubset({0, 1, 2}):
+        raise SystemExit(
+            "Prediction column contains unexpected values; "
+            f"expected subset of {{0,1,2}}, found {sorted(unique_preds)}"
+        )
+
+    n_crash = int((valid_preds == 0).sum())
+    n_norm = int((valid_preds == 1).sum())
+    n_spike = int((valid_preds == 2).sum())
+    print(
+        "[backtest] prediction class distribution (0=CRASH,1=NORMAL,2=SPIKE): "
+        f"crash={n_crash} normal={n_norm} spike={n_spike}"
+    )
+
     return spy, preds
 
 
 def _apply_oos_and_window(merged: pd.DataFrame) -> pd.DataFrame:
-    """Apply OOS filter (if NEUROVEST_OOS_ONLY=1) and trailing window (NEUROVEST_BACKTEST_WINDOW_DAYS)."""
+    """
+    Applies OOS filter (if NEUROVEST_OOS_ONLY=1) and trailing window
+    (NEUROVEST_BACKTEST_WINDOW_DAYS) to the merged frame.
+    """
     df = merged.copy()
 
     # OOS filter
@@ -123,6 +158,9 @@ def _apply_oos_and_window(merged: pd.DataFrame) -> pd.DataFrame:
 
 
 def _choose_price_col(df: pd.DataFrame) -> str:
+    """
+    Selects a Close-like column from the merged frame for plotting.
+    """
     price_col = _pick_first(
         df.columns.tolist(),
         ["Close", "AdjClose", "Adj Close", "Close_SPY", "AdjClose_SPY", "Close_y", "Close_x"],
@@ -136,10 +174,14 @@ def _choose_price_col(df: pd.DataFrame) -> str:
 
 
 def plot_predictions(merged: pd.DataFrame, savepath: Path) -> None:
+    """
+    Plots SPY price with shaded regions where the strategy is long on the next
+    day according to Prediction == 2 (SPIKE).
+    """
     df = merged.copy()
     price_col = _choose_price_col(df)
 
-    # Legacy rule → position: long next day iff Prediction == 2 (SPIKE)
+    # Position: long next day when Prediction == 2 (SPIKE)
     pos = (df["Prediction"].astype("Int64") == 2).astype(float)
     pos_next = pos.shift(1).fillna(0.0)
 
@@ -152,7 +194,7 @@ def plot_predictions(merged: pd.DataFrame, savepath: Path) -> None:
         df["Date"], ymin, ymax, where=pos_next > 0, alpha=0.10, label="Long (next-day)"
     )
 
-    # Optional event markers if present (for quick visual checks)
+    # Optional event markers if present
     for col, color, marker, label in [
         ("Spike", "green", "^", "Spike"),
         ("Crash", "red", "v", "Crash"),
@@ -174,8 +216,11 @@ def plot_predictions(merged: pd.DataFrame, savepath: Path) -> None:
 
 def evaluate_predictions(df: pd.DataFrame) -> dict:
     """
-    Metrics compare legacy predictions (0/1/2) with legacy labels (0/1/2) if available.
-    This is label classification accuracy — not PnL. The trading rule uses only class 2 for longs.
+    Computes classification accuracy for legacy-style class labels (0/1/2),
+    comparing Prediction against True_Label or Label when available.
+
+    This evaluates label consistency rather than strategy PnL. The trading rule
+    uses Prediction == 2 to represent long entries.
     """
     label_col = _pick_first(df.columns.tolist(), ["True_Label", "Label"])
     if label_col is None:
@@ -190,8 +235,28 @@ def evaluate_predictions(df: pd.DataFrame) -> dict:
     y_true = sub[label_col].astype(int)
     y_pred = sub["Prediction"].astype(int)
 
+    # Additional sanity report for label distribution
+    label_vals = y_true.unique().tolist()
+    pred_vals = y_pred.unique().tolist()
+    print(f"[eval] label values present: {sorted(label_vals)}")
+    print(f"[eval] prediction values present: {sorted(pred_vals)}")
+
+    # Enforce 0/1/2 labels for ground truth as well
+    unique_labels = set(label_vals)
+    if not unique_labels.issubset({0, 1, 2}):
+        raise SystemExit(
+            "Label column contains unexpected values; "
+            f"expected subset of {{0,1,2}}, found {sorted(unique_labels)}"
+        )
+
     acc = float(accuracy_score(y_true, y_pred))
+    bal_acc = float(balanced_accuracy_score(y_true, y_pred))
+    macro_f1 = float(f1_score(y_true, y_pred, average="macro"))
+
     print(f"[eval] Accuracy: {acc:.3f}")
+    print(f"[eval] Balanced Accuracy: {bal_acc:.3f}")
+    print(f"[eval] Macro F1: {macro_f1:.3f}")
+
     try:
         report_txt = classification_report(y_true, y_pred, digits=3)
         print(report_txt)
@@ -202,6 +267,8 @@ def evaluate_predictions(df: pd.DataFrame) -> dict:
     return {
         "has_labels": True,
         "accuracy": acc,
+        "balanced_accuracy": bal_acc,
+        "macro_f1": macro_f1,
         "n": int(len(sub)),
         "label_col": label_col,
         "report": report_txt,
@@ -209,6 +276,10 @@ def evaluate_predictions(df: pd.DataFrame) -> dict:
 
 
 def run_backtest() -> None:
+    """
+    Orchestrates loading data, applying OOS/window filters, plotting the
+    strategy, computing classification metrics, and writing outputs.
+    """
     spy_df, preds_df = load_data()
 
     # Normalize dates and merge on Date
@@ -222,7 +293,21 @@ def run_backtest() -> None:
     # Apply OOS + trailing window filters
     merged = _apply_oos_and_window(merged)
 
+    if merged.empty:
+        raise SystemExit("Merged SPY/predictions frame is empty after filters.")
+
     print("Merged Columns:", merged.columns.tolist())
+    print(
+        "[backtest] merged date range: {} → {}".format(
+            merged["Date"].min().date(), merged["Date"].max().date()
+        )
+    )
+
+    # Attach PredLong helper column (1 when Prediction == 2)
+    merged["PredLong"] = (merged["Prediction"].astype("Int64") == 2).astype(int)
+    n_long = int((merged["PredLong"] == 1).sum())
+    n_flat = int((merged["PredLong"] == 0).sum())
+    print(f"[backtest] PredLong distribution: long={n_long} flat={n_flat}")
 
     # Plot
     plot_predictions(merged, OUT_DIR / "backtest_plot.png")
