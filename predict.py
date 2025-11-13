@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# predict.py
 """
 NeuroVest — prediction runner (backfill + live)
 
@@ -10,15 +11,17 @@ probabilities, applies a decision threshold, and writes predictions to logs.
 Label convention
 ----------------
 Unified 3-class convention:
-    0 = SPIKE
+    0 = CRASH
     1 = NORMAL
-    2 = CRASH
+    2 = SPIKE
 
 The active forward-returns model is binary internally ({0,1} = no-trade/trade).
 To remain compatible with 3-class outputs, binary predictions are mapped to:
     0 → 1 (NORMAL)
-    1 → 0 (SPIKE)
-CRASH (2) is reserved for explicit crash labels and is not emitted by the binary model.
+    1 → 2 (SPIKE)
+
+CRASH (0) is reserved for explicit crash labels and is not emitted by the
+current binary forward-returns model.
 """
 
 from __future__ import annotations
@@ -84,14 +87,23 @@ def _load_model_and_features(path: Path, variant: str) -> tuple[object, list[str
 def _load_thresholds(variant: str) -> dict[str, float]:
     """
     Threshold precedence (first found wins):
-      THRESH_PATH (env), models/thresholds_fwd.json, configs/best_thresholds.json, models/thresholds.json.
+
+      1) THRESH_PATH (env override; optional)
+      2) configs/best_thresholds.json
+      3) models/thresholds_fwd.json
+      4) models/thresholds.json
+      5) PREDICT_CFG["p_min"] (default)
+
+    All thresholds are clamped into [0.10, 0.90]. If a file also includes
+    "invert_proba", it is respected.
     """
+    # 1) Explicit env override
     env_path = os.getenv("THRESH_PATH")
     if env_path and os.path.exists(env_path):
         try:
             with open(env_path) as f:
                 obj = json.load(f)
-            t = obj.get("threshold") or obj.get("spike_thresh") or obj.get("p_min")
+            t = obj.get("spike_thresh") or obj.get("p_min") or obj.get("threshold")
             inv = bool(obj.get("invert_proba", False))
             if t is not None:
                 t = float(t)
@@ -102,16 +114,17 @@ def _load_thresholds(variant: str) -> dict[str, float]:
         except Exception as e:
             print(f"[warn] failed to read THRESH_PATH={env_path}: {e}")
 
+    # 2–4) Standard precedence chain
     fallbacks = [
-        MODELS_DIR / "thresholds_fwd.json",
         Path("configs/best_thresholds.json"),
+        MODELS_DIR / "thresholds_fwd.json",
         MODELS_DIR / "thresholds.json",
     ]
     for p in fallbacks:
         try:
             with open(p) as f:
                 obj = json.load(f)
-            t = obj.get("threshold") or obj.get("spike_thresh") or obj.get("p_min")
+            t = obj.get("spike_thresh") or obj.get("p_min") or obj.get("threshold")
             inv = bool(obj.get("invert_proba", False))
             if t is not None:
                 t = float(t)
@@ -122,6 +135,7 @@ def _load_thresholds(variant: str) -> dict[str, float]:
         except Exception:
             pass
 
+    # 5) Fall back to PREDICT_CFG default
     t = float(PREDICT_CFG.get("p_min", 0.55))
     t = max(0.10, min(0.90, t))
     print(f"[debug] using default threshold {t:.6f} (PREDICT_CFG/default)")
@@ -178,7 +192,7 @@ def _feature_coverage_guard(X: pd.DataFrame, saved_feats: list[str], min_coverag
     if coverage < min_coverage:
         raise SystemExit(
             f"Feature coverage too low: {coverage:.1%} of required features have variance. "
-            "Prediction aborted — rebuild inference features to match training."
+            "Prediction aborted — inference features do not match training schema."
         )
 
 
@@ -189,12 +203,12 @@ def _binary_to_legacy(pred_bin: int) -> int:
     """
     Map binary forward-returns decision to 3-class 0/1/2:
 
-      binary 1 → 0 (SPIKE)
+      binary 1 → 2 (SPIKE)
       binary 0 → 1 (NORMAL)
 
-    CRASH (2) is not emitted by this mapping.
+    CRASH (0) is not emitted by this mapping for the current binary model.
     """
-    return 0 if int(pred_bin) == 1 else 1
+    return 2 if int(pred_bin) == 1 else 1
 
 
 def _assert_binary_model(model) -> None:
@@ -264,7 +278,8 @@ def _ensure_columns(df: pd.DataFrame, cols: Iterable[str]) -> pd.DataFrame:
 
 def _append_single(pred_012: int, p1: float, when: pd.Timestamp) -> None:
     """
-    Appends/updates a single day in logs/labeled_predictions.csv (0=SPIKE,1=NORMAL,2=CRASH).
+    Appends or updates a single day in logs/labeled_predictions.csv
+    using the convention 0=CRASH,1=NORMAL,2=SPIKE.
     """
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
     path = LOGS_DIR / "labeled_predictions.csv"
@@ -295,7 +310,22 @@ def _append_single(pred_012: int, p1: float, when: pd.Timestamp) -> None:
         df = pd.concat([df, pd.DataFrame([row])], ignore_index=True)
 
     df = df.sort_values("Date").reset_index(drop=True)
+
+    unique_preds = set(df["Prediction"].dropna().astype(int))
+    if not unique_preds.issubset({0, 1, 2}):
+        raise SystemExit(
+            f"Unexpected Prediction values in labeled_predictions.csv: {sorted(unique_preds)}"
+        )
+
+    n_crash = int((df["Prediction"] == 0).sum())
+    n_norm = int((df["Prediction"] == 1).sum())
+    n_spike = int((df["Prediction"] == 2).sum())
+
     print(f"[debug] writing preds to {path.resolve()}")
+    print(
+        "[debug] prediction class distribution (0=CRASH,1=NORMAL,2=SPIKE): "
+        f"crash={n_crash} normal={n_norm} spike={n_spike}"
+    )
     df.to_csv(path, index=False)
     print(f"[predict] wrote → {path}")
 
@@ -306,7 +336,7 @@ def _append_single(pred_012: int, p1: float, when: pd.Timestamp) -> None:
 def _backfill_full(model, saved_feats: list[str], variant: str) -> None:
     """
     Scores all valid dates and (re)writes logs/labeled_predictions.csv.
-    Preserves existing Label. Outputs 0=SPIKE,1=NORMAL,2=CRASH Prediction.
+    Preserves existing Label. Outputs 0=CRASH,1=NORMAL,2=SPIKE in Prediction.
     """
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
     out_path = LOGS_DIR / "labeled_predictions.csv"
@@ -346,7 +376,8 @@ def _backfill_full(model, saved_feats: list[str], variant: str) -> None:
         print("[debug] applied invert_proba: using (1 - p1) for decisions")
 
     pred_bin = (p1 >= float(thresholds.get("p_min", 0.55))).astype(int)
-    pred_012 = np.where(pred_bin == 1, 0, 1).astype(int)
+    # Binary 1 → 2 (SPIKE), binary 0 → 1 (NORMAL); CRASH (0) is not emitted here.
+    pred_012 = np.where(pred_bin == 1, 2, 1).astype(int)
 
     out = (
         pd.DataFrame(
@@ -371,10 +402,14 @@ def _backfill_full(model, saved_feats: list[str], variant: str) -> None:
 
     out = _ensure_columns(out, _REQUIRED_COLS)
 
-    n_spike = int((out["Prediction"] == 0).sum())
+    unique_preds = set(out["Prediction"].dropna().astype(int))
+    if not unique_preds.issubset({0, 1, 2}):
+        raise SystemExit(f"Unexpected Prediction values in backfill output: {sorted(unique_preds)}")
+
+    n_crash = int((out["Prediction"] == 0).sum())
     n_norm = int((out["Prediction"] == 1).sum())
-    n_crash = int((out["Prediction"] == 2).sum())
-    print(f"[debug] preds — spike=0:{n_spike} normal=1:{n_norm} crash=2:{n_crash}")
+    n_spike = int((out["Prediction"] == 2).sum())
+    print(f"[debug] preds — crash=0:{n_crash} normal=1:{n_norm} spike=2:{n_spike}")
     print(f"[debug] writing preds to {out_path.resolve()}")
 
     out.to_csv(out_path, index=False)
@@ -387,7 +422,7 @@ def _backfill_full(model, saved_feats: list[str], variant: str) -> None:
 def live_predict() -> tuple[int, float, pd.Timestamp]:
     """
     Returns (binary_decision, p(long=1), timestamp) using the latest row in SPY_DAILY_CSV.
-    Caller maps to 0=SPIKE,1=NORMAL,2=CRASH if needed.
+    Caller maps to 0=CRASH,1=NORMAL,2=SPIKE if a 3-class label is needed.
     """
     raw = pd.read_csv(SPY_DAILY_CSV, low_memory=False)
     raw["Date"] = pd.to_datetime(raw["Date"], errors="coerce")
@@ -437,7 +472,11 @@ def main(argv: list[str] | None = None) -> int:
 
     pred_bin, prob, when = _score_latest(model, X, variant)
     pred_012 = _binary_to_legacy(pred_bin)
-    label_human = {0: "SPIKE", 1: "NORMAL", 2: "CRASH"}[pred_012]
+    label_human = {0: "CRASH", 1: "NORMAL", 2: "SPIKE"}[pred_012]
+
+    if pred_012 not in (0, 1, 2):
+        raise SystemExit(f"Unexpected legacy prediction value: {pred_012}")
+
     print(
         f"[predict] {pd.to_datetime(when).date()}  p(long=1)={prob:.4f}  "
         f"binary={pred_bin}  legacy={pred_012} ({label_human})"
