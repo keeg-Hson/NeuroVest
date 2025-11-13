@@ -113,7 +113,7 @@ def get_feature_list():
 def in_human_speak(label):
     """
     Convert internal labels to human-readable strings.
-    0 = SPIKE, 1 = NORMAL, 2 = CRASH
+    0 = CRASH, 1 = NORMAL, 2 = SPIKE
     """
     try:
         if isinstance(label, str) and label.isdigit():
@@ -122,12 +122,12 @@ def in_human_speak(label):
         pass
 
     mapping = {
-        0: "SPIKE",
+        0: "CRASH",
         1: "NORMAL",
-        2: "CRASH",
-        "0": "SPIKE",
+        2: "SPIKE",
+        "0": "CRASH",
         "1": "NORMAL",
-        "2": "CRASH",
+        "2": "SPIKE",
         "NORMAL": "NORMAL",
         "CRASH": "CRASH",
         "SPIKE": "SPIKE",
@@ -236,10 +236,10 @@ def log_prediction_to_file(
     if VAR == "forward_returns":
         sig = "TRADE" if row["Prediction"] == 1 else "NO-TRADE"
     else:
-        # 3-class convention: 0 = SPIKE (buy), 1 = NORMAL (hold), 2 = CRASH (sell)
-        if row["Prediction"] == 0:
+        # 3-class convention: 0 = CRASH (sell), 1 = NORMAL (hold), 2 = SPIKE (buy)
+        if row["Prediction"] == 2:
             sig = "BUY"
-        elif row["Prediction"] == 2:
+        elif row["Prediction"] == 0:
             sig = "SELL"
         else:
             sig = "HOLD"
@@ -287,13 +287,13 @@ def label_real_outcomes_from_log(crash_thresh=-0.005, spike_thresh=0.005):
     df["Next_Close"] = df[price_col].shift(-1)
     df["Future_Return"] = (df["Next_Close"] - df[price_col]) / df[price_col]
 
-    # 3-class convention: 0 = SPIKE, 1 = NORMAL, 2 = CRASH
+    # 3-class convention: 0 = CRASH, 1 = NORMAL, 2 = SPIKE
     df["Actual_Event"] = np.select(
         [
-            df["Future_Return"] <= crash_thresh,
-            df["Future_Return"] >= spike_thresh,
+            df["Future_Return"] <= crash_thresh,  # big down move
+            df["Future_Return"] >= spike_thresh,  # big up move
         ],
-        [2, 0],
+        [0, 2],  # 0=CRASH, 2=SPIKE
         default=1,
     )
 
