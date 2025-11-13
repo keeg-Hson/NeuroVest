@@ -382,6 +382,18 @@ def expected_value(prob_long, avg_gain, avg_loss, fee_bps=1.5, slippage_bps=2.0)
 
 
 # --- injected minimal helpers ---
+def _compute_rsi_helper(close_series, window=14):
+    """Helper function to compute RSI for any window size."""
+    delta = close_series.diff()
+    gain = delta.clip(lower=0.0)
+    loss = -delta.clip(upper=0.0)
+    avg_gain = gain.rolling(window).mean()
+    avg_loss = loss.rolling(window).mean()
+    rs = avg_gain / avg_loss.replace(0, np.nan)
+    rsi = 100.0 - (100.0 / (1.0 + rs))
+    return rsi
+
+
 def add_features(df):
     import pandas as pd
 
@@ -502,6 +514,66 @@ def add_features(df):
         d = _add_ext(d)
     except Exception:
         pass
+
+    # Advanced feature engineering: multi-timeframe and enhanced interactions
+    # 1. Multi-timeframe returns and volatility
+    for window in [5, 10, 50]:
+        d[f"Returns_{window}d"] = d["Close"].pct_change(window)
+        d[f"Volatility_{window}d"] = d["Daily_Return"].rolling(window).std()
+        d[f"RSI_{window}"] = _compute_rsi_helper(d["Close"], window)
+
+    # 2. Feature interactions (capturing regime changes)
+    d["RSI_x_Volatility"] = d["RSI"] * d["Volatility"]
+    if "Volume" in d.columns:
+        d["Volume_x_Returns"] = d["Volume"] * d["Daily_Return"].abs()
+        d["Volume_x_Volatility"] = d["Volume"] * d["Volatility"]
+    d["MACD_divergence"] = (d["MACD"] - d["MACD"].rolling(5).mean()) / (
+        d["MACD"].rolling(5).std() + 1e-9
+    )
+
+    # 3. Enhanced momentum features
+    d["ROC_5"] = (d["Close"] - d["Close"].shift(5)) / (d["Close"].shift(5) + 1e-9)
+    d["ROC_10"] = (d["Close"] - d["Close"].shift(10)) / (d["Close"].shift(10) + 1e-9)
+    d["MOM_ratio"] = d["ROC_5"] / (d["ROC_10"].abs() + 1e-9)
+
+    # 4. Trend strength indicators
+    for window in [10, 20, 50]:
+        sma = d["Close"].rolling(window).mean()
+        d[f"Trend_strength_{window}"] = (d["Close"] - sma) / (
+            d["Close"].rolling(window).std() + 1e-9
+        )
+
+    # 5. Volume profile features
+    if "Volume" in d.columns:
+        d["Volume_trend"] = d["Volume"] / (d["Volume"].rolling(20).mean() + 1e-9)
+        d["Volume_volatility"] = d["Volume"].rolling(20).std() / (
+            d["Volume"].rolling(20).mean() + 1e-9
+        )
+
+    # 6. Price patterns
+    d["Higher_high"] = (
+        (d["High"] > d["High"].shift(1)) & (d["High"].shift(1) > d["High"].shift(2))
+    ).astype(int)
+    d["Lower_low"] = (
+        (d["Low"] < d["Low"].shift(1)) & (d["Low"].shift(1) < d["Low"].shift(2))
+    ).astype(int)
+
+    # 7. Rolling correlation features
+    d["Returns_volatility_corr"] = d["Daily_Return"].rolling(20).corr(d["Volatility"])
+    if "Volume" in d.columns:
+        d["Volume_returns_corr"] = d["Volume"].rolling(20).corr(d["Daily_Return"].abs())
+
+    # 8. Temporal features (capture day-of-week, month effects)
+    if isinstance(d.index, pd.DatetimeIndex):
+        d["DayOfWeek"] = d.index.dayofweek
+        d["Month"] = d.index.month
+        d["Quarter"] = d.index.quarter
+        d["DayOfMonth"] = d.index.day
+        # Cyclical encoding for better ML representation
+        d["DayOfWeek_sin"] = np.sin(2 * np.pi * d["DayOfWeek"] / 7)
+        d["DayOfWeek_cos"] = np.cos(2 * np.pi * d["DayOfWeek"] / 7)
+        d["Month_sin"] = np.sin(2 * np.pi * d["Month"] / 12)
+        d["Month_cos"] = np.cos(2 * np.pi * d["Month"] / 12)
 
     # Interaction features that depend on sentiment and volume/RSI
     if "News_Sent_Z20" in d.columns and "Vol_Ratio" in d.columns:
@@ -624,17 +696,51 @@ def compute_sample_weights(
     power: float = 1.0,
     long_only: bool = True,
 ):
+    """
+    Enhanced sample weighting with profit-based, recency, and volatility adjustments.
+
+    Args:
+        df: DataFrame with fwd_ret_net and optionally Volatility columns
+        min_weight: Minimum sample weight
+        max_weight: Maximum sample weight
+        power: Exponent for profit-based scaling (reduced from 1.75 for stability)
+        long_only: Whether to only weight positive returns
+    """
     n = len(df)
     if n == 0:
         return np.array([], dtype=float)
     if "fwd_ret_net" not in df.columns:
         return np.ones(n, dtype=float)
 
+    # 1. Profit-based weights (existing logic, but with tuned power)
     r = pd.to_numeric(df["fwd_ret_net"], errors="coerce").fillna(0.0).to_numpy()
     pos = np.maximum(r, 0.0)
     scale = 0.01
-    w = 1.0 + (pos / scale) ** float(power)
-    w = np.clip(w, float(min_weight), float(max_weight))
+    profit_weight = 1.0 + (pos / scale) ** float(power)
+    profit_weight = np.clip(profit_weight, min_weight * 0.7, max_weight * 0.6)
+
+    # 2. Recency weights (more recent data is more relevant)
+    positions = np.arange(n)
+    recency_weight = np.exp(positions / n * 0.5)  # Exponential growth
+    recency_weight = recency_weight / recency_weight.mean()  # Normalize to mean=1
+
+    # 3. Volatility-adjusted weights (down-weight high volatility periods for stability)
+    vol_weight = np.ones(n)
+    if "Volatility" in df.columns:
+        vol = pd.to_numeric(df["Volatility"], errors="coerce").fillna(df["Volatility"].median())
+        vol_median = vol.median()
+        if vol_median > 0:
+            vol_weight = 1.0 / (1.0 + vol / vol_median)  # Inverse volatility
+            vol_weight = vol_weight / vol_weight.mean()  # Normalize to mean=1
+
+    # 4. Combine weights multiplicatively (but with dampening to prevent extremes)
+    # More conservative powers to reduce overfitting to recent regime
+    combined = profit_weight * (recency_weight**0.3) * (vol_weight**0.5)
+    combined = combined / combined.mean()  # Normalize to mean=1
+
+    # 5. Apply final clipping
+    w = np.clip(combined, float(min_weight), float(max_weight))
+
     return w
 
 
