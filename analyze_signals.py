@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 
-from utils import add_features, load_SPY_data
+from utils import add_features, add_forward_returns_and_labels, load_SPY_data
 
 warnings.filterwarnings("ignore", message=".*no_silent_downcasting.*")
 
@@ -16,6 +16,9 @@ def analyze_signals():
     print("Loading and processing SPY data...")
     df = load_SPY_data()
     df, feature_cols = add_features(df)
+
+    print("Adding forward-returns labels for diagnostics (training-aligned)...")
+    df = add_forward_returns_and_labels(df)
 
     print("Forward filling missing values...")
     df = df.infer_objects(copy=False)
@@ -40,32 +43,35 @@ def analyze_signals():
     print("Saved: logs/correlation_heatmap.png")
     plt.close()
 
-    # 2) Correlation of features vs. NEXT-DAY RETURN
-    print("Computing correlation to next-day return...")
-    next_ret = df["Close"].pct_change().shift(-1)
-
-    # keep only rows where target is finite
-    mask = np.isfinite(next_ret.values)
-    next_ret = next_ret[mask]
-
-    # build a safe feature dict with enough observations
-    safe_feats = {}
-    for c in valid_feature_cols:
-        s = df[c]
-        s = s[mask].replace([np.inf, -np.inf], np.nan)
-        if s.notna().sum() >= 30:  # require a minimum sample size
-            safe_feats[c] = s
-
-    if safe_feats:
-        corr_series = pd.DataFrame(safe_feats).corrwith(next_ret, method="pearson")
-        corr_series = corr_series.dropna().sort_values(ascending=False)
-        corr_series.to_csv("logs/signal_corr_to_nextday_return.csv", header=["corr"])
-        print("Saved: logs/signal_corr_to_nextday_return.csv")
+    # 2) Correlation of features vs FORWARD NET RETURN (matches training helper)
+    print("Computing correlation to forward net return...")
+    if "fwd_ret_net" not in df.columns:
+        print("⚠️ fwd_ret_net not found; skipping forward-return correlations.")
     else:
-        print("⚠️ Not enough valid data to compute correlations to next-day return.")
+        target = pd.to_numeric(df["fwd_ret_net"], errors="coerce")
+
+        # keep only rows where target is finite
+        mask = np.isfinite(target.values)
+        target = target[mask]
+
+        # build a safe feature dict with enough observations
+        safe_feats = {}
+        for c in valid_feature_cols:
+            s = df[c]
+            s = s[mask].replace([np.inf, -np.inf], np.nan)
+            if s.notna().sum() >= 30:  # require a minimum sample size
+                safe_feats[c] = s
+
+        if safe_feats:
+            corr_series = pd.DataFrame(safe_feats).corrwith(target, method="pearson")
+            corr_series = corr_series.dropna().sort_values(ascending=False)
+            corr_series.to_csv("logs/signal_corr_to_fwd_return.csv", header=["corr"])
+            print("Saved: logs/signal_corr_to_fwd_return.csv")
+        else:
+            print("⚠️ Not enough valid data to compute correlations to forward returns.")
 
     # Example overlays (no emojis in titles)
-    example_signals = ["RSI", "MACD", "MACD_Signal", "VIX", "News_Sentiment", "Reddit_Sentiment"]
+    example_signals = ["RSI", "MACD", "MACD_Signal", "VIX", "News_Sent_Z20", "Reddit_Sent_Z20"]
     for signal in example_signals:
         if signal in df.columns:
             plt.figure(figsize=(14, 6))
