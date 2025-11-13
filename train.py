@@ -1,3 +1,42 @@
+#!/usr/bin/env python3
+# train.py
+"""
+NeuroVest — model training
+
+Purpose
+-------
+Trains the main XGBoost-based classifier for event prediction on SPY.
+
+Two primary labeling branches are supported:
+
+1) Forward-returns branch (default, controlled by TRAIN_CFG["use_forward_returns"]):
+   - Uses add_forward_returns_and_labels to derive a binary target y ∈ {0,1}
+     based on forward net returns over TRAIN_CFG["horizon"] days and
+     TRAIN_CFG["pos_threshold"].
+   - Builds features via utils.add_features / utils.finalize_features.
+   - Uses logs/top_signals.txt (if present) to gate the feature set based on
+     prior correlation diagnostics.
+   - Applies time-series cross-validation, optional SMOTE, KBest feature selection,
+     sample-weighting, and probability calibration.
+   - Saves:
+       models/market_crash_model_fwd.pkl       (model + feature schema)
+       models/input_features_fwd.txt           (input feature column names)
+       models/label_map_fwd.json               (identity map for y ∈ {0,1})
+       models/thresholds_fwd.json              (OOF-tuned probability threshold)
+
+2) Triple-barrier branch (fallback):
+   - Uses label_events_triple_barrier to derive multi-class Event labels.
+   - Trains an XGBoost classifier with similar pipeline components.
+   - Saves:
+       models/market_crash_model.pkl
+       models/input_features.txt
+       models/label_map.json
+       models/thresholds.json
+
+This module is intended to be run via `python train.py` or imported and
+called through train_model / train_best_xgboost_model.
+"""
+
 from dotenv import load_dotenv
 
 load_dotenv(".env", override=True)
@@ -9,10 +48,12 @@ import warnings
 from datetime import datetime
 
 import joblib
+import numpy as np
 import pandas as pd
 import xgboost as xgb
 from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline
+from sklearn.base import clone
 from sklearn.feature_selection import SelectKBest, VarianceThreshold, f_classif
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import (
@@ -24,15 +65,12 @@ from sklearn.metrics import (
     precision_score,
     recall_score,
 )
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import BaseCrossValidator, GridSearchCV
 from xgboost import XGBClassifier
 
 socket.setdefaulttimeout(float(os.getenv("NET_TIMEOUT", 3)))
 
-import numpy as np
-from sklearn.model_selection import BaseCrossValidator
-
-from config import TRAIN_CFG
+from config import MODELS_DIR, TRAIN_CFG
 from utils import (
     add_features,
     add_forward_returns_and_labels,
@@ -122,17 +160,6 @@ os.makedirs("logs", exist_ok=True)
 os.makedirs("models", exist_ok=True)
 
 
-def _build_adaptive_cv(n_rows: int) -> BaseCrossValidator:
-    min_train = max(200, int(0.2 * n_rows))
-    n_splits = min(5, max(3, (n_rows - min_train) // 100))
-    embargo = min(10, max(2, n_rows // 150))
-    remainder = max(1, n_rows - min_train)
-    test_size = max(25, remainder // max(1, n_splits))
-    return PurgedWalkForwardSplit(
-        n_splits=n_splits, min_train_size=min_train, test_size=test_size, embargo=embargo
-    )
-
-
 class SingleFoldTimeSplit(BaseCrossValidator):
     def __init__(self, min_train_size=50, test_size=10, embargo=0):
         self.min_train_size = int(min_train_size)
@@ -175,6 +202,17 @@ def _n_splits(cv, n_rows):
         return 0
 
 
+def _build_adaptive_cv(n_rows: int) -> BaseCrossValidator:
+    min_train = max(200, int(0.2 * n_rows))
+    n_splits = min(5, max(3, (n_rows - min_train) // 100))
+    embargo = min(10, max(2, n_rows // 150))
+    remainder = max(1, n_rows - min_train)
+    test_size = max(25, remainder // max(1, n_splits))
+    return PurgedWalkForwardSplit(
+        n_splits=n_splits, min_train_size=min_train, test_size=test_size, embargo=embargo
+    )
+
+
 def _cv_or_holdout(n_rows, embargo=2, min_train_floor=30):
     cv = _build_adaptive_cv(n_rows)
     if _n_splits(cv, n_rows) > 0:
@@ -211,7 +249,37 @@ def _safe_smote_from_fold(y: pd.Series, cv: BaseCrossValidator):
     return True, SMOTE(random_state=42, k_neighbors=k)
 
 
-from sklearn.base import clone
+def _write_split_meta(dates, cv, out_path=None):
+    """
+    Persist a simple split_meta.json so that downstream evaluation/backtests
+    can optionally restrict to out-of-sample history.
+    """
+    try:
+        dates = pd.to_datetime(dates)
+        n = len(dates)
+        splits = list(_iter_splits(cv, n))
+        if not splits:
+            return
+        _, te = splits[-1]
+        if len(te) == 0:
+            return
+        split_idx = int(np.min(te))
+        split_dt = dates[split_idx]
+        split_date_str = split_dt.date().isoformat() if hasattr(split_dt, "date") else str(split_dt)
+
+        payload = {
+            "split_index": int(split_idx),
+            "split_date": split_date_str,
+            "n_rows": int(n),
+            "cv_folds": int(len(splits)),
+        }
+        target = out_path or (MODELS_DIR / "split_meta.json")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with open(target, "w") as f:
+            json.dump(payload, f, indent=2, default=str)
+        print(f"💾 Saved split metadata → {target}")
+    except Exception as e:
+        print(f"⚠️ Could not write split_meta.json: {e}")
 
 
 def pick_threshold_from_oof(pipe, X, y, cv, pos_label=1):
@@ -264,6 +332,32 @@ def pick_threshold_from_oof(pipe, X, y, cv, pos_label=1):
     }
 
 
+# ====================== Top-signal utilities ======================
+def _load_top_signals(path: str = "logs/top_signals.txt") -> list[str]:
+    """
+    Loads top feature names from analyze_signals/select_top_signals output.
+
+    Expected format (per line):
+        feature_name,correlation,...
+
+    Lines starting with "Top" or empty lines are ignored.
+    """
+    p = os.path.join(path)
+    try:
+        with open(p) as f:
+            lines = f.readlines()
+    except FileNotFoundError:
+        print("⚠️ logs/top_signals.txt not found. Proceeding without correlation-based gating.")
+        return []
+
+    top = [
+        ln.strip().split(",")[0] for ln in lines if ln.strip() and not ln.lstrip().startswith("Top")
+    ]
+    top = [c for c in dict.fromkeys(top) if c]
+    print(f"✅ Loaded {len(top)} top signals for potential feature gating.")
+    return top
+
+
 # ====================== Public entry points ======================
 def train_model(models=None, fast=False):
     df = load_SPY_data()
@@ -284,23 +378,14 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     print("\n📊 Generating features...")
     df, all_feature_cols = add_features(df)
 
-    # Optional: use logs/top_signals.txt if present (for inspection only)
-    try:
-        with open("logs/top_signals.txt") as f:
-            raw_top = [
-                line.strip().split(",")[0]
-                for line in f.readlines()
-                if line.strip() and not line.startswith("Top")
-            ]
-        print(f"✅ Loaded top signals (for reference): {raw_top}")
-    except FileNotFoundError:
-        print("⚠️ logs/top_signals.txt not found. Proceeding with the rich feature set.")
-        raw_top = []
+    # Optional: top-signal gating from prior correlation diagnostics
+    top_signals = _load_top_signals()
 
     N = len(df)
     MIN_VALID_ROWS = max(5, min(60, int(N * 0.40)))
 
-    # Use the full rich feature list from add_features, filtered only for data availability
+    # Start from the rich feature list returned by add_features,
+    # filtered only for minimum data availability.
     feature_cols = [
         c for c in all_feature_cols if c in df.columns and df[c].notna().sum() >= MIN_VALID_ROWS
     ]
@@ -326,8 +411,27 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         raise RuntimeError("No features available after dynamic fallback.")
 
     feature_cols = list(dict.fromkeys(feature_cols))
+
+    # Apply intersection with top_signals when the overlap is reasonably sized.
+    if top_signals:
+        allowed = set(top_signals)
+        intersect = [c for c in feature_cols if c in allowed]
+        min_overlap = max(10, len(feature_cols) // 3)
+        if len(intersect) >= min_overlap:
+            print(
+                f"🔎 Using intersection with top_signals for training features "
+                f"({len(intersect)} of {len(feature_cols)})."
+            )
+            feature_cols = intersect
+        else:
+            print(
+                f"ℹ️ top_signals intersection too small ({len(intersect)}); "
+                f"retaining broader feature set ({len(feature_cols)})."
+            )
+
     print(
-        f"🧪 Final feature set ({len(feature_cols)}): {feature_cols[:20]}{'...' if len(feature_cols) > 20 else ''}"
+        f"🧪 Final feature set ({len(feature_cols)}): "
+        f"{feature_cols[:20]}{'...' if len(feature_cols) > 20 else ''}"
     )
 
     # CLEAN features BEFORE labeling/splitting
@@ -352,6 +456,13 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     # ====== Forward-returns branch ======
     if TRAIN_CFG.get("use_forward_returns", False):
         df = df.replace([np.inf, -np.inf], np.nan)
+
+        print(
+            f"[FWD] Labeling with horizon={TRAIN_CFG['horizon']}d, "
+            f"pos_threshold={TRAIN_CFG['pos_threshold']:.4f}, "
+            f"price_col='{TRAIN_CFG['price_col']}'."
+        )
+
         df = add_forward_returns_and_labels(
             df,
             price_col=TRAIN_CFG["price_col"],
@@ -362,7 +473,6 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             pos_threshold=TRAIN_CFG["pos_threshold"],
         )
 
-        # Build input schema (never include forward-looking columns)
         INPUT_SCHEMA_FPATH = "models/input_features_fwd.txt"
 
         def _clean_names(names):
@@ -405,6 +515,8 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
                 print("ℹ️ [FWD] Using last-row holdout (1 split).")
             else:
                 raise RuntimeError("Not enough rows to train. Need at least 2.")
+
+        _write_split_meta(X.index, tscv_local)
 
         # SMOTE optionally (guarded)
         try:
@@ -458,12 +570,20 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
                 "clf__gamma": [0, 1],
             }
 
+        # IMPORTANT FIX: align profit-based sample weights to X.index
         sample_weight_profit = compute_sample_weights(
-            df,
+            df.loc[X.index],
             min_weight=TRAIN_CFG["min_weight"],
             max_weight=TRAIN_CFG["max_weight"],
             power=TRAIN_CFG["weight_power"],
             long_only=TRAIN_CFG["long_only"],
+        )
+
+        print(
+            "🧮 Sample weight stats → "
+            f"min={float(sample_weight_profit.min()):.3f}, "
+            f"max={float(sample_weight_profit.max()):.3f}, "
+            f"mean={float(sample_weight_profit.mean()):.3f}"
         )
 
         grid_search = GridSearchCV(
@@ -784,8 +904,8 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
 
     best_model_wn = deepcopy(best_model)
     if hasattr(best_model_wn, "steps"):
-        steps = dict(best_model_wn.steps)
-        if "smote" in steps:
+        steps_map = dict(best_model_wn.steps)
+        if "smote" in steps_map:
             best_model_wn.set_params(smote="passthrough")
     best_model_wn.fit(X, y, **{"clf__sample_weight": w})
 
@@ -821,7 +941,7 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
                 try:
                     mask = kb.get_support()
                     feat_names = (
-                        list(np.array(list(X.columns))[mask])
+                        list(_np.array(list(X.columns))[mask])
                         if hasattr(mask, "__len__") and len(mask) == X.shape[1]
                         else list(X.columns)
                     )
@@ -838,7 +958,7 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
 
         sample_n = min(5000, shap_X.shape[0])
         if sample_n < shap_X.shape[0]:
-            rs = np.random.RandomState(42)
+            rs = _np.random.RandomState(42)
             take = rs.choice(shap_X.shape[0], size=sample_n, replace=False)
             shap_X_sample = shap_X[take]
         else:
