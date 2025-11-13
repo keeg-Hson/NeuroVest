@@ -4,33 +4,32 @@ Unified pipeline runner for NeuroVest.
 
 What it does (toggle-able via CLI flags):
   1) Refresh data sources (best-effort; optional modules)
-  2) Select/rank signals (optional module)
-  3) Train model(s) via train_from_labels.py (with X/y alignment)
+  2) Analyze & select/rank signals (optional modules)
+  3) Train model(s) via train.py (with X/y alignment)
      - Also writes models/split_meta.json (OOS start date)
   4) Backfill predictions (predict.py) → logs/labeled_predictions.csv
-     - Ensures models/thresholds.json exists (seed from config if present)
-  5) Backtest (backtest_module.py) with OOS-only option
+  5) Backtest (backtest.py) with OOS-only option
   6) Generate HTML tearsheet (tearsheet.py)
 
 Key repo expectations (with fallbacks):
   - config.py (optional) defining LOGS_DIR, MODELS_DIR, OUTPUTS_DIR, SPY_DAILY_CSV, PREDICT_CFG
-  - train_from_labels.py with train_model() or main()
-  - predict.py with main() (current repo prints/writes labeled_predictions.csv)
-  - backtest_module.py with run_backtest() or main()
+  - train.py with train_model() or main()
+  - predict.py with main()/run_predictions() (writes labeled_predictions.csv)
+  - backtest.py with run_backtest() or main()
   - tearsheet.py with main() that emits outputs/tearsheet_YYYY-MM-DD.html
 
 Examples:
   python run_all.py --all
   python run_all.py --predict-only
   python run_all.py --skip-refresh --oos-only
-  python run_all.py --backtest-window 365 --auto-thresholds (no-op unless your backtest supports it)
+  python run_all.py --backtest-window 365
 
 Notes:
 - We import modules if possible for speed and cleaner logs; otherwise we fall back
   to running the script file with subprocess.
 - We attempt to write OOS split metadata if the training script doesn’t.
-- We silently create models/thresholds.json if it’s missing using PREDICT_CFG defaults or
-  (p_min=0.55, ev_min=0.0005).
+- Thresholds.json is expected to be produced by training / sweep code; we only
+  warn if it is missing instead of writing an old-style schema.
 
 Outputs:
 - Orchestrator log: logs/run_all_YYYYmmdd_HHMMSS.log
@@ -69,7 +68,8 @@ except Exception:
 LOGS_DIR = Path(getattr(CONFIG, "LOGS_DIR", ROOT / "logs"))
 MODELS_DIR = Path(getattr(CONFIG, "MODELS_DIR", ROOT / "models"))
 OUTPUTS_DIR = Path(getattr(CONFIG, "OUTPUTS_DIR", ROOT / "outputs"))
-SPY_DAILY_CSV = Path(getattr(CONFIG, "SPY_DAILY_CSV", ROOT / "data" / "SPY_daily.csv"))
+# Align with canonical loader (utils.load_SPY_data → data/SPY.csv by default)
+SPY_DAILY_CSV = Path(getattr(CONFIG, "SPY_DAILY_CSV", ROOT / "data" / "SPY.csv"))
 PREDICT_CFG = getattr(CONFIG, "PREDICT_CFG", {"p_min": 0.55, "ev_min": 0.0005})
 
 for d in (LOGS_DIR, MODELS_DIR, OUTPUTS_DIR):
@@ -155,15 +155,19 @@ def _call_script(py_file: Path, args: list[str] | None = None) -> tuple[bool, st
 
 
 def _ensure_thresholds_json() -> None:
-    """Create models/thresholds.json if it doesn't exist, using PREDICT_CFG or defaults."""
+    """
+    Check for models/thresholds.json and warn if missing.
+
+    4.x training / sweep code is responsible for writing the correct schema
+    (classification thresholds, fwd thresholds, etc). We avoid seeding an
+    incompatible legacy format here.
+    """
     f = MODELS_DIR / "thresholds.json"
     if not f.exists():
-        payload = {
-            "p_min": float(PREDICT_CFG.get("p_min", 0.55)),
-            "ev_min": float(PREDICT_CFG.get("ev_min", 0.0005)),
-        }
-        f.write_text(json.dumps(payload, indent=2))
-        LOGGER.info("Seeded %s with %s", f, payload)
+        LOGGER.warning(
+            "models/thresholds.json is missing. "
+            "Run training and/or threshold sweeps before relying on backtests."
+        )
 
 
 def _write_split_meta_from_training(full_csv: Path, ratio: float = 0.75) -> Path | None:
@@ -272,6 +276,37 @@ def step_refresh_data() -> StepResult:
         return StepResult(name, ok=False, seconds=time.time() - start, error=traceback.format_exc())
 
 
+def step_analyze_signals() -> StepResult:
+    """
+    Run analyze_signals to compute corr / diagnostics used by select_top_signals.
+    Best-effort; if module missing, we just skip.
+    """
+    start = time.time()
+    name = "Analyze signals (optional)"
+    try:
+        mod = _import_module("analyze_signals")
+        if not mod:
+            LOGGER.info("analyze_signals not present; skipping.")
+            return StepResult(name, ok=True, seconds=time.time() - start, extra={"skipped": True})
+
+        fn = _find_callable(mod, ["main", "run", "analyze_signals"])
+        if not fn:
+            LOGGER.info("analyze_signals has no callable entrypoint; skipping.")
+            return StepResult(name, ok=True, seconds=time.time() - start, extra={"skipped": True})
+
+        LOGGER.info("analyze_signals.%s()", fn.__name__)
+        try:
+            res = fn() if fn.__code__.co_argcount == 0 else fn(**{})
+        except SystemExit:
+            res = "SystemExit(0)"
+        return StepResult(
+            name, ok=True, seconds=time.time() - start, extra={"result": str(res)[:300]}
+        )
+    except Exception:
+        LOGGER.exception("%s failed", name)
+        return StepResult(name, ok=False, seconds=time.time() - start, error=traceback.format_exc())
+
+
 def step_select_top_signals() -> StepResult:
     start = time.time()
     name = "Select top signals (optional)"
@@ -282,7 +317,7 @@ def step_select_top_signals() -> StepResult:
             if fn:
                 LOGGER.info("select_top_signals.%s()", fn.__name__)
                 try:
-                    res = fn()
+                    res = fn() if fn.__code__.co_argcount == 0 else fn(**{})
                     return StepResult(
                         name, ok=True, seconds=time.time() - start, extra={"result": str(res)[:300]}
                     )
@@ -292,19 +327,19 @@ def step_select_top_signals() -> StepResult:
         return StepResult(name, ok=True, seconds=time.time() - start, extra={"skipped": True})
     except Exception:
         LOGGER.exception("%s failed", name)
-        return StepResult(name, ok=False, seconds=time.time() - start, error=traceback.format_exc())
+    return StepResult(name, ok=False, seconds=time.time() - start, error=traceback.format_exc())
 
 
 def step_train(oos_ratio: float) -> StepResult:
     start = time.time()
     name = "Train model(s)"
-    tf = ROOT / "train_from_labels.py"
+    tf = ROOT / "train.py"
     try:
-        mod = _import_module("train_from_labels")
+        mod = _import_module("train")
         if mod:
             fn = _find_callable(mod, ["train_model", "main", "run"])
             if fn:
-                LOGGER.info("train_from_labels.%s()", fn.__name__)
+                LOGGER.info("train.%s()", fn.__name__)
                 try:
                     # Support both zero-arg and kw variants
                     result = fn() if fn.__code__.co_argcount == 0 else fn(**{})
@@ -312,12 +347,10 @@ def step_train(oos_ratio: float) -> StepResult:
                     # Some scripts call argparse+exit; treat as success.
                     result = "SystemExit(0)"
                 except Exception as e:
-                    LOGGER.warning(
-                        "train_from_labels import-run failed: %s; falling back to script", e
-                    )
+                    LOGGER.warning("train import-run failed: %s; falling back to script", e)
                     ok, out, err = _call_script(tf)
                     if not ok:
-                        raise RuntimeError("train_from_labels script failed")
+                        raise RuntimeError("train script failed") from e
                 # Write OOS meta if missing
                 _write_split_meta_from_training(SPY_DAILY_CSV, ratio=oos_ratio)
                 return StepResult(
@@ -343,18 +376,24 @@ def step_backfill_predictions() -> StepResult:
         _ensure_thresholds_json()
         mod = _import_module("predict")
         if mod:
-            fn = _find_callable(mod, ["main", "run", "run_predictions"])
+            fn = _find_callable(mod, ["run_predictions", "main", "run"])
             if fn:
                 LOGGER.info("predict.%s()", fn.__name__)
                 try:
-                    result = fn() if fn.__code__.co_argcount == 0 else fn(**{})
+                    # If this is run_predictions(backfill=True, ...), respect that.
+                    if fn.__name__ == "run_predictions":
+                        argc = fn.__code__.co_argcount
+                        argnames = fn.__code__.co_varnames[:argc]
+                        fn(backfill=True) if "backfill" in argnames else fn()
+                    else:
+                        fn() if fn.__code__.co_argcount == 0 else fn(**{})
                 except SystemExit:
-                    result = "SystemExit(0)"
+                    LOGGER.info("predict exited via SystemExit(0)")
                 except Exception as e:
                     LOGGER.warning("predict import-run failed: %s; falling back to script", e)
                     ok, out, err = _call_script(pf)
                     if not ok:
-                        raise RuntimeError("predict script failed")
+                        raise RuntimeError("predict script failed") from e
                 # Confirm file exists
                 out_csv = LOGS_DIR / "labeled_predictions.csv"
                 exists = out_csv.exists()
@@ -380,7 +419,7 @@ def step_backfill_predictions() -> StepResult:
 def step_backtest(window_days: int | None, oos_only: bool) -> StepResult:
     start = time.time()
     name = "Backtest"
-    bf = ROOT / "backtest_module.py"
+    bf = ROOT / "backtest.py"
     try:
         # Optionally filter predictions to OOS before running the backtest script (non-invasive)
         labeled = LOGS_DIR / "labeled_predictions.csv"
@@ -390,7 +429,7 @@ def step_backtest(window_days: int | None, oos_only: bool) -> StepResult:
             if ok_oos and kept > 0:
                 os.environ["NEUROVEST_PREDICTIONS_CSV"] = str(filtered)
 
-        mod = _import_module("backtest_module")
+        mod = _import_module("backtest")
         args_for_script: list[str] = []
         if window_days:
             os.environ["NEUROVEST_BACKTEST_WINDOW_DAYS"] = str(window_days)
@@ -398,18 +437,16 @@ def step_backtest(window_days: int | None, oos_only: bool) -> StepResult:
         if mod:
             fn = _find_callable(mod, ["run_backtest", "main", "run"])
             if fn:
-                LOGGER.info("backtest_module.%s()", fn.__name__)
+                LOGGER.info("backtest.%s()", fn.__name__)
                 try:
-                    result = fn() if fn.__code__.co_argcount == 0 else fn(**{})
+                    fn() if fn.__code__.co_argcount == 0 else fn(**{})
                 except SystemExit:
-                    result = "SystemExit(0)"
+                    LOGGER.info("backtest exited via SystemExit(0)")
                 except Exception as e:
-                    LOGGER.warning(
-                        "backtest_module import-run failed: %s; falling back to script", e
-                    )
+                    LOGGER.warning("backtest import-run failed: %s; falling back to script", e)
                     ok, out, err = _call_script(bf, args_for_script)
                     if not ok:
-                        raise RuntimeError("backtest_module script failed")
+                        raise RuntimeError("backtest script failed") from e
                 return StepResult(
                     name, ok=True, seconds=time.time() - start, extra={"window_days": window_days}
                 )
@@ -433,14 +470,14 @@ def step_tearsheet() -> StepResult:
             if fn:
                 LOGGER.info("tearsheet.%s()", fn.__name__)
                 try:
-                    result = fn() if fn.__code__.co_argcount == 0 else fn(**{})
+                    fn() if fn.__code__.co_argcount == 0 else fn(**{})
                 except SystemExit:
-                    result = "SystemExit(0)"
+                    LOGGER.info("tearsheet exited via SystemExit(0)")
                 except Exception as e:
                     LOGGER.warning("tearsheet import-run failed: %s; falling back to script", e)
                     ok, out, err = _call_script(tf)
                     if not ok:
-                        raise RuntimeError("tearsheet script failed")
+                        raise RuntimeError("tearsheet script failed") from e
 
         # Find the latest generated HTML in outputs/
         latest = None
@@ -471,6 +508,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     group.add_argument("--predict-only", action="store_true", help="Only run prediction stage.")
 
     p.add_argument("--skip-refresh", action="store_true", help="Skip refreshing data sources.")
+    p.add_argument("--skip-analyze", action="store_true", help="Skip signal diagnostics.")
     p.add_argument("--skip-select", action="store_true", help="Skip signal selection.")
     p.add_argument("--skip-train", action="store_true", help="Skip model training.")
     p.add_argument("--skip-backtest", action="store_true", help="Skip backtest.")
@@ -503,22 +541,26 @@ def main(argv: list[str] | None = None) -> int:
     if args.all and not args.skip_refresh and not args.predict_only:
         results.append(step_refresh_data())
 
-    # 2) Select signals (optional)
+    # 2) Analyze signals (optional, before selection)
+    if args.all and not args.skip_analyze and not args.predict_only:
+        results.append(step_analyze_signals())
+
+    # 3) Select signals (optional)
     if args.all and not args.skip_select and not args.predict_only:
         results.append(step_select_top_signals())
 
-    # 3) Train
+    # 4) Train
     if args.all and not args.skip_train and not args.predict_only:
         results.append(step_train(oos_ratio=args.oos_ratio))
 
-    # 4) Predict/backfill (always run unless predict-only toggled)
+    # 5) Predict/backfill (always run unless predict-only toggled)
     results.append(step_backfill_predictions())
 
-    # 5) Backtest
+    # 6) Backtest
     if (args.all and not args.skip_backtest) and not args.predict_only:
         results.append(step_backtest(window_days=args.backtest_window, oos_only=args.oos_only))
 
-    # 6) Tearsheet
+    # 7) Tearsheet
     if args.all and not args.skip_tearsheet and not args.predict_only:
         results.append(step_tearsheet())
 

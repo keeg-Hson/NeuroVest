@@ -12,8 +12,8 @@ Assumptions
       1 = NORMAL
       2 = CRASH
 - Backtest thresholds map to:
-      crash_thresh  → minimum Crash_Conf to treat as a crash event
-      spike_thresh  → minimum Spike_Conf to treat as a spike event
+      crash_thresh      → minimum Crash_Conf to treat as a crash event
+      spike_thresh      → minimum Spike_Conf to treat as a spike event
       confidence_thresh → optional minimum overall confidence filter
 """
 
@@ -46,15 +46,23 @@ BACKTEST_WINDOW_DAYS = None
 
 def _ensure_predictions() -> pd.DataFrame:
     """
-    Run prediction backfill and load daily_predictions to confirm data presence.
-    """
-    print("▶️ Generating predictions once up-front (backfill)...")
-    # Backfill writes logs/daily_predictions.csv and logs/labeled_predictions.csv.
-    run_predictions(backfill=True)
+    Ensure daily_predictions.csv exists and is non-empty.
 
+    - If missing/empty → run_predictions(backfill=True) once.
+    - Then load logs/daily_predictions.csv and return it.
+    """
     pred_path = "logs/daily_predictions.csv"
+
+    need_backfill = not os.path.exists(pred_path) or os.path.getsize(pred_path) == 0
+
+    if need_backfill:
+        print("▶️ Generating predictions (backfill)...")
+        run_predictions(backfill=True)
+    else:
+        print(f"ℹ️ Using existing predictions at {pred_path} (no backfill).")
+
     if not os.path.exists(pred_path) or os.path.getsize(pred_path) == 0:
-        print(f"🚫 Prediction log not found or empty at {pred_path}")
+        print(f"🚫 Prediction log not found or empty at {pred_path} after backfill attempt.")
         return pd.DataFrame()
 
     try:
@@ -64,14 +72,14 @@ def _ensure_predictions() -> pd.DataFrame:
         return pd.DataFrame()
 
     if df.empty:
-        print(f"🚫 Prediction log at {pred_path} is empty after backfill.")
+        print(f"🚫 Prediction log at {pred_path} is empty.")
     else:
         print(f"✅ Loaded {len(df)} prediction rows from {pred_path}")
     return df
 
 
 def main():
-    # 1) Produce predictions once (writes logs/daily_predictions.csv)
+    # 1) Ensure predictions exist (writes/uses logs/daily_predictions.csv)
     pred_df = _ensure_predictions()
     if pred_df is None or pred_df.empty:
         print("🚫 No predictions available. Aborting sweep.")
