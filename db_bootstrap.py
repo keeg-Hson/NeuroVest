@@ -1,6 +1,28 @@
 #!/usr/bin/env python3
-# db_bootstrap.py - build a tiny DuckDB from CSVs
+# db_bootstrap.py
 
+"""
+Builds a compact DuckDB database from CSV sources for evaluation and ad-hoc SQL.
+
+Contents
+--------
+- Price tables: <SYM>_prices with OHLCV data.
+- Predictions table: daily model outputs from logs/daily_predictions.csv.
+- Views:
+    spy_labels : SPY forward returns (FwdRet_1d, FwdRet_5d) per day.
+    eval_join  : joined predictions + forward returns, with PredLong derived
+                 from the legacy 0/1/2 class convention:
+
+                     0 = CRASH
+                     1 = NORMAL
+                     2 = SPIKE (long signal)
+
+Event labels (Actual_Event) and Outcome are derived later in evaluate.py from
+forward returns and TRAIN_CFG thresholds so that training and evaluation remain
+aligned.
+"""
+
+import contextlib
 import pathlib
 
 import duckdb
@@ -13,7 +35,7 @@ LOGS = pathlib.Path("logs")
 con = duckdb.connect(DB)
 
 
-def load_prices(name: str):
+def load_prices(name: str) -> None:
     csv = DATA / f"{name}.csv"
     if not csv.exists():
         print(f"[skip] {csv} not found")
@@ -22,43 +44,54 @@ def load_prices(name: str):
         f"""
         CREATE OR REPLACE TABLE {name}_prices AS
         SELECT
-          CAST(Date AS DATE)                AS Date,
-          CAST(Open AS DOUBLE)              AS Open,
-          CAST(High AS DOUBLE)              AS High,
-          CAST(Low  AS DOUBLE)              AS Low,
-          CAST("Close" AS DOUBLE)           AS Close,
-          CAST("Adj Close" AS DOUBLE)       AS AdjClose,
-          CAST(Volume AS BIGINT)            AS Volume
-        FROM read_csv_auto('{csv}', DATEFORMAT='%Y-%m-%d', HEADER=TRUE);
-    """
+          CAST(Date AS DATE)          AS Date,
+          CAST(Open AS DOUBLE)        AS Open,
+          CAST(High AS DOUBLE)        AS High,
+          CAST(Low  AS DOUBLE)        AS Low,
+          CAST("Close" AS DOUBLE)     AS Close,
+          CAST("Adj Close" AS DOUBLE) AS AdjClose,
+          CAST(Volume AS BIGINT)      AS Volume
+        FROM read_csv_auto(
+          '{csv}',
+          DATEFORMAT='%Y-%m-%d',
+          HEADER=TRUE
+        );
+        """
     )
     con.execute(f"CREATE UNIQUE INDEX IF NOT EXISTS idx_{name}_prices_date ON {name}_prices(Date);")
     print(f"✅ loaded {csv}")
 
 
 def _clean_to_temp(path: pathlib.Path) -> pathlib.Path | None:
-    """Return a temp path with BOM/nulls stripped if needed, else None."""
+    """
+    Returns a temporary path with BOM and NUL bytes stripped if any were found.
+    If no changes are needed, returns None.
+    """
     b = path.read_bytes()
-    # empty or whitespace-only
     if not b or b.strip() == b"":
         return None
+
     changed = False
-    # strip UTF-8 BOM
+
+    # Strip UTF-8 BOM
     if b.startswith(b"\xef\xbb\xbf"):
         b = b[3:]
         changed = True
-    # remove NUL bytes
+
+    # Remove NUL bytes
     if b.find(b"\x00") != -1:
         b = b.replace(b"\x00", b"")
         changed = True
+
     if not changed:
         return None
+
     tmp = path.with_suffix(path.suffix + ".tmp_clean")
     tmp.write_bytes(b)
     return tmp
 
 
-def load_predictions():
+def load_predictions() -> None:
     import csv
 
     pred_path = LOGS / "daily_predictions.csv"
@@ -69,27 +102,8 @@ def load_predictions():
         print(f"[skip] {pred_path} is empty")
         return
 
-    def _clean_to_temp(path: pathlib.Path) -> pathlib.Path | None:
-        b = path.read_bytes()
-        if not b or b.strip() == b"":
-            return None
-        changed = False
-        # strip UTF-8 BOM
-        if b.startswith(b"\xef\xbb\xbf"):
-            b = b[3:]
-            changed = True
-        # strip NULLs
-        if b.find(b"\x00") != -1:
-            b = b.replace(b"\x00", b"")
-            changed = True
-        if not changed:
-            return None
-        tmp = path.with_suffix(path.suffix + ".tmp_clean")
-        tmp.write_bytes(b)
-        return tmp
-
     def _sniff_delim(path: pathlib.Path) -> str:
-        # default to comma if sniff fails
+        """Detects the most likely delimiter, defaults to comma on failure."""
         try:
             with open(path, encoding="utf-8", errors="replace") as f:
                 sample = f.read(4096)
@@ -98,9 +112,10 @@ def load_predictions():
         except Exception:
             return ","
 
+    # Apply BOM/NUL cleaning if needed
     cleaned = _clean_to_temp(pred_path) or pred_path
 
-    # First: try DuckDB read_csv with forgiving settings
+    # Primary path: DuckDB CSV reader with forgiving options
     try:
         con.execute(
             f"""
@@ -122,19 +137,19 @@ def load_predictions():
               null_padding=true,
               sample_size=-1
             );
-        """
+            """
         )
         print("✅ loaded predictions via DuckDB CSV reader")
     except Exception as e1:
         print(f"[warn] DuckDB read_csv failed: {e1}\n→ falling back to pandas parser")
-        # Fallback: pandas engine='python' (DON'T pass low_memory)
+        # Fallback: pandas engine="python" with delimiter sniffing
         import pandas as pd
 
         try:
             df = pd.read_csv(
                 cleaned,
                 engine="python",
-                sep=None,  # sniff delimiter
+                sep=None,  # let pandas sniff the delimiter
                 on_bad_lines="skip",
                 encoding_errors="replace",
             )
@@ -142,16 +157,17 @@ def load_predictions():
                 print(f"[skip] {pred_path} parsed empty after cleaning")
                 return
 
-            # Normalize expected columns
+            # Normalize expected column names
             lower = {c.lower(): c for c in df.columns}
             ren = {}
-            for want, alts in {
+            mapping = {
                 "Date": ["date"],
                 "Timestamp": ["timestamp"],
                 "Prediction": ["prediction", "pred"],
                 "Spike_Conf": ["spike_conf", "spikeprob", "trade_conf"],
                 "Crash_Conf": ["crash_conf", "crashprob"],
-            }.items():
+            }
+            for want, alts in mapping.items():
                 if want not in df.columns:
                     for a in alts:
                         if a in lower:
@@ -160,7 +176,7 @@ def load_predictions():
             if ren:
                 df.rename(columns=ren, inplace=True)
 
-            # Coerce types
+            # Coerce dates
             if "Date" in df.columns:
                 df["Date"] = (
                     pd.to_datetime(df["Date"], errors="coerce").dt.tz_localize(None).dt.date
@@ -172,11 +188,13 @@ def load_predictions():
             else:
                 raise ValueError("No Date or Timestamp column in predictions CSV")
 
+            # Coerce timestamp if present
             if "Timestamp" in df.columns:
                 df["Timestamp"] = pd.to_datetime(df["Timestamp"], errors="coerce").dt.tz_localize(
                     None
                 )
 
+            # Coerce numeric confidences / predictions
             for c in ("Prediction", "Spike_Conf", "Crash_Conf"):
                 if c in df.columns:
                     df[c] = pd.to_numeric(df[c], errors="coerce")
@@ -187,6 +205,8 @@ def load_predictions():
                 if c in df.columns
             ]
             df = df[keep].dropna(subset=["Date"])
+
+            # Enforce one row per calendar day (latest timestamp wins if present)
             if "Timestamp" in df.columns:
                 df = df.sort_values(["Date", "Timestamp"]).drop_duplicates(
                     subset=["Date"], keep="last"
@@ -206,7 +226,7 @@ def load_predictions():
                   CAST(Crash_Conf AS DOUBLE)   AS Crash_Conf,
                   Timestamp
                 FROM pred_df;
-            """
+                """
             )
             con.unregister("pred_df")
             print("✅ loaded predictions via pandas → DuckDB")
@@ -214,13 +234,12 @@ def load_predictions():
             print(f"❌ Could not load predictions with pandas either: {e2}")
             return
     finally:
+        # Clean up temporary file if one was created
         if cleaned is not pred_path and isinstance(cleaned, pathlib.Path) and cleaned.exists():
-            try:
+            with contextlib.suppress(Exception):
                 cleaned.unlink()
-            except Exception:
-                pass
 
-    # one row per day constraint via unique index
+    # One row per Date enforced via index
     try:
         con.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_predictions_date ON predictions(Date);")
     except Exception as e:
@@ -233,12 +252,14 @@ for sym in ["SPY", "HYG", "LQD", "UUP", "TNX", "DXY"]:
 
 load_predictions()
 
-# ---- handy views ----
+# ---- handy views (forward returns + joined predictions) ----
 con.execute(
     """
 CREATE OR REPLACE VIEW spy_labels AS
 WITH b AS (
-  SELECT Date, COALESCE(AdjClose, Close) AS Close
+  SELECT
+    Date,
+    COALESCE(AdjClose, Close) AS Close
   FROM SPY_prices
   WHERE Date IS NOT NULL
   ORDER BY Date
@@ -255,8 +276,7 @@ SELECT
   Date,
   Close,
   (NextClose  / Close - 1.0) AS FwdRet_1d,
-  (NextClose5 / Close - 1.0) AS FwdRet_5d,
-  CASE WHEN (NextClose / Close - 1.0) > 0.005 THEN 1 ELSE 0 END AS Actual_Event_1d
+  (NextClose5 / Close - 1.0) AS FwdRet_5d
 FROM f;
 """
 )
@@ -270,21 +290,14 @@ SELECT
   p.Spike_Conf,
   p.Crash_Conf,
   CASE
-    WHEN p.Prediction = 2 THEN 1
-    WHEN p.Prediction IN (0,1) THEN 0
+    WHEN p.Prediction = 2 THEN 1       -- 2 = SPIKE → long
+    WHEN p.Prediction IN (0, 1) THEN 0 -- 0/1 = CRASH/NORMAL → flat
     ELSE NULL
   END AS PredLong,
   s.FwdRet_1d,
-  s.Actual_Event_1d,
-  CASE
-    WHEN PredLong = 1 AND s.Actual_Event_1d = 1 THEN 'TP'
-    WHEN PredLong = 1 AND s.Actual_Event_1d = 0 THEN 'FP'
-    WHEN PredLong = 0 AND s.Actual_Event_1d = 0 THEN 'TN'
-    WHEN PredLong = 0 AND s.Actual_Event_1d = 1 THEN 'FN'
-    ELSE '?'
-  END AS Outcome
+  s.FwdRet_5d
 FROM predictions p
-LEFT JOIN spy_labels s USING(Date)
+LEFT JOIN spy_labels s USING (Date)
 ORDER BY Date;
 """
 )
