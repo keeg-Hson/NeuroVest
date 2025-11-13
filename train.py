@@ -54,7 +54,14 @@ import xgboost as xgb
 from imblearn.over_sampling import SMOTE
 from imblearn.pipeline import Pipeline
 from sklearn.base import clone
-from sklearn.feature_selection import SelectKBest, VarianceThreshold, f_classif
+from sklearn.ensemble import ExtraTreesClassifier
+from sklearn.feature_selection import (
+    SelectFromModel,
+    SelectKBest,
+    VarianceThreshold,
+    f_classif,
+    mutual_info_classif,
+)
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import (
     accuracy_score,
@@ -62,6 +69,7 @@ from sklearn.metrics import (
     classification_report,
     confusion_matrix,
     f1_score,
+    precision_recall_curve,
     precision_score,
     recall_score,
 )
@@ -312,16 +320,61 @@ def pick_threshold_from_oof(pipe, X, y, cv, pos_label=1):
     y_pos = (np.asarray(y)[mask] == pos_label).astype(int)
     p = proba_oof[mask]
 
-    ts = np.linspace(0.05, 0.95, 19)
-    best_t, best_f1, best_prec, best_rec = 0.50, -1.0, 0.0, 0.0
+    # Method 1: Precision-Recall curve F1 optimization (more accurate)
+    prec_curve, rec_curve, thresholds = precision_recall_curve(y_pos, p)
+    # Calculate F1 scores for each threshold
+    f1_scores = 2 * (prec_curve * rec_curve) / (prec_curve + rec_curve + 1e-9)
+
+    # Find threshold with best F1 score (with minimum precision constraint)
+    min_precision = 0.40
+    valid_idx = np.where(prec_curve >= min_precision)[0]
+
+    if len(valid_idx) > 0:
+        # Among valid thresholds, pick the one with best F1
+        best_idx = valid_idx[np.argmax(f1_scores[valid_idx])]
+        best_t_pr = thresholds[best_idx] if best_idx < len(thresholds) else 0.5
+        best_f1_pr = f1_scores[best_idx]
+        best_prec_pr = prec_curve[best_idx]
+        best_rec_pr = rec_curve[best_idx]
+    else:
+        # Fallback to 0.5 if no valid threshold found
+        best_t_pr, best_f1_pr, best_prec_pr, best_rec_pr = 0.5, 0.0, 0.0, 0.0
+
+    # Method 2: Linear search (original method, kept for comparison)
+    ts = np.linspace(0.30, 0.70, 41)
+    best_t_linear, best_f1_linear, best_prec_linear, best_rec_linear = 0.50, -1.0, 0.0, 0.0
+
     for t_ in ts:
         y_hat = (p >= t_).astype(int)
+        prec = precision_score(y_pos, y_hat, zero_division=0)
+        rec = recall_score(y_pos, y_hat, zero_division=0)
+
+        # Only consider thresholds with acceptable precision
+        if prec < min_precision:
+            continue
+
         f1 = f1_score(y_pos, y_hat, zero_division=0)
-        if f1 > best_f1:
-            best_f1 = f1
-            best_t = t_
-            best_prec = precision_score(y_pos, y_hat, zero_division=0)
-            best_rec = recall_score(y_pos, y_hat, zero_division=0)
+
+        # Prefer balanced precision/recall by penalizing extreme imbalances
+        balance_penalty = abs(prec - rec) / (prec + rec + 1e-9)
+        adjusted_f1 = f1 * (1.0 - 0.2 * balance_penalty)
+
+        if adjusted_f1 > best_f1_linear:
+            best_f1_linear = f1  # Store original F1, not adjusted
+            best_t_linear = t_
+            best_prec_linear = prec
+            best_rec_linear = rec
+
+    # Use PR curve method if it found a better F1 score, otherwise use linear search
+    if best_f1_pr > best_f1_linear:
+        best_t, best_f1, best_prec, best_rec = best_t_pr, best_f1_pr, best_prec_pr, best_rec_pr
+    else:
+        best_t, best_f1, best_prec, best_rec = (
+            best_t_linear,
+            best_f1_linear,
+            best_prec_linear,
+            best_rec_linear,
+        )
 
     return best_t, {
         "precision": float(best_prec),
@@ -525,33 +578,75 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             use_smote, smote_step = (False, "passthrough")
 
         xgb_common = dict(
-            random_state=42, n_jobs=-1, verbosity=0, tree_method="hist", use_label_encoder=False
+            random_state=42,
+            n_jobs=-1,
+            verbosity=0,
+            tree_method="hist",
+            use_label_encoder=False,
+            early_stopping_rounds=75,  # Stop if no improvement for 75 rounds (allow more exploration)
         )
         xgb_obj = dict(objective="binary:logistic", eval_metric="logloss")
 
         use_kbest = X.shape[1] >= 2
         if use_kbest:
             max_k = X.shape[1]
-            k_choices = sorted(set([5, 8, 10, 12, max(5, max_k // 2), max_k]))
+            # Expanded feature set: allow more features to improve model capacity
+            k_choices = sorted(set([15, 20, 25, 30, max(15, max_k // 2), max_k]))
             k_choices = [k for k in k_choices if 5 <= k <= max_k]
-            steps = [
-                ("imputer", SimpleImputer(strategy="median")),
-                ("varth", VarianceThreshold(threshold=0.0)),
-                ("smote", smote_step),
-                ("kbest", SelectKBest(score_func=f_classif)),
-                ("clf", XGBClassifier(**xgb_common, **xgb_obj)),
-            ]
+            # Ensure we have at least some choices even with smaller feature sets
+            if not k_choices:
+                k_choices = sorted(set([min(5, max_k), min(10, max_k), max_k]))
+            print(f"🔧 Feature selection k_choices: {k_choices}")
+
+            # Optional: Pre-filter with tree-based importance if we have many features
+            use_tree_prefilter = X.shape[1] > 40
+            if use_tree_prefilter:
+                print("🌲 Using tree-based feature pre-filtering (ExtraTrees importance)")
+                tree_selector = SelectFromModel(
+                    ExtraTreesClassifier(n_estimators=100, max_depth=5, random_state=42, n_jobs=-1),
+                    threshold="median",  # Keep top 50% of features by importance
+                )
+                steps = [
+                    ("imputer", SimpleImputer(strategy="median")),
+                    ("varth", VarianceThreshold(threshold=0.0)),
+                    ("tree_selector", tree_selector),
+                    ("smote", smote_step),
+                    ("kbest", SelectKBest(score_func=mutual_info_classif)),
+                    ("clf", XGBClassifier(**xgb_common, **xgb_obj)),
+                ]
+            else:
+                steps = [
+                    ("imputer", SimpleImputer(strategy="median")),
+                    ("varth", VarianceThreshold(threshold=0.0)),
+                    ("smote", smote_step),
+                    ("kbest", SelectKBest(score_func=mutual_info_classif)),
+                    ("clf", XGBClassifier(**xgb_common, **xgb_obj)),
+                ]
             pipe = Pipeline(steps=steps)
+            # Enhanced hyperparameter grid with regularization and better exploration
             param_grid = {
                 "kbest__k": k_choices,
-                "clf__n_estimators": [200, 400],
-                "clf__max_depth": [3, 5, 7],
-                "clf__learning_rate": [0.03, 0.05],
-                "clf__subsample": [0.7, 0.9, 1.0],
-                "clf__colsample_bytree": [0.7, 0.9, 1.0],
-                "clf__min_child_weight": [1, 3, 5],
-                "clf__gamma": [0, 1],
+                "clf__n_estimators": [300, 500, 700],  # More trees for better learning
+                "clf__max_depth": [4, 6, 8],  # Slightly deeper trees
+                "clf__learning_rate": [0.01, 0.02, 0.03],  # Focus on proven optimal range
+                "clf__subsample": [0.7, 0.8, 0.9],  # Finer gradations
+                "clf__colsample_bytree": [0.7, 0.8, 0.9],  # Finer gradations
+                "clf__min_child_weight": [5, 10, 15],  # Prevent overfitting on class imbalance
+                "clf__gamma": [0, 0.5, 1.0],  # More exploration
+                "clf__reg_alpha": [
+                    0,
+                    0.05,
+                    0.2,
+                ],  # L1 regularization - better granularity in critical range
+                "clf__reg_lambda": [
+                    0.5,
+                    1.5,
+                    3.0,
+                ],  # L2 regularization - lower starting point for 80+ features
             }
+            print(
+                f"🔧 Hyperparameter grid size: {np.prod([len(v) for v in param_grid.values()])} combinations"
+            )
         else:
             steps = [
                 ("imputer", SimpleImputer(strategy="median")),
@@ -560,15 +655,21 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
                 ("clf", XGBClassifier(**xgb_common, **xgb_obj)),
             ]
             pipe = Pipeline(steps=steps)
+            # Enhanced hyperparameter grid (no KBest) with regularization
             param_grid = {
-                "clf__n_estimators": [200, 400],
-                "clf__max_depth": [3, 5, 7],
-                "clf__learning_rate": [0.03, 0.05],
-                "clf__subsample": [0.7, 0.9, 1.0],
-                "clf__colsample_bytree": [0.7, 0.9, 1.0],
-                "clf__min_child_weight": [1, 3, 5],
-                "clf__gamma": [0, 1],
+                "clf__n_estimators": [300, 500, 700],
+                "clf__max_depth": [4, 6, 8],
+                "clf__learning_rate": [0.01, 0.03, 0.05],
+                "clf__subsample": [0.7, 0.8, 0.9],
+                "clf__colsample_bytree": [0.7, 0.8, 0.9],
+                "clf__min_child_weight": [3, 5, 10],
+                "clf__gamma": [0, 0.5, 1.0],
+                "clf__reg_alpha": [0, 0.1, 0.5],
+                "clf__reg_lambda": [1.0, 2.0, 5.0],
             }
+            print(
+                f"🔧 Hyperparameter grid size: {np.prod([len(v) for v in param_grid.values()])} combinations"
+            )
 
         # IMPORTANT FIX: align profit-based sample weights to X.index
         sample_weight_profit = compute_sample_weights(
@@ -621,17 +722,30 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
 
         best_model_wn.fit(X, y, **{"clf__sample_weight": w_final})
 
-        from sklearn.calibration import CalibratedClassifierCV
+        # Check if calibration will actually help (quality gate)
+        from sklearn.calibration import CalibratedClassifierCV, calibration_curve
 
-        try:
-            cal = CalibratedClassifierCV(best_model_wn, cv=3, method="isotonic")
-            cal.fit(X, y, sample_weight=w_final)
-        except Exception as e:
-            print(f"⚠️ [FWD] Isotonic calibration failed ({e}) — falling back to sigmoid.")
-            cal = CalibratedClassifierCV(best_model_wn, cv=3, method="sigmoid")
-            cal.fit(X, y, sample_weight=w_final)
+        p_base = best_model_wn.predict_proba(X)[:, 1]
+        prob_true, prob_pred = calibration_curve(y, p_base, n_bins=10, strategy="uniform")
+        calibration_error = np.mean(np.abs(prob_true - prob_pred))
 
-        best_model = cal
+        print(f"📊 Calibration error: {calibration_error:.4f}")
+
+        if calibration_error < 0.03:
+            # Model is already well-calibrated, skip calibration to avoid degradation
+            print("✅ Model already well-calibrated (error < 0.03), skipping calibration")
+            best_model = best_model_wn
+        else:
+            print(f"📈 Applying calibration (error = {calibration_error:.4f} >= 0.03)")
+            try:
+                cal = CalibratedClassifierCV(best_model_wn, cv=3, method="isotonic")
+                cal.fit(X, y, sample_weight=w_final)
+            except Exception as e:
+                print(f"⚠️ [FWD] Isotonic calibration failed ({e}) — falling back to sigmoid.")
+                cal = CalibratedClassifierCV(best_model_wn, cv=3, method="sigmoid")
+                cal.fit(X, y, sample_weight=w_final)
+
+            best_model = cal
 
         MODEL_DIR = "models"
         os.makedirs(MODEL_DIR, exist_ok=True)
