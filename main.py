@@ -49,6 +49,8 @@ def show_main_menu():
     print("  4. Diagnostics")
     print("  5. Data Management")
     print()
+    print("  6. Asset Explorer (guided analysis)")
+    print()
     print("  ?. Quick Start Guide")
     print("  0. Exit")
     print()
@@ -359,6 +361,127 @@ def handle_data():
             print(f"\nTotal: {len(assets)} assets")
             input("\nPress Enter to continue...")
 
+def handle_asset_explorer():
+    """Guided pipeline to explore a specific asset"""
+    clear_screen()
+    print_header("Asset Explorer")
+    print()
+
+    # Select asset
+    asset = select_asset()
+
+    while True:
+        clear_screen()
+        print_header(f"Asset Explorer: {asset}")
+        print()
+        print("  DATA & INFO")
+        print("  1. View data summary (rows, date range, etc.)")
+        print("  2. Check data file exists")
+        print()
+        print("  ANALYSIS")
+        print("  3. Generate predictions for this asset")
+        print("  4. Run backtest (optimized config)")
+        print("  5. Run backtest (high profit config)")
+        print("  6. Run backtest (aggressive config)")
+        print()
+        print("  COMPARISON")
+        print("  7. Compare with other assets in same group")
+        print("  8. Analyze correlations")
+        print()
+        print("  OTHER")
+        print("  9. Change asset")
+        print("  0. Back to main menu")
+        print()
+
+        choice = input("Select option: ").strip()
+
+        if choice == "0":
+            break
+        elif choice == "1":
+            # View data summary
+            asset_file = asset.replace("/", "_")
+            data_path = f"data_cache/{asset_file}_1d.csv"
+            if asset == "SPY":
+                data_path = "data/SPY.csv"
+
+            print(f"\n📊 Data Summary for {asset}")
+            print("-" * 40)
+
+            try:
+                import pandas as pd
+                df = pd.read_csv(data_path)
+                print(f"File: {data_path}")
+                print(f"Rows: {len(df):,}")
+                print(f"Columns: {len(df.columns)}")
+                if 'Date' in df.columns:
+                    df['Date'] = pd.to_datetime(df['Date'])
+                    print(f"Date range: {df['Date'].min().date()} to {df['Date'].max().date()}")
+                if 'Close' in df.columns:
+                    print(f"Price range: ${df['Close'].min():.2f} - ${df['Close'].max():.2f}")
+                    print(f"Latest close: ${df['Close'].iloc[-1]:.2f}")
+            except FileNotFoundError:
+                print(f"❌ Data file not found: {data_path}")
+                print("   Run Data Management → Download to get this data")
+            except Exception as e:
+                print(f"❌ Error reading data: {e}")
+
+            input("\nPress Enter to continue...")
+
+        elif choice == "2":
+            # Check file exists
+            asset_file = asset.replace("/", "_")
+            data_path = Path(f"data_cache/{asset_file}_1d.csv")
+            if asset == "SPY":
+                data_path = Path("data/SPY.csv")
+
+            if data_path.exists():
+                size = data_path.stat().st_size / 1024
+                print(f"\n✅ {data_path} exists ({size:.1f} KB)")
+            else:
+                print(f"\n❌ {data_path} not found")
+            input("\nPress Enter to continue...")
+
+        elif choice == "3":
+            run_command(["python3", "predict_per_asset.py", "--asset", asset])
+
+        elif choice == "4":
+            run_command(["python3", "backtest.py", "--asset", asset, "--config", "configs/backtest_optimized.json"])
+
+        elif choice == "5":
+            run_command(["python3", "backtest.py", "--asset", asset, "--config", "configs/backtest_high_profit.json"])
+
+        elif choice == "6":
+            run_command(["python3", "backtest.py", "--asset", asset, "--config", "configs/backtest_aggressive.json"])
+
+        elif choice == "7":
+            # Determine asset group
+            if "/USDT" in asset:
+                group = "crypto"
+            elif asset in ["SPY", "QQQ", "IWM", "DIA", "VTI"]:
+                group = "equity"
+            elif asset in ["XLF", "XLK", "XLE", "XLI", "XLV"]:
+                group = "sector"
+            elif asset in ["TLT", "IEF", "SHY"]:
+                group = "bond"
+            elif asset in ["GLD", "SLV", "USO"]:
+                group = "commodity"
+            else:
+                group = "equity"  # default
+
+            print(f"\nComparing {asset} with {group} group...")
+            run_command(["python3", "backtest.py", "--asset-group", group, "--compare"])
+
+        elif choice == "8":
+            # Determine asset group for correlation
+            if "/USDT" in asset:
+                group = "crypto"
+            else:
+                group = "equity"
+            run_command(["python3", "analyze_correlations.py", "--asset-group", group])
+
+        elif choice == "9":
+            asset = select_asset()
+
 def main():
     try:
         while True:
@@ -380,6 +503,8 @@ def main():
                 handle_diagnostics()
             elif choice == "5":
                 handle_data()
+            elif choice == "6":
+                handle_asset_explorer()
             elif choice == "?":
                 show_help()
             else:
