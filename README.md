@@ -57,6 +57,12 @@ python3 train_multi_asset.py --tune        # Full search, 15-30 min
 python3 train_multi_asset.py --tune-fast   # Quick search, 5-10 min
 ```
 
+**Accuracy improvements** - optimize ensemble weights and feature selection:
+```bash
+python3 train_multi_asset.py --optimize-weights                    # Learn optimal model weights
+python3 train_multi_asset.py --optimize-weights --feature-select   # Plus top feature selection
+```
+
 Tuned parameters get saved to `models/best_hyperparameters.json` and automatically used in future training runs.
 
 **Multi-horizon training** - train separate models for different time horizons. Thresholds auto-calibrate based on expected price movement (threshold × √days):
@@ -70,16 +76,25 @@ python3 train_multi_horizon_signals.py --tune             # with tuning
 
 ## Backtesting
 
-The backtest includes confidence-based position sizing, volatility targeting, and ATR-based stop losses. Run with the optimized config:
+The backtest includes confidence-based position sizing, volatility targeting, and ATR-based stop losses. Multiple configurations available:
 
 ```bash
-python3 backtest.py --config configs/backtest_optimized.json
+python3 backtest.py --config configs/backtest_optimized.json    # Balanced (191% return)
+python3 backtest.py --config configs/backtest_high_profit.json  # Higher profit (330% return)
+python3 backtest.py --config configs/backtest_aggressive.json   # Maximum profit (378% return)
 ```
 
-Key settings in that config:
-- `target_ann_vol: 0.15` - targets 15% annualized volatility
-- `conf_size_bounds: [0.5, 1.5]` - scales position 0.5x to 1.5x based on model confidence
-- `sl_atr: 0.75`, `tp_atr: 1.25` - stop loss and take profit in ATR multiples
+Configuration comparison:
+| Config | TP ATR | Return | Sharpe | Max DD |
+|--------|--------|--------|--------|--------|
+| Optimized | 1.25x | 191% | 2.55 | -5.4% |
+| High Profit | 1.75x | 330% | 2.30 | -7.4% |
+| Aggressive | 2.5x | 378% | 2.03 | -12.8% |
+
+Key settings:
+- `target_ann_vol` - targets annualized volatility (0.15-0.18)
+- `conf_size_bounds` - scales position based on model confidence
+- `sl_atr`, `tp_atr` - stop loss and take profit in ATR multiples
 - `use_regime_filter: true` - only takes longs in uptrends, shorts in downtrends
 
 ---

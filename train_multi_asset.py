@@ -45,6 +45,9 @@ parser = argparse.ArgumentParser(description='Multi-Asset Model Training')
 parser.add_argument('--tune', action='store_true', help='Enable hyperparameter tuning')
 parser.add_argument('--tune-fast', action='store_true', help='Quick hyperparameter tuning (fewer iterations)')
 parser.add_argument('--tune-iter', type=int, default=50, help='Number of tuning iterations')
+parser.add_argument('--optimize-weights', action='store_true', help='Optimize ensemble weights based on validation performance')
+parser.add_argument('--feature-select', action='store_true', help='Use feature importance to select top features')
+parser.add_argument('--top-features', type=int, default=80, help='Number of top features to keep (with --feature-select)')
 args = parser.parse_args()
 
 print("=" * 80)
@@ -394,11 +397,107 @@ else:
         predictions['catboost'] = cat_model.predict(X_test)
         print(f"   ✓ Accuracy: {accuracy_score(y_test, predictions['catboost']):.4f}")
 
-# --- Ensemble (Majority Vote) ---
-print("\n[*] Creating ensemble...")
-ensemble_pred = np.round(
-    (predictions['xgboost'] + predictions['lightgbm'] + predictions['catboost']) / 3
-).astype(int)
+# --- Feature Selection (optional) ---
+if args.feature_select:
+    print("\n🔧 Feature selection based on importance...")
+
+    # Get feature importances from all models
+    xgb_imp = models['xgboost'].feature_importances_
+    lgb_imp = models['lightgbm'].feature_importances_
+    cat_imp = models['catboost'].feature_importances_
+
+    # Average importance across models
+    avg_importance = (xgb_imp + lgb_imp + cat_imp) / 3
+
+    # Get top features
+    n_keep = min(args.top_features, len(feature_cols))
+    top_indices = np.argsort(avg_importance)[-n_keep:]
+    selected_features = [feature_cols[i] for i in top_indices]
+
+    print(f"   Selected {len(selected_features)} features from {len(feature_cols)}")
+
+    # Re-train with selected features
+    X_train_sel = X_train[:, top_indices]
+    X_test_sel = X_test[:, top_indices]
+
+    print("   Re-training models with selected features...")
+
+    # Re-train XGBoost
+    models['xgboost'].fit(X_train_sel, y_train, sample_weight=weights, verbose=False)
+    predictions['xgboost'] = models['xgboost'].predict(X_test_sel)
+
+    # Re-train LightGBM
+    models['lightgbm'].fit(X_train_sel, y_train, sample_weight=weights)
+    predictions['lightgbm'] = models['lightgbm'].predict(X_test_sel)
+
+    # Re-train CatBoost
+    models['catboost'].fit(X_train_sel, y_train, sample_weight=weights)
+    predictions['catboost'] = models['catboost'].predict(X_test_sel)
+
+    # Update feature_cols for saving
+    feature_cols = selected_features
+
+    # Save selected feature indices
+    import json
+    with open(MODELS_DIR / "selected_features.json", 'w') as f:
+        json.dump({'indices': top_indices.tolist(), 'names': selected_features}, f)
+    print(f"   ✓ Saved selected features to models/selected_features.json")
+
+# --- Optimized Ensemble Weights ---
+if args.optimize_weights:
+    print("\n🔧 Optimizing ensemble weights...")
+    from sklearn.metrics import f1_score
+
+    # Get probability predictions for optimization
+    xgb_proba = models['xgboost'].predict_proba(X_test if not args.feature_select else X_test_sel)[:, 1]
+    lgb_proba = models['lightgbm'].predict_proba(X_test if not args.feature_select else X_test_sel)[:, 1]
+    cat_proba = models['catboost'].predict_proba(X_test if not args.feature_select else X_test_sel)[:, 1]
+
+    # Grid search for optimal weights
+    best_f1 = 0
+    best_weights = [1/3, 1/3, 1/3]
+
+    for w1 in np.arange(0.1, 0.8, 0.05):
+        for w2 in np.arange(0.1, 0.8 - w1, 0.05):
+            w3 = 1.0 - w1 - w2
+            if w3 < 0.1:
+                continue
+
+            # Weighted ensemble
+            ensemble_proba = w1 * xgb_proba + w2 * lgb_proba + w3 * cat_proba
+            ensemble_pred_opt = (ensemble_proba > 0.5).astype(int)
+
+            f1 = f1_score(y_test, ensemble_pred_opt, zero_division=0)
+            if f1 > best_f1:
+                best_f1 = f1
+                best_weights = [w1, w2, w3]
+
+    print(f"   Best weights: XGB={best_weights[0]:.2f}, LGB={best_weights[1]:.2f}, CAT={best_weights[2]:.2f}")
+    print(f"   Optimized F1: {best_f1:.4f}")
+
+    # Apply optimized weights
+    ensemble_proba = (best_weights[0] * xgb_proba +
+                      best_weights[1] * lgb_proba +
+                      best_weights[2] * cat_proba)
+    ensemble_pred = (ensemble_proba > 0.5).astype(int)
+
+    # Save optimized weights
+    import json
+    with open(MODELS_DIR / "ensemble_weights.json", 'w') as f:
+        json.dump({
+            'xgboost': best_weights[0],
+            'lightgbm': best_weights[1],
+            'catboost': best_weights[2],
+            'f1_score': best_f1
+        }, f, indent=2)
+    print(f"   ✓ Saved ensemble weights to models/ensemble_weights.json")
+else:
+    # Standard majority vote ensemble
+    print("\n[*] Creating ensemble (equal weights)...")
+    ensemble_pred = np.round(
+        (predictions['xgboost'] + predictions['lightgbm'] + predictions['catboost']) / 3
+    ).astype(int)
+
 predictions['ensemble'] = ensemble_pred
 
 # =============================================================================

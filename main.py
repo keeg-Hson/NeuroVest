@@ -59,15 +59,17 @@ def show_training_menu():
     print("  1. Standard training")
     print("  2. With hyperparameter tuning (15-30 min)")
     print("  3. Quick hyperparameter tuning (5-10 min)")
+    print("  4. With optimized ensemble weights")
+    print("  5. With feature selection + weight optimization")
     print()
     print("  MULTI-HORIZON (1-day, 3-day, 5-day)")
-    print("  4. Train all horizons")
-    print("  5. Train specific horizons")
+    print("  6. Train all horizons")
+    print("  7. Train specific horizons")
     print()
     print("  PER-ASSET (individual asset models)")
-    print("  6. Train single asset")
-    print("  7. Train asset group")
-    print("  8. Train all configured assets")
+    print("  8. Train single asset")
+    print("  9. Train asset group")
+    print("  10. Train all configured assets")
     print()
     print("  0. Back")
     print()
@@ -89,11 +91,16 @@ def show_prediction_menu():
 def show_backtest_menu():
     print_header("Backtesting Options")
     print()
+    print("  CONFIGURATIONS")
     print("  1. Backtest (default config)")
     print("  2. Backtest (optimized config)")
-    print("  3. Backtest specific asset")
-    print("  4. Compare asset group")
-    print("  5. Portfolio backtest")
+    print("  3. Backtest (high profit - 2.0x ATR TP)")
+    print("  4. Backtest (aggressive - 2.5x ATR TP)")
+    print()
+    print("  ASSET SELECTION")
+    print("  5. Backtest specific asset")
+    print("  6. Compare asset group")
+    print("  7. Portfolio backtest")
     print()
     print("  0. Back")
     print()
@@ -198,17 +205,21 @@ def handle_training():
         elif choice == "3":
             run_command(["python3", "train_multi_asset.py", "--tune-fast"])
         elif choice == "4":
-            run_command(["python3", "train_multi_horizon_signals.py"])
+            run_command(["python3", "train_multi_asset.py", "--optimize-weights"])
         elif choice == "5":
+            run_command(["python3", "train_multi_asset.py", "--optimize-weights", "--feature-select"])
+        elif choice == "6":
+            run_command(["python3", "train_multi_horizon_signals.py"])
+        elif choice == "7":
             horizons = input("Enter horizons (e.g., 1 3 5): ").strip()
             run_command(["python3", "train_multi_horizon_signals.py", "--horizons"] + horizons.split())
-        elif choice == "6":
+        elif choice == "8":
             asset = select_asset()
             run_command(["python3", "framework/train_unified.py", "--asset", asset])
-        elif choice == "7":
+        elif choice == "9":
             group = select_asset_group()
             run_command(["python3", "framework/train_unified.py", "--asset-group", group])
-        elif choice == "8":
+        elif choice == "10":
             run_command(["python3", "framework/train_unified.py", "--all"])
 
 def handle_predictions():
@@ -245,12 +256,16 @@ def handle_backtesting():
         elif choice == "2":
             run_command(["python3", "backtest.py", "--config", "configs/backtest_optimized.json"])
         elif choice == "3":
+            run_command(["python3", "backtest.py", "--config", "configs/backtest_high_profit.json"])
+        elif choice == "4":
+            run_command(["python3", "backtest.py", "--config", "configs/backtest_aggressive.json"])
+        elif choice == "5":
             asset = select_asset()
             run_command(["python3", "backtest.py", "--asset", asset])
-        elif choice == "4":
+        elif choice == "6":
             group = select_asset_group()
             run_command(["python3", "backtest.py", "--asset-group", group, "--compare"])
-        elif choice == "5":
+        elif choice == "7":
             print("\nPortfolio Backtest Setup")
             print("-" * 40)
             assets = input("Assets (comma-separated, e.g., SPY,GLD,BTC/USDT): ").strip()
