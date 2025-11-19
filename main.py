@@ -374,15 +374,27 @@ def handle_asset_explorer():
         clear_screen()
         print_header(f"Asset Explorer: {asset}")
         print()
+        # Determine asset group for config selection
+        if "/USDT" in asset:
+            asset_group = "crypto"
+        elif asset in ["TLT", "IEF", "SHY", "BND", "AGG"]:
+            asset_group = "bond"
+        elif asset in ["GLD", "SLV", "USO", "DBA", "DBC"]:
+            asset_group = "commodity"
+        else:
+            asset_group = "equity"
+
         print("  DATA & INFO")
         print("  1. View data summary (rows, date range, etc.)")
         print("  2. Check data file exists")
         print()
-        print("  ANALYSIS")
-        print("  3. Generate predictions for this asset")
-        print("  4. Run backtest (optimized config)")
-        print("  5. Run backtest (high profit config)")
-        print("  6. Run backtest (aggressive config)")
+        print("  BACKTESTS (group-optimized)")
+        print(f"  3. Run backtest ({asset_group} config - recommended)")
+        print("  4. Run backtest (high profit config)")
+        print("  5. Run backtest (aggressive config)")
+        print()
+        print("  PREDICTIONS")
+        print("  6. Generate predictions for this asset")
         print()
         print("  COMPARISON")
         print("  7. Compare with other assets in same group")
@@ -442,42 +454,31 @@ def handle_asset_explorer():
             input("\nPress Enter to continue...")
 
         elif choice == "3":
-            run_command(["python3", "predict_per_asset.py", "--asset", asset])
+            # Use group-specific config
+            config_map = {
+                "crypto": "configs/backtest_crypto.json",
+                "bond": "configs/backtest_bond.json",
+                "commodity": "configs/backtest_commodity.json",
+                "equity": "configs/backtest_equity.json"
+            }
+            config = config_map.get(asset_group, "configs/backtest_optimized.json")
+            run_command(["python3", "backtest.py", "--asset", asset, "--config", config])
 
         elif choice == "4":
-            run_command(["python3", "backtest.py", "--asset", asset, "--config", "configs/backtest_optimized.json"])
-
-        elif choice == "5":
             run_command(["python3", "backtest.py", "--asset", asset, "--config", "configs/backtest_high_profit.json"])
 
-        elif choice == "6":
+        elif choice == "5":
             run_command(["python3", "backtest.py", "--asset", asset, "--config", "configs/backtest_aggressive.json"])
 
-        elif choice == "7":
-            # Determine asset group
-            if "/USDT" in asset:
-                group = "crypto"
-            elif asset in ["SPY", "QQQ", "IWM", "DIA", "VTI"]:
-                group = "equity"
-            elif asset in ["XLF", "XLK", "XLE", "XLI", "XLV"]:
-                group = "sector"
-            elif asset in ["TLT", "IEF", "SHY"]:
-                group = "bond"
-            elif asset in ["GLD", "SLV", "USO"]:
-                group = "commodity"
-            else:
-                group = "equity"  # default
+        elif choice == "6":
+            run_command(["python3", "predict_per_asset.py", "--asset", asset])
 
-            print(f"\nComparing {asset} with {group} group...")
-            run_command(["python3", "backtest.py", "--asset-group", group, "--compare"])
+        elif choice == "7":
+            print(f"\nComparing {asset} with {asset_group} group...")
+            run_command(["python3", "backtest.py", "--asset-group", asset_group, "--compare"])
 
         elif choice == "8":
-            # Determine asset group for correlation
-            if "/USDT" in asset:
-                group = "crypto"
-            else:
-                group = "equity"
-            run_command(["python3", "analyze_correlations.py", "--asset-group", group])
+            run_command(["python3", "analyze_correlations.py", "--asset-group", asset_group])
 
         elif choice == "9":
             asset = select_asset()
