@@ -479,3 +479,41 @@ if comparison_path.exists():
 print("\n" + "=" * 80)
 print("✅ MULTI-ASSET TRAINING COMPLETE!")
 print("=" * 80)
+
+# Interactive next steps
+print("\n💡 NEXT STEPS:")
+print("-" * 40)
+print("1. Generate predictions")
+print("2. Run backtest")
+print("3. Train multi-horizon models")
+print("4. Run hyperparameter tuning")
+print("5. System diagnostics")
+print("0. Exit")
+
+try:
+    choice = input("\nSelect next step (0-5): ").strip()
+
+    if choice == "1":
+        print("\n▶️  Running: python3 predict_multi_asset_ensemble.py")
+        import subprocess
+        subprocess.run(["python3", "predict_multi_asset_ensemble.py"])
+    elif choice == "2":
+        print("\n▶️  Running: python3 backtest.py")
+        import subprocess
+        subprocess.run(["python3", "backtest.py"])
+    elif choice == "3":
+        print("\n▶️  Running: python3 train_multi_horizon_signals.py")
+        import subprocess
+        subprocess.run(["python3", "train_multi_horizon_signals.py"])
+    elif choice == "4":
+        print("\n▶️  Running: python3 hyperparameter_tuning.py")
+        import subprocess
+        subprocess.run(["python3", "hyperparameter_tuning.py"])
+    elif choice == "5":
+        print("\n▶️  Running: python3 diagnose_system.py")
+        import subprocess
+        subprocess.run(["python3", "diagnose_system.py"])
+    else:
+        print("\n👋 Done!")
+except (KeyboardInterrupt, EOFError):
+    print("\n👋 Done!")

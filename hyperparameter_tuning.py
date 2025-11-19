@@ -420,3 +420,31 @@ if __name__ == "__main__":
     print("\n" + "=" * 80)
     print("✅ HYPERPARAMETER TUNING COMPLETE!")
     print("=" * 80)
+
+    # Interactive next steps
+    print("\n💡 NEXT STEPS:")
+    print("-" * 40)
+    print("1. Train models with tuned parameters")
+    print("2. Generate predictions")
+    print("3. Run backtest")
+    print("0. Exit")
+
+    try:
+        choice = input("\nSelect next step (0-3): ").strip()
+
+        if choice == "1":
+            print("\n▶️  Running: python3 train_multi_asset.py")
+            import subprocess
+            subprocess.run(["python3", "train_multi_asset.py"])
+        elif choice == "2":
+            print("\n▶️  Running: python3 predict_multi_asset_ensemble.py")
+            import subprocess
+            subprocess.run(["python3", "predict_multi_asset_ensemble.py"])
+        elif choice == "3":
+            print("\n▶️  Running: python3 backtest.py")
+            import subprocess
+            subprocess.run(["python3", "backtest.py"])
+        else:
+            print("\n👋 Done!")
+    except (KeyboardInterrupt, EOFError):
+        print("\n👋 Done!")

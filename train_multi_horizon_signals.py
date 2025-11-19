@@ -304,3 +304,36 @@ print("   python3 predict_multi_asset_ensemble.py --horizon 3")
 print("\n" + "=" * 80)
 print("✅ MULTI-HORIZON SIGNAL TRAINING COMPLETE!")
 print("=" * 80)
+
+# Interactive next steps
+print("\n💡 NEXT STEPS:")
+print("-" * 40)
+print("1. Generate predictions")
+print("2. Run backtest")
+print("3. Train standard multi-asset models")
+print("4. Run hyperparameter tuning")
+print("0. Exit")
+
+try:
+    choice = input("\nSelect next step (0-4): ").strip()
+
+    if choice == "1":
+        print("\n▶️  Running: python3 predict_multi_asset_ensemble.py")
+        import subprocess
+        subprocess.run(["python3", "predict_multi_asset_ensemble.py"])
+    elif choice == "2":
+        print("\n▶️  Running: python3 backtest.py")
+        import subprocess
+        subprocess.run(["python3", "backtest.py"])
+    elif choice == "3":
+        print("\n▶️  Running: python3 train_multi_asset.py")
+        import subprocess
+        subprocess.run(["python3", "train_multi_asset.py"])
+    elif choice == "4":
+        print("\n▶️  Running: python3 hyperparameter_tuning.py")
+        import subprocess
+        subprocess.run(["python3", "hyperparameter_tuning.py"])
+    else:
+        print("\n👋 Done!")
+except (KeyboardInterrupt, EOFError):
+    print("\n👋 Done!")

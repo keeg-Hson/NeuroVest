@@ -252,7 +252,14 @@ python3 download_crypto_data.py
 **2. Train Multi-Asset Ensemble** (5-10 minutes):
 
 ```bash
+# Standard training
 python3 train_multi_asset.py
+
+# With hyperparameter optimization (15-30 minutes)
+python3 train_multi_asset.py --tune
+
+# Quick hyperparameter tuning (5-10 minutes)
+python3 train_multi_asset.py --tune-fast
 ```
 
 **Expected output:** 60-65% accuracy (NOT 98%+ which indicates data leakage)
@@ -271,8 +278,23 @@ Output: `logs/daily_predictions.csv` with probability scores
 # Check model metrics
 python3 evaluate.py
 
-# Run backtest
-python3 backtest.py
+# Run backtest with optimized risk management
+python3 backtest.py --config configs/backtest_optimized.json
+```
+
+### Multi-Horizon Training (NEW)
+
+Train models for different prediction horizons:
+
+```bash
+# Train 1-day, 3-day, and 5-day models
+python3 train_multi_horizon_signals.py
+
+# Train specific horizons
+python3 train_multi_horizon_signals.py --horizons 1 3
+
+# With hyperparameter tuning
+python3 train_multi_horizon_signals.py --tune
 ```
 
 ### Option B: Individual Asset Trading (GLD, SLV, etc.)
