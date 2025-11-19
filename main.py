@@ -67,9 +67,7 @@ def show_training_menu():
     print("  7. Train specific horizons")
     print()
     print("  PER-ASSET (individual asset models)")
-    print("  8. Train single asset")
-    print("  9. Train asset group")
-    print("  10. Train all configured assets")
+    print("  8. Train all per-asset models (SPY + crypto)")
     print()
     print("  0. Back")
     print()
@@ -94,7 +92,7 @@ def show_backtest_menu():
     print("  CONFIGURATIONS")
     print("  1. Backtest (default config)")
     print("  2. Backtest (optimized config)")
-    print("  3. Backtest (high profit - 2.0x ATR TP)")
+    print("  3. Backtest (high profit - 1.75x ATR TP)")
     print("  4. Backtest (aggressive - 2.5x ATR TP)")
     print()
     print("  ASSET SELECTION")
@@ -214,13 +212,7 @@ def handle_training():
             horizons = input("Enter horizons (e.g., 1 3 5): ").strip()
             run_command(["python3", "train_multi_horizon_signals.py", "--horizons"] + horizons.split())
         elif choice == "8":
-            asset = select_asset()
-            run_command(["python3", "framework/train_unified.py", "--asset", asset])
-        elif choice == "9":
-            group = select_asset_group()
-            run_command(["python3", "framework/train_unified.py", "--asset-group", group])
-        elif choice == "10":
-            run_command(["python3", "framework/train_unified.py", "--all"])
+            run_command(["python3", "train_per_asset.py"])
 
 def handle_predictions():
     while True:
