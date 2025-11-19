@@ -77,11 +77,13 @@ print(f"   Rows: {len(raw)}")
 
 print("\n🔧 Building features...")
 df_feat, all_cols = add_features(raw)
-df_feat = finalize_features(df_feat, saved_feats)
 
-# Add asset_type features (SPY = stock)
+# Add asset_type features BEFORE finalize_features (SPY = stock)
+# These are required by multi-asset models
 df_feat["asset_type_stock"] = 1
 df_feat["asset_type_crypto"] = 0
+
+df_feat = finalize_features(df_feat, saved_feats)
 
 if "Date" not in df_feat.columns:
     df_feat = df_feat.reset_index().rename(columns={"index": "Date"})

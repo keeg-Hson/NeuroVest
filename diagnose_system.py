@@ -187,6 +187,10 @@ try:
     df['Date'] = pd.to_datetime(df['Date'])
     df, feature_cols = add_features(df)
 
+    # Add asset_type features (required by multi-asset models)
+    df['asset_type_stock'] = 1
+    df['asset_type_crypto'] = 0
+
     if saved_feats:
         # Check feature alignment
         missing = set(saved_feats) - set(df.columns)
@@ -194,6 +198,8 @@ try:
 
         if missing:
             print(f"⚠️  Missing features: {len(missing)}")
+            for feat in missing:
+                df[feat] = 0.0
         else:
             print(f"✓ All saved features present in data")
 
