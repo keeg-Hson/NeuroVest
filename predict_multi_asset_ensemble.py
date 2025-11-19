@@ -161,15 +161,23 @@ for tf in threshold_files:
 ensemble_pred = (ensemble_prob >= threshold).astype(int)
 
 # Map to 3-class convention (0=CRASH, 1=NORMAL, 2=SPIKE)
-# Use probability ranges to determine all 3 classes:
-# - Very low probability (< 0.30) → CRASH (0) - expect negative return, short signal
-# - Medium probability (0.30 - 0.50) → NORMAL (1) - uncertain, hold
-# - High probability (>= 0.50) → SPIKE (2) - expect positive return, long signal
+# Use percentile-based thresholds to ensure balanced distribution
+# This adapts to the actual probability distribution from the model
 #
-# Note: crash_threshold MUST be lower than spike_threshold for NORMAL to exist!
-crash_threshold = 0.30   # Below this = CRASH signal (short)
-spike_threshold = 0.50   # Above this = SPIKE signal (long)
-# Between them = NORMAL (hold)
+# Strategy: Use probability percentiles to create balanced classes
+# - Bottom 30% of probabilities → CRASH (short signal)
+# - Middle 40% → NORMAL (hold)
+# - Top 30% → SPIKE (long signal)
+
+# Calculate percentile thresholds from actual distribution
+crash_threshold = np.percentile(ensemble_prob, 30)   # Bottom 30%
+spike_threshold = np.percentile(ensemble_prob, 70)   # Top 30%
+
+print(f"\n📊 Probability distribution:")
+print(f"   Min: {ensemble_prob.min():.3f}, Max: {ensemble_prob.max():.3f}")
+print(f"   Mean: {ensemble_prob.mean():.3f}, Median: {np.median(ensemble_prob):.3f}")
+print(f"   Crash threshold (30th pct): {crash_threshold:.3f}")
+print(f"   Spike threshold (70th pct): {spike_threshold:.3f}")
 
 pred_012 = np.where(
     ensemble_prob >= spike_threshold, 2,  # SPIKE (long signal)
