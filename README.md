@@ -28,14 +28,16 @@ pip install -r requirements.txt
 python3 update_spy_data.py
 python3 download_crypto_data.py
 
-# Train models
-python3 train_multi_asset.py
+# Run the main entry point
+python3 main.py
+```
 
-# Generate predictions
-python3 predict_multi_asset_ensemble.py
+Or run individual steps:
 
-# Run backtest
-python3 backtest.py
+```bash
+python3 train_multi_asset.py           # Train models
+python3 predict_multi_asset_ensemble.py # Generate predictions
+python3 backtest.py                     # Run backtest
 ```
 
 Each script shows a menu at the end with next steps you can choose from.
@@ -123,6 +125,7 @@ This approach ensures balanced signal distribution regardless of the actual prob
 ## Project Structure
 
 ```
+main.py                           # Entry point with menu
 train_multi_asset.py              # Main training script
 train_multi_horizon_signals.py    # Multi-horizon training
 hyperparameter_tuning.py          # Standalone HP optimization

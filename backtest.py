@@ -45,12 +45,19 @@ def _git_sha() -> str:
 
 def _to_jsonable(x):
     # make numpy/pandas types JSON-friendly
+    if isinstance(x, (list, tuple)):
+        return [_to_jsonable(i) for i in x]
+    if isinstance(x, np.ndarray):
+        return x.tolist()
     if isinstance(x, np.floating | np.float32 | np.float64):
         return float(x)
     if isinstance(x, np.integer | np.int32 | np.int64):
         return int(x)
-    if pd.isna(x):
-        return None
+    try:
+        if pd.isna(x):
+            return None
+    except (ValueError, TypeError):
+        pass  # x is array-like, skip isna check
     return x
 
 
