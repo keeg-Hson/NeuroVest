@@ -113,6 +113,9 @@ def show_training_menu():
     print("  PER-ASSET (individual asset models)")
     print("  8. Train all per-asset models (SPY + crypto)")
     print()
+    print("  COMPREHENSIVE")
+    print("  9. Train ALL (multi-asset + per-asset + multi-horizon)")
+    print()
     print("  0. Back")
     print()
 
@@ -257,6 +260,33 @@ def handle_training():
             run_command(["python3", "train_multi_horizon_signals.py", "--horizons"] + horizons.split())
         elif choice == "8":
             run_command(["python3", "train_per_asset.py"])
+        elif choice == "9":
+            # Train ALL - comprehensive pipeline
+            print("\n" + "=" * 60)
+            print("  COMPREHENSIVE TRAINING PIPELINE")
+            print("=" * 60)
+            print("\nThis will run:")
+            print("  1. Multi-asset training (with weight optimization)")
+            print("  2. Per-asset training (SPY + crypto)")
+            print("  3. Multi-horizon training (1d, 3d, 5d)")
+            print("\nEstimated time: 15-25 minutes")
+            print()
+
+            confirm = input("Continue? (y/n): ").strip().lower()
+            if confirm == 'y':
+                print("\n[Step 1/3] Multi-asset training with optimized weights...")
+                subprocess.run(["python3", "train_multi_asset.py", "--optimize-weights"])
+
+                print("\n[Step 2/3] Per-asset training...")
+                subprocess.run(["python3", "train_per_asset.py"])
+
+                print("\n[Step 3/3] Multi-horizon training...")
+                subprocess.run(["python3", "train_multi_horizon_signals.py"])
+
+                print("\n" + "=" * 60)
+                print("  COMPREHENSIVE TRAINING COMPLETE")
+                print("=" * 60)
+                input("\nPress Enter to continue...")
 
 def handle_predictions():
     while True:
