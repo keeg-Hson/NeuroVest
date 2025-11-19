@@ -7,6 +7,30 @@ Economic forecasting system using ensemble ML. Predicts market opportunities by 
 
 ---
 
+## START HERE
+
+**New to NeuroVest?** Run the interactive menu:
+
+```bash
+python3 main.py
+```
+
+This gives you access to all system functions through a menu:
+- **Training** - Train models with various configurations
+- **Predictions** - Generate forecasts for assets
+- **Backtesting** - Test strategies with different risk profiles
+- **Diagnostics** - Analyze model performance
+- **Data Management** - Download and update market data
+
+### Typical Workflow
+
+1. **Download data** → Menu option 5.1 (SPY) and 5.2 (crypto)
+2. **Train models** → Menu option 1.1 (standard) or 1.4 (with optimization)
+3. **Generate predictions** → Menu option 2.1
+4. **Run backtest** → Menu option 3.2 (optimized) or 3.3 (high profit)
+
+---
+
 ## What This Does
 
 NeuroVest trains XGBoost, LightGBM, and CatBoost models on 126 features to predict multi-day price movements. The system uses percentile-based thresholds to generate CRASH/NORMAL/SPIKE signals that feed into a backtest with ATR-based stops and confidence-weighted position sizing.
