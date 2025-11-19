@@ -1,0 +1,22 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.3
+    hooks:
+      - id: ruff
+        args: ["--fix"]
+      - id: ruff-format
+  - repo: https://github.com/psf/black
+    rev: 25.9.0
+    hooks:
+      - id: black
+
+default_stages: [pre-commit]
+exclude: |
+  (?x)(
+    ^\.venv/|
+    ^outputs/|
+    ^logs/|
+    ^data/|
+    \.duckdb$|
+    ^data_cache/
+  )

@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""
+sweep_runner.py
+
+Grid-search over confidence / crash / spike thresholds and evaluate via backtest.
+
+Assumptions
+-----------
+- Predictions are written by run_predictions(backfill=True) into logs/daily_predictions.csv.
+- The prediction stack uses unified 3-class labels at the log level:
+      0 = SPIKE
+      1 = NORMAL
+      2 = CRASH
+- Backtest thresholds map to:
+      crash_thresh      → minimum Crash_Conf to treat as a crash event
+      spike_thresh      → minimum Spike_Conf to treat as a spike event
+      confidence_thresh → optional minimum overall confidence filter
+"""
+
+import itertools
+import json
+import os
+
+import pandas as pd
+
+from backtest import CAPITAL_BASE, run_backtest
+from predict import run_predictions
+
+# ── Config ────────────────────────────────────────────────────────────────────
+os.makedirs("logs", exist_ok=True)
+os.makedirs("configs", exist_ok=True)
+
+# Parameter ranges (tweak as desired)
+CONFIDENCE_RANGE: list[float | None] = [None, 0.60, 0.65, 0.70, 0.75]
+CRASH_RANGE: list[float | None] = [0.20, 0.25, 0.30, 0.35, 0.40]
+SPIKE_RANGE: list[float | None] = [0.20, 0.25, 0.30, 0.35, 0.40]
+
+# Choose optimization objective:
+#   "avg_dollar_return" | "final_balance" | "total_return"
+#   | "profit_factor" | "win_rate" | "sharpe"
+OBJECTIVE = "sharpe"
+
+# Optional: limit backtest to last N days (set to None for full history)
+BACKTEST_WINDOW_DAYS = None
+
+
+def _ensure_predictions() -> pd.DataFrame:
+    """
+    Ensure daily_predictions.csv exists and is non-empty.
+
+    - If missing/empty → run_predictions(backfill=True) once.
+    - Then load logs/daily_predictions.csv and return it.
+    """
+    pred_path = "logs/daily_predictions.csv"
+
+    need_backfill = not os.path.exists(pred_path) or os.path.getsize(pred_path) == 0
+
+    if need_backfill:
+        print("▶️ Generating predictions (backfill)...")
+        run_predictions(backfill=True)
+    else:
+        print(f"ℹ️ Using existing predictions at {pred_path} (no backfill).")
+
+    if not os.path.exists(pred_path) or os.path.getsize(pred_path) == 0:
+        print(f"🚫 Prediction log not found or empty at {pred_path} after backfill attempt.")
+        return pd.DataFrame()
+
+    try:
+        df = pd.read_csv(pred_path)
+    except Exception as e:
+        print(f"🚫 Failed to read {pred_path}: {e}")
+        return pd.DataFrame()
+
+    if df.empty:
+        print(f"🚫 Prediction log at {pred_path} is empty.")
+    else:
+        print(f"✅ Loaded {len(df)} prediction rows from {pred_path}")
+    return df
+
+
+def main():
+    # 1) Ensure predictions exist (writes/uses logs/daily_predictions.csv)
+    pred_df = _ensure_predictions()
+    if pred_df is None or pred_df.empty:
+        print("🚫 No predictions available. Aborting sweep.")
+        return
+
+    # 2) Sweep thresholds
+    results = []
+    combos = itertools.product(CONFIDENCE_RANGE, CRASH_RANGE, SPIKE_RANGE)
+
+    for conf, crash, spike in combos:
+        print(f"\n🚦 Backtest with thresholds — confidence={conf}, crash={crash}, spike={spike}")
+
+        trades, metrics, _ = run_backtest(
+            window_days=BACKTEST_WINDOW_DAYS,
+            crash_thresh=crash,
+            spike_thresh=spike,
+            confidence_thresh=conf,
+            simulate_mode=False,
+        )
+
+        if not isinstance(metrics, dict) or metrics.get("trades", 0) == 0:
+            print("ℹ️ No trades for this combo — skipping.")
+            continue
+
+        final_balance = (1.0 + metrics.get("total_return", 0.0)) * CAPITAL_BASE
+        avg_dollar_return = trades["dollar_return"].mean() if not trades.empty else 0.0
+
+        # Pick an objective
+        if OBJECTIVE == "final_balance":
+            score = final_balance
+        elif OBJECTIVE == "total_return":
+            score = metrics.get("total_return", 0.0)
+        elif OBJECTIVE == "profit_factor":
+            score = metrics.get("profit_factor", 0.0)
+        elif OBJECTIVE == "win_rate":
+            score = metrics.get("win_rate", 0.0)
+        elif OBJECTIVE == "sharpe":
+            score = metrics.get("sharpe", 0.0)
+        else:  # default to avg_dollar_return
+            score = avg_dollar_return
+
+        row = {
+            "confidence_thresh": conf,
+            "crash_thresh": crash,
+            "spike_thresh": spike,
+            "trades": metrics.get("trades", 0),
+            "win_rate": metrics.get("win_rate", 0.0),
+            "sharpe": metrics.get("sharpe", float("nan")),
+            "max_drawdown": metrics.get("max_drawdown", float("nan")),
+            "profit_factor": metrics.get("profit_factor", float("nan")),
+            "total_return": metrics.get("total_return", 0.0),
+            "avg_dollar_return": avg_dollar_return,
+            "final_balance": final_balance,
+            "score": score,
+        }
+        results.append(row)
+
+    if not results:
+        print("\n🚫 Sweep finished — no results recorded (no combos produced trades).")
+        return
+
+    # 3) Save + report
+    df = pd.DataFrame(results).sort_values("score", ascending=False)
+
+    # Drop exact duplicates of thresholds+score to clean leaderboard noise
+    df = df.drop_duplicates(subset=["confidence_thresh", "crash_thresh", "spike_thresh", "score"])
+
+    out_csv = "logs/threshold_search.csv"
+    df.to_csv(out_csv, index=False)
+    print(f"\n🏁 Sweep complete — wrote {out_csv}")
+    print(df.head(10))
+
+    # Save best thresholds for downstream use
+    best = df.iloc[0]
+    best_cfg = {
+        "confidence_thresh": (
+            None if pd.isna(best["confidence_thresh"]) else float(best["confidence_thresh"])
+        ),
+        "crash_thresh": None if pd.isna(best["crash_thresh"]) else float(best["crash_thresh"]),
+        "spike_thresh": None if pd.isna(best["spike_thresh"]) else float(best["spike_thresh"]),
+        "objective": OBJECTIVE,
+        "score": float(best["score"]),
+    }
+    with open("configs/best_thresholds.json", "w") as f:
+        json.dump(best_cfg, f, indent=2)
+    print("💾 Best thresholds → configs/best_thresholds.json:", best_cfg)
+
+
+if __name__ == "__main__":
+    main()

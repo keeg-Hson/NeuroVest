@@ -1,0 +1,26 @@
+[
+  {
+    "priority": "HIGH",
+    "action": "Focus on Top Features",
+    "details": "These features are most important: BB_Width, Return_Lag1, Return_Lag3, RSI, OBV",
+    "rationale": "Create interaction features and lags for these high-impact features"
+  },
+  {
+    "priority": "MEDIUM",
+    "action": "Enhance Returns Features",
+    "details": "This category has highest average importance (60.84)",
+    "rationale": "Add more returns features, lags, and rolling windows"
+  },
+  {
+    "priority": "HIGH",
+    "action": "Create Feature Interactions",
+    "details": "Create polynomial interactions between: BB_Width, Return_Lag1, Return_Lag3",
+    "rationale": "Interactions between top features often reveal non-linear patterns"
+  },
+  {
+    "priority": "MEDIUM",
+    "action": "Add Lagged Features",
+    "details": "Add 3-day, 5-day, and 10-day lags of top 5 features",
+    "rationale": "Temporal patterns in top features may improve predictions"
+  }
+]

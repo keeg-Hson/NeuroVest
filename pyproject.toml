@@ -1,0 +1,60 @@
+[project]
+name = "neurovest"
+version = "0.1.0"
+description = "NeuroVest – research pipeline for SPY signals (train, predict, backtest, live)."
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "Your Name", email = "you@example.com" }]
+license = { text = "MIT" }
+
+# --- Black (formatter) ---
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+exclude = '''
+/(
+    \.git
+  | \.venv
+  | __pycache__
+  | data
+  | data_cache
+  | models
+  | logs
+  | outputs
+| backups
+)/
+'''
+
+# --- Ruff (linter + import sorter) ---
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["data", "data_cache", "models", "logs", "outputs", "backups"]
+
+[tool.ruff.lint]
+# Pragmatic ruleset. TEMP: ignore E402 in a few legacy files.
+select = ["E", "F", "I", "B", "UP", "SIM"]
+ignore = ["E501"]
+
+# Use a table form (avoids inline-table parsing errors)
+[tool.ruff.lint.per-file-ignores]
+"main.py" = ["E402"]
+"train.py" = ["E402"]
+"external_signals.py" = ["E402"]
+"backtest.py" = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["neurovest"]
+combine-as-imports = true
+
+[tool.ruff.format]
+quote-style = "preserve"
+indent-style = "space"
+line-ending = "lf"
+
+# --- Pytest ---
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+pythonpath = ["."]
+"utils.py" = ["E402"]

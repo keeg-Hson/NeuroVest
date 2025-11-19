@@ -1,0 +1,9 @@
+Model,Features,Threshold,Accuracy,Precision,Recall,F1_Score,Avg_Profit_Per_Trade,Win_Rate,N_Trades,Strategy
+XGBoost (Regime),103,0.50,0.5969,0.3874,0.6031,0.4718,0.000370,0.5267,619,Balanced
+LightGBM (Regime),103,0.50,0.5838,0.3748,0.5902,0.4585,0.000316,0.5286,611,Balanced
+CatBoost (Regime),103,0.50,0.5669,0.3700,0.6418,0.4694,0.000295,0.5165,619,Balanced
+Ensemble (Regime),103,0.50,0.5862,0.3790,0.6057,0.4663,0.000257,0.5210,620,Balanced
+LightGBM (Regime Profit-Opt),103,0.75,0.6985,0.4256,0.1082,0.1050,0.002055,0.5400,50,Conservative
+LightGBM (Regime F1-Opt),103,0.40,0.4985,0.3157,0.8660,0.4858,0.000285,0.5239,880,Aggressive
+XGBoost (Improved),78,0.50,0.3038,0.3001,1.0000,0.4616,0.000227,0.5298,1293,Broken
+XGBoost (Improved Profit-Opt),78,0.65,N/A,N/A,N/A,N/A,0.021021,1.0000,4,Ultra-Conservative
