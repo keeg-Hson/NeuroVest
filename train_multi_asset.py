@@ -17,6 +17,11 @@ Benefits:
 - Better generalization across asset classes
 - Learn universal price patterns
 - Reduce overfitting on single-asset idiosyncrasies
+
+Usage:
+    python3 train_multi_asset.py              # Standard training
+    python3 train_multi_asset.py --tune       # With hyperparameter tuning
+    python3 train_multi_asset.py --tune-fast  # Quick tuning (fewer iterations)
 """
 
 import warnings
@@ -25,6 +30,7 @@ warnings.filterwarnings('ignore')
 import numpy as np
 import pandas as pd
 import joblib
+import argparse
 from pathlib import Path
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import lightgbm as lgb
@@ -33,6 +39,13 @@ import xgboost as xgb
 
 from utils import add_features, finalize_features, add_forward_returns_and_labels
 from config import TRAIN_CFG
+
+# Parse command-line arguments
+parser = argparse.ArgumentParser(description='Multi-Asset Model Training')
+parser.add_argument('--tune', action='store_true', help='Enable hyperparameter tuning')
+parser.add_argument('--tune-fast', action='store_true', help='Quick hyperparameter tuning (fewer iterations)')
+parser.add_argument('--tune-iter', type=int, default=50, help='Number of tuning iterations')
+args = parser.parse_args()
 
 print("=" * 80)
 print("MULTI-ASSET MODEL TRAINING")
@@ -252,51 +265,134 @@ if np.isinf(weights).any() or np.isnan(weights).any():
 models = {}
 predictions = {}
 
-# --- XGBoost ---
-print("\n[1/3] Training XGBoost...")
-xgb_model = xgb.XGBClassifier(
-    n_estimators=200,
-    max_depth=5,
-    learning_rate=0.05,
-    subsample=0.8,
-    colsample_bytree=0.8,
-    random_state=42,
-    eval_metric='logloss'
-)
-xgb_model.fit(X_train, y_train, sample_weight=weights, verbose=False)
-models['xgboost'] = xgb_model
-predictions['xgboost'] = xgb_model.predict(X_test)
-print(f"   ✓ Accuracy: {accuracy_score(y_test, predictions['xgboost']):.4f}")
+# Check if hyperparameter tuning is requested
+use_tuning = args.tune or args.tune_fast
 
-# --- LightGBM ---
-print("\n[2/3] Training LightGBM...")
-lgb_model = lgb.LGBMClassifier(
-    n_estimators=200,
-    max_depth=5,
-    learning_rate=0.05,
-    subsample=0.8,
-    colsample_bytree=0.8,
-    random_state=42,
-    verbose=-1
-)
-lgb_model.fit(X_train, y_train, sample_weight=weights)
-models['lightgbm'] = lgb_model
-predictions['lightgbm'] = lgb_model.predict(X_test)
-print(f"   ✓ Accuracy: {accuracy_score(y_test, predictions['lightgbm']):.4f}")
+if use_tuning:
+    from hyperparameter_tuning import tune_models, save_best_params, load_best_params
 
-# --- CatBoost ---
-print("\n[3/3] Training CatBoost...")
-cat_model = CatBoostClassifier(
-    iterations=200,
-    depth=5,
-    learning_rate=0.05,
-    random_state=42,
-    verbose=False
-)
-cat_model.fit(X_train, y_train, sample_weight=weights)
-models['catboost'] = cat_model
-predictions['catboost'] = cat_model.predict(X_test)
-print(f"   ✓ Accuracy: {accuracy_score(y_test, predictions['catboost']):.4f}")
+    n_iter = 15 if args.tune_fast else args.tune_iter
+    print(f"\n🔧 HYPERPARAMETER TUNING ENABLED (n_iter={n_iter})")
+    print("   This may take 5-15 minutes...")
+
+    tuning_results = tune_models(
+        X_train, y_train, weights,
+        n_iter=n_iter,
+        cv_splits=5,
+        verbose=True
+    )
+
+    # Extract tuned models
+    models['xgboost'] = tuning_results['xgboost']['model']
+    models['lightgbm'] = tuning_results['lightgbm']['model']
+    models['catboost'] = tuning_results['catboost']['model']
+
+    # Save best parameters
+    save_best_params(tuning_results)
+
+    # Get predictions
+    for name, model in models.items():
+        predictions[name] = model.predict(X_test)
+        acc = accuracy_score(y_test, predictions[name])
+        cv_score = tuning_results[name]['cv_score']
+        print(f"\n{name.upper()}: CV F1={cv_score:.4f}, Test Acc={acc:.4f}")
+
+else:
+    # Try to load previously tuned parameters
+    from hyperparameter_tuning import load_best_params
+    best_params = load_best_params()
+
+    if best_params:
+        print("\n📁 Using previously tuned hyperparameters")
+
+        # --- XGBoost with tuned params ---
+        print("\n[1/3] Training XGBoost...")
+        xgb_params = best_params.get('xgboost', {}).get('params', {})
+        xgb_model = xgb.XGBClassifier(
+            random_state=42,
+            eval_metric='logloss',
+            **xgb_params
+        )
+        xgb_model.fit(X_train, y_train, sample_weight=weights, verbose=False)
+        models['xgboost'] = xgb_model
+        predictions['xgboost'] = xgb_model.predict(X_test)
+        print(f"   ✓ Accuracy: {accuracy_score(y_test, predictions['xgboost']):.4f}")
+
+        # --- LightGBM with tuned params ---
+        print("\n[2/3] Training LightGBM...")
+        lgb_params = best_params.get('lightgbm', {}).get('params', {})
+        lgb_model = lgb.LGBMClassifier(
+            random_state=42,
+            verbose=-1,
+            **lgb_params
+        )
+        lgb_model.fit(X_train, y_train, sample_weight=weights)
+        models['lightgbm'] = lgb_model
+        predictions['lightgbm'] = lgb_model.predict(X_test)
+        print(f"   ✓ Accuracy: {accuracy_score(y_test, predictions['lightgbm']):.4f}")
+
+        # --- CatBoost with tuned params ---
+        print("\n[3/3] Training CatBoost...")
+        cat_params = best_params.get('catboost', {}).get('params', {})
+        cat_model = CatBoostClassifier(
+            random_state=42,
+            verbose=False,
+            **cat_params
+        )
+        cat_model.fit(X_train, y_train, sample_weight=weights)
+        models['catboost'] = cat_model
+        predictions['catboost'] = cat_model.predict(X_test)
+        print(f"   ✓ Accuracy: {accuracy_score(y_test, predictions['catboost']):.4f}")
+
+    else:
+        # Use default parameters
+        print("\n📝 Using default hyperparameters (run with --tune to optimize)")
+
+        # --- XGBoost ---
+        print("\n[1/3] Training XGBoost...")
+        xgb_model = xgb.XGBClassifier(
+            n_estimators=200,
+            max_depth=5,
+            learning_rate=0.05,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42,
+            eval_metric='logloss'
+        )
+        xgb_model.fit(X_train, y_train, sample_weight=weights, verbose=False)
+        models['xgboost'] = xgb_model
+        predictions['xgboost'] = xgb_model.predict(X_test)
+        print(f"   ✓ Accuracy: {accuracy_score(y_test, predictions['xgboost']):.4f}")
+
+        # --- LightGBM ---
+        print("\n[2/3] Training LightGBM...")
+        lgb_model = lgb.LGBMClassifier(
+            n_estimators=200,
+            max_depth=5,
+            learning_rate=0.05,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            random_state=42,
+            verbose=-1
+        )
+        lgb_model.fit(X_train, y_train, sample_weight=weights)
+        models['lightgbm'] = lgb_model
+        predictions['lightgbm'] = lgb_model.predict(X_test)
+        print(f"   ✓ Accuracy: {accuracy_score(y_test, predictions['lightgbm']):.4f}")
+
+        # --- CatBoost ---
+        print("\n[3/3] Training CatBoost...")
+        cat_model = CatBoostClassifier(
+            iterations=200,
+            depth=5,
+            learning_rate=0.05,
+            random_state=42,
+            verbose=False
+        )
+        cat_model.fit(X_train, y_train, sample_weight=weights)
+        models['catboost'] = cat_model
+        predictions['catboost'] = cat_model.predict(X_test)
+        print(f"   ✓ Accuracy: {accuracy_score(y_test, predictions['catboost']):.4f}")
 
 # --- Ensemble (Majority Vote) ---
 print("\n[*] Creating ensemble...")
