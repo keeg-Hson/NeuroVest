@@ -165,9 +165,11 @@ def show_data_menu():
     print_header("Data Management")
     print()
     print("  1. Update SPY data")
-    print("  2. Download crypto data")
-    print("  3. Download all framework assets")
-    print("  4. List available assets")
+    print("  2. Download crypto data (basic - BTC/ETH/SOL)")
+    print("  3. Download crypto data (enhanced - 10 coins, max history)")
+    print("  4. Download equity ETFs")
+    print("  5. Download all framework assets")
+    print("  6. List available assets")
     print()
     print("  0. Back")
     print()
@@ -377,8 +379,12 @@ def handle_data():
         elif choice == "2":
             run_command(["python3", "download_crypto_data.py"])
         elif choice == "3":
-            run_command(["python3", "framework/download_all_assets.py"])
+            run_command(["python3", "download_crypto_enhanced.py"])
         elif choice == "4":
+            run_command(["python3", "download_equity_etfs.py"])
+        elif choice == "5":
+            run_command(["python3", "framework/download_all_assets.py"])
+        elif choice == "6":
             assets = get_available_assets()
             print("\nAvailable assets:")
             print("-" * 40)
@@ -451,19 +457,47 @@ def handle_asset_explorer():
 
             try:
                 import pandas as pd
+                import numpy as np
                 df = pd.read_csv(data_path)
                 print(f"File: {data_path}")
                 print(f"Rows: {len(df):,}")
                 print(f"Columns: {len(df.columns)}")
                 if 'Date' in df.columns:
                     df['Date'] = pd.to_datetime(df['Date'])
-                    print(f"Date range: {df['Date'].min().date()} to {df['Date'].max().date()}")
+                    date_min = df['Date'].min()
+                    date_max = df['Date'].max()
+                    years = (date_max - date_min).days / 365.25
+                    print(f"Date range: {date_min.date()} to {date_max.date()} ({years:.1f} years)")
                 if 'Close' in df.columns:
                     print(f"Price range: ${df['Close'].min():.2f} - ${df['Close'].max():.2f}")
                     print(f"Latest close: ${df['Close'].iloc[-1]:.2f}")
+
+                    # Calculate returns
+                    if len(df) > 252:
+                        first_price = df['Close'].iloc[0]
+                        last_price = df['Close'].iloc[-1]
+                        total_return = (last_price / first_price) - 1
+                        annual_return = (1 + total_return) ** (1 / years) - 1
+                        print(f"\nTotal return: {total_return:.1%}")
+                        print(f"Annual return: {annual_return:.1%}")
+
+                        # Recent performance
+                        if len(df) >= 252:
+                            ytd_return = (df['Close'].iloc[-1] / df['Close'].iloc[-252]) - 1
+                            print(f"1-year return: {ytd_return:.1%}")
+
             except FileNotFoundError:
                 print(f"❌ Data file not found: {data_path}")
-                print("   Run Data Management → Download to get this data")
+                print()
+                download = input("Would you like to download this data? (y/n): ").strip().lower()
+                if download == 'y':
+                    if "/USDT" in asset:
+                        run_command(["python3", "download_crypto_enhanced.py"])
+                    elif asset == "SPY":
+                        run_command(["python3", "update_spy_data.py"])
+                    else:
+                        run_command(["python3", "download_equity_etfs.py"])
+                    continue  # Re-show menu after download
             except Exception as e:
                 print(f"❌ Error reading data: {e}")
 
