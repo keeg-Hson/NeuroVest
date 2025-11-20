@@ -119,6 +119,7 @@ def load_backtest_results():
 
 def create_price_chart(df, ticker):
     """Create interactive price chart with indicators"""
+    df = df.copy()  # Avoid SettingWithCopyWarning
     fig = make_subplots(
         rows=3, cols=1,
         shared_xaxes=True,
@@ -358,7 +359,7 @@ def show_dashboard(selected_asset):
 
         if overview_data:
             overview_df = pd.DataFrame(overview_data)
-            st.dataframe(overview_df, use_container_width=True)
+            st.dataframe(overview_df, width='stretch')
 
     # Quick chart for selected asset
     if selected_asset:
@@ -370,7 +371,7 @@ def show_dashboard(selected_asset):
             # Show last 90 days
             recent = df.tail(90)
             fig = create_price_chart(recent, selected_asset)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
 
 
 def show_asset_analysis(selected_asset):
@@ -414,11 +415,11 @@ def show_asset_analysis(selected_asset):
 
     with tab1:
         fig = create_price_chart(filtered_df, selected_asset)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
     with tab2:
         fig = create_returns_chart(filtered_df)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
     with tab3:
         # Detailed statistics
@@ -478,7 +479,7 @@ def show_predictions(selected_asset):
         signals = pd.read_csv(signals_path)
         if len(signals) > 0:
             recent = signals.tail(20)
-            st.dataframe(recent, use_container_width=True)
+            st.dataframe(recent, width='stretch')
         else:
             st.info("No predictions found")
     else:
@@ -519,7 +520,7 @@ def show_backtest():
 
     if results is not None:
         st.subheader("Latest Results")
-        st.dataframe(results, use_container_width=True)
+        st.dataframe(results, width='stretch')
     else:
         st.info("No backtest results available. Run a backtest first.")
 
@@ -554,7 +555,7 @@ def show_import():
                 df = pd.read_excel(uploaded_file)
 
             st.subheader("Data Preview")
-            st.dataframe(df.head(10), use_container_width=True)
+            st.dataframe(df.head(10), width='stretch')
 
             st.write(f"**Rows:** {len(df)}")
             st.write(f"**Columns:** {list(df.columns)}")

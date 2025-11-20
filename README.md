@@ -145,6 +145,75 @@ python3 backtest_portfolio.py --assets SPY,GLD --weights 0.7,0.3 --rebalance mon
 
 ---
 
+## Web Dashboard
+
+Interactive web interface using Streamlit:
+
+```bash
+streamlit run dashboard.py
+```
+
+Features:
+- **Dashboard** - Asset overview, quick charts, key metrics
+- **Asset Analysis** - Interactive price charts with RSI, volume, moving averages
+- **Predictions** - View and run predictions
+- **Backtest** - Run and view backtest results
+- **Import Data** - Upload custom CSV/Excel files
+
+Or launch from main menu: option 7
+
+---
+
+## LLM Analysis
+
+Get AI-powered market analysis using OpenAI or Anthropic:
+
+```bash
+python3 llm_forecast.py --asset SPY --provider openai
+```
+
+Requires API key in `.env`:
+```
+OPENAI_API_KEY=your-key-here
+```
+
+Or use from main menu: Diagnostics & LLM → option 5 or 6
+
+---
+
+## Custom Asset Import
+
+Import your own data from CSV or Excel files:
+
+```bash
+python3 import_custom_asset.py my_data.csv MYTICKER
+python3 import_custom_asset.py --sample  # Create template
+python3 import_custom_asset.py --list    # List imported assets
+```
+
+Required columns: Date, Close (or Price)
+Optional: Open, High, Low, Volume
+
+---
+
+## Live Updates & Newsletter
+
+**Continuous data updates:**
+```bash
+python3 live_update.py --mode scheduled --assets SPY,QQQ --interval 15
+python3 live_update.py --download  # Download all historical data
+```
+
+**Email newsletter:**
+```bash
+python3 newsletter_generator.py --preview --assets SPY
+python3 newsletter_generator.py --send --assets SPY,BTC/USDT
+```
+
+Configure SMTP settings in `.env` for email delivery.
+
+---
+
 ## How Predictions Work
 
 The prediction pipeline:
@@ -283,7 +352,13 @@ Python 3.8+
 pandas, numpy, scikit-learn
 xgboost, lightgbm, catboost
 yfinance, ccxt
-ta-lib
+streamlit, plotly (for dashboard)
+openai, anthropic (for LLM features)
+```
+
+Install all dependencies:
+```bash
+pip install -r requirements.txt
 ```
 
 ---
