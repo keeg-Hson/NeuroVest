@@ -27,6 +27,7 @@ import xgboost as xgb
 
 from utils import add_features, add_forward_returns_and_labels
 from config import TRAIN_CFG
+from asset_features import filter_features_for_asset, get_asset_type
 
 print("=" * 80)
 print("PER-ASSET MODEL TRAINING")
@@ -85,6 +86,13 @@ for asset_name, asset_info in ASSETS.items():
         if leaky_features:
             print(f"   ⚠️  WARNING: Removing leaky features: {leaky_features}")
             features = [f for f in features if f not in leakage_cols and not f.startswith('fwd_')]
+
+        # ASSET-AWARE FEATURE FILTERING: Remove irrelevant features for this asset type
+        # This improves accuracy by excluding VIX/Sector features for crypto, etc.
+        original_count = len(features)
+        features = filter_features_for_asset(features, asset_name, verbose=False)
+        if len(features) < original_count:
+            print(f"   📊 Filtered {original_count - len(features)} irrelevant features for {get_asset_type(asset_name)} asset")
 
         print(f"   {len(df)} rows, {len(features)} features")
 

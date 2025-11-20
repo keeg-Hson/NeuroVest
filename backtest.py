@@ -905,6 +905,35 @@ def run_backtest(
     gross_loss = -trades.loc[trades["dollar_return"] < 0, "dollar_return"].sum()
     profit_factor = gross_win / gross_loss if gross_loss != 0 else np.inf
 
+    # Calculate buy-and-hold benchmark for the same period
+    if len(trades) > 1:
+        start = pd.to_datetime(trades.index.min(), errors="coerce")
+        end = pd.to_datetime(trades["exit_time"].max(), errors="coerce")
+        if pd.notna(start) and pd.notna(end):
+            # Get prices at start and end
+            start_mask = spy_df.index >= start
+            end_mask = spy_df.index <= end
+            period_df = spy_df[start_mask & end_mask]
+            if len(period_df) > 1:
+                bh_start_price = period_df["Close"].iloc[0]
+                bh_end_price = period_df["Close"].iloc[-1]
+                buy_hold_return = (bh_end_price / bh_start_price) - 1.0
+                elapsed_days = max(1, (end - start).days)
+                buy_hold_annual = (1.0 + buy_hold_return) ** (252.0 / elapsed_days) - 1.0
+            else:
+                buy_hold_return = 0.0
+                buy_hold_annual = 0.0
+        else:
+            buy_hold_return = 0.0
+            buy_hold_annual = 0.0
+    else:
+        buy_hold_return = 0.0
+        buy_hold_annual = 0.0
+
+    # Calculate alpha (strategy excess return over buy-and-hold)
+    alpha = total_return - buy_hold_return
+    alpha_annual = annualized_return - buy_hold_annual if not np.isnan(annualized_return) else np.nan
+
     metrics = {
         "trades": len(trades),
         "total_return": total_return,
@@ -917,6 +946,10 @@ def run_backtest(
         "avg_short": avg_short,
         "max_drawdown": max_drawdown,
         "profit_factor": profit_factor,
+        "buy_hold_return": buy_hold_return,
+        "buy_hold_annual": buy_hold_annual,
+        "alpha": alpha,
+        "alpha_annual": alpha_annual,
     }
 
     # --- Optional top-K per week/month to force activity ---
@@ -1538,6 +1571,15 @@ if __name__ == "__main__":
     print(f"  Max drawdown:        {m['max_drawdown']:.2%}")
     print(f"  Avg long:           {m['avg_long']:.5f}")
     print(f"  Avg short:          {m['avg_short']:.5f}")
+
+    # Buy-and-hold comparison
+    print("\n📊 vs Buy-and-Hold:")
+    print(f"  Buy & Hold return:  {m.get('buy_hold_return', 0):.2%}")
+    print(f"  Buy & Hold annual:  {m.get('buy_hold_annual', 0):.2%}")
+    print(f"  Strategy Alpha:     {m.get('alpha', 0):+.2%}")
+    alpha_annual = m.get('alpha_annual', 0)
+    if not np.isnan(alpha_annual):
+        print(f"  Alpha (annual):     {alpha_annual:+.2%}")
 
     # optional summary/record (if helper functions available)
     try:

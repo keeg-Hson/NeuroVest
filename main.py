@@ -153,10 +153,18 @@ def show_backtest_menu():
 def show_diagnostics_menu():
     print_header("Diagnostics & Analysis")
     print()
+    print("  SYSTEM")
     print("  1. System diagnostics")
     print("  2. Evaluate model metrics")
+    print()
+    print("  ANALYSIS")
     print("  3. Analyze correlations")
     print("  4. Compare strategies")
+    print("  5. LLM market analysis")
+    print()
+    print("  REPORTS")
+    print("  6. Generate newsletter (preview)")
+    print("  7. Send newsletter via email")
     print()
     print("  0. Back")
     print()
@@ -164,12 +172,20 @@ def show_diagnostics_menu():
 def show_data_menu():
     print_header("Data Management")
     print()
+    print("  DOWNLOAD")
     print("  1. Update SPY data")
     print("  2. Download crypto data (basic - BTC/ETH/SOL)")
     print("  3. Download crypto data (enhanced - 10 coins, max history)")
     print("  4. Download equity ETFs")
     print("  5. Download all framework assets")
-    print("  6. List available assets")
+    print()
+    print("  LIVE UPDATES")
+    print("  6. Run live update (single)")
+    print("  7. Run scheduled updates")
+    print("  8. Download all historical data")
+    print()
+    print("  INFO")
+    print("  9. List available assets")
     print()
     print("  0. Back")
     print()
@@ -364,6 +380,16 @@ def handle_diagnostics():
             run_command(["python3", "analyze_correlations.py", "--asset-group", group])
         elif choice == "4":
             run_command(["python3", "compare_strategies.py"])
+        elif choice == "5":
+            asset = select_asset()
+            provider = input("LLM provider (openai/anthropic) [openai]: ").strip() or "openai"
+            run_command(["python3", "llm_forecast.py", "--asset", asset, "--provider", provider])
+        elif choice == "6":
+            assets = input("Assets (comma-separated) [SPY]: ").strip() or "SPY"
+            run_command(["python3", "newsletter_generator.py", "--preview", "--assets", assets])
+        elif choice == "7":
+            assets = input("Assets (comma-separated) [SPY]: ").strip() or "SPY"
+            run_command(["python3", "newsletter_generator.py", "--send", "--assets", assets])
 
 def handle_data():
     while True:
@@ -385,6 +411,15 @@ def handle_data():
         elif choice == "5":
             run_command(["python3", "framework/download_all_assets.py"])
         elif choice == "6":
+            assets = input("Assets (comma-separated, blank for SPY,QQQ): ").strip() or "SPY,QQQ"
+            run_command(["python3", "live_update.py", "--assets", assets, "--predict"])
+        elif choice == "7":
+            assets = input("Assets (comma-separated, blank for SPY): ").strip() or "SPY"
+            interval = input("Interval in minutes [15]: ").strip() or "15"
+            run_command(["python3", "live_update.py", "--mode", "scheduled", "--assets", assets, "--interval", interval])
+        elif choice == "8":
+            run_command(["python3", "live_update.py", "--download"])
+        elif choice == "9":
             assets = get_available_assets()
             print("\nAvailable assets:")
             print("-" * 40)
