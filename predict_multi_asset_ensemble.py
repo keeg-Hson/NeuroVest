@@ -198,14 +198,34 @@ print("\n💾 Saving predictions...")
 
 LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
-# Create output dataframe
+# Calculate meaningful confidence values based on percentile position
+# This makes confidence represent how strongly the model signals in each direction
+
+# For SPIKE (class 2): confidence = how far above spike_threshold
+# For CRASH (class 0): confidence = how far below crash_threshold
+# For NORMAL (class 1): confidence = distance from nearest threshold
+
+# Normalize probabilities to 0-1 confidence scale relative to thresholds
+spike_conf = np.clip((ensemble_prob - spike_threshold) / (ensemble_prob.max() - spike_threshold + 0.001), 0, 1)
+crash_conf = np.clip((crash_threshold - ensemble_prob) / (crash_threshold - ensemble_prob.min() + 0.001), 0, 1)
+
+# Overall confidence: how decisive is the model?
+# High when strongly in SPIKE or CRASH zone, low when in NORMAL zone
+confidence = np.maximum(
+    (ensemble_prob - spike_threshold) / (1 - spike_threshold + 0.001),  # Above spike threshold
+    (crash_threshold - ensemble_prob) / (crash_threshold + 0.001)        # Below crash threshold
+)
+confidence = np.clip(confidence, 0, 1)
+
+# For display purposes, also provide the raw probability
+# Create output dataframe with confidence as decimals (0-1 scale) for compatibility
 output = pd.DataFrame({
     'Date': dates,
     'Prediction': pred_012,
     'Proba': ensemble_prob,
-    'Spike_Conf': ensemble_prob,  # For long signals
-    'Crash_Conf': 1 - ensemble_prob,  # For short signals (if used)
-    'Confidence': np.abs(ensemble_prob - 0.5) * 2,  # 0 to 1 scale
+    'Spike_Conf': np.where(pred_012 == 2, 0.5 + spike_conf * 0.5, spike_conf * 0.3),  # Higher for actual SPIKE predictions
+    'Crash_Conf': np.where(pred_012 == 0, 0.5 + crash_conf * 0.5, crash_conf * 0.3),  # Higher for actual CRASH predictions
+    'Confidence': confidence,  # Decimal scale (0-1)
 })
 
 # Add individual model probabilities for analysis

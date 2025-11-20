@@ -119,12 +119,25 @@ def load_sentiment_data():
     return sentiment_sources
 
 
-def get_market_news_summary():
+def get_market_news_summary(assets=None):
     """Get recent market news/events for context"""
-    # This would ideally fetch from a news API
-    # For now, return placeholder that can be expanded
     today = datetime.now()
 
+    # Try to fetch real news if NEWS_API_KEY is available
+    try:
+        from fetch_news import get_market_news_context, NEWS_API_KEY
+        if NEWS_API_KEY:
+            news_context = get_market_news_context(assets=assets, days_back=3)
+            return f"""
+MARKET NEWS & CONTEXT (as of {today.strftime('%Y-%m-%d')}):
+{news_context}
+"""
+    except ImportError:
+        pass
+    except Exception as e:
+        print(f"Note: Could not fetch news: {e}")
+
+    # Fallback to placeholder
     context = f"""
 MARKET CONTEXT (as of {today.strftime('%Y-%m-%d')}):
 - Federal Reserve policy stance and recent communications
@@ -137,7 +150,7 @@ Note: For real-time news, configure NEWS_API_KEY in .env
     return context
 
 
-def build_context(asset, prediction, price_data, include_sentiment=True):
+def build_context(asset, prediction, price_data, include_sentiment=True, include_news=True):
     """Build comprehensive context for LLM analysis"""
     if price_data is None or len(price_data) == 0:
         return None
@@ -204,6 +217,12 @@ RECENT PRICE HISTORY:
 MARKET SENTIMENT:
 - Fear & Greed Index: {latest_fg.get('Fear_Greed_Value', 'N/A')} ({latest_fg.get('Fear_Greed_Class', 'N/A')})
 """
+
+    # Add news context if available
+    if include_news:
+        news_context = get_market_news_summary(assets=[asset])
+        if news_context and "Note:" not in news_context[:100]:
+            context += f"\n{news_context}"
 
     return context
 

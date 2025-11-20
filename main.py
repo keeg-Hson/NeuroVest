@@ -43,6 +43,9 @@ def get_available_assets():
 def show_main_menu():
     print_header("NeuroVest - Economic Forecasting System")
     print()
+    print("  QUICK START")
+    print("  R. Run Full Pipeline (download, train, predict, backtest)")
+    print()
     print("  CORE")
     print("  1. Training")
     print("  2. Predictions")
@@ -471,6 +474,132 @@ def handle_data():
             print(f"\nTotal: {len(assets)} assets")
             input("\nPress Enter to continue...")
 
+def handle_full_pipeline():
+    """Run comprehensive full pipeline: download, train, predict, backtest, LLM"""
+    clear_screen()
+    print_header("Full Pipeline Execution")
+    print()
+    print("  This will run the complete NeuroVest pipeline:")
+    print()
+    print("  1. Update/Download data (SPY + crypto)")
+    print("  2. Train models (multi-asset with optimized weights)")
+    print("  3. Generate predictions (all assets)")
+    print("  4. Run backtests (optimized config)")
+    print("  5. Generate LLM analysis (optional)")
+    print()
+    print("  Estimated time: 20-35 minutes")
+    print()
+
+    # Ask for configuration
+    include_crypto = input("  Include crypto data download? (y/n) [y]: ").strip().lower() != 'n'
+    include_llm = input("  Include LLM analysis at end? (y/n) [y]: ").strip().lower() != 'n'
+
+    if include_llm:
+        llm_provider = input("  LLM provider (openai/anthropic) [openai]: ").strip() or "openai"
+
+    print()
+    confirm = input("  Start full pipeline? (y/n): ").strip().lower()
+
+    if confirm != 'y':
+        print("\n  Cancelled.")
+        input("  Press Enter to continue...")
+        return
+
+    print("\n" + "=" * 60)
+    print("  STARTING FULL PIPELINE")
+    print("=" * 60)
+
+    success_count = 0
+    total_steps = 5 if include_llm else 4
+
+    # Step 1: Data Download
+    print(f"\n[Step 1/{total_steps}] Downloading/Updating Data...")
+    print("-" * 60)
+
+    try:
+        # Update SPY
+        print("\nUpdating SPY data...")
+        result = subprocess.run(["python3", "update_spy_data.py"], capture_output=False)
+
+        # Download crypto if requested
+        if include_crypto:
+            print("\nDownloading crypto data...")
+            subprocess.run(["python3", "download_crypto_enhanced.py"])
+
+        success_count += 1
+        print("\n[+] Data download complete")
+    except Exception as e:
+        print(f"\n[!] Data download error: {e}")
+
+    # Step 2: Training
+    print(f"\n[Step 2/{total_steps}] Training Models...")
+    print("-" * 60)
+
+    try:
+        subprocess.run(["python3", "train_multi_asset.py", "--optimize-weights"])
+        success_count += 1
+        print("\n[+] Training complete")
+    except Exception as e:
+        print(f"\n[!] Training error: {e}")
+
+    # Step 3: Predictions
+    print(f"\n[Step 3/{total_steps}] Generating Predictions...")
+    print("-" * 60)
+
+    try:
+        # Multi-asset ensemble prediction
+        subprocess.run(["python3", "predict_multi_asset_ensemble.py"])
+
+        # Per-asset predictions
+        subprocess.run(["python3", "predict_per_asset.py", "--all"])
+
+        success_count += 1
+        print("\n[+] Predictions complete")
+    except Exception as e:
+        print(f"\n[!] Prediction error: {e}")
+
+    # Step 4: Backtesting
+    print(f"\n[Step 4/{total_steps}] Running Backtests...")
+    print("-" * 60)
+
+    try:
+        subprocess.run(["python3", "backtest.py", "--config", "configs/backtest_optimized.json"])
+        success_count += 1
+        print("\n[+] Backtesting complete")
+    except Exception as e:
+        print(f"\n[!] Backtest error: {e}")
+
+    # Step 5: LLM Analysis (optional)
+    if include_llm:
+        print(f"\n[Step 5/{total_steps}] Generating LLM Analysis...")
+        print("-" * 60)
+
+        try:
+            subprocess.run(["python3", "llm_forecast.py", "--all", "--provider", llm_provider])
+            success_count += 1
+            print("\n[+] LLM analysis complete")
+        except Exception as e:
+            print(f"\n[!] LLM analysis error: {e}")
+
+    # Summary
+    print("\n" + "=" * 60)
+    print("  PIPELINE COMPLETE")
+    print("=" * 60)
+    print(f"\n  Completed: {success_count}/{total_steps} steps")
+    print()
+    print("  Output locations:")
+    print("  - Predictions: logs/daily_predictions.csv")
+    print("  - Backtest: outputs/backtest_results.json")
+    if include_llm:
+        print("  - LLM Analysis: logs/llm_multi_asset_summary_*.json")
+    print()
+    print("  Next steps:")
+    print("  - View results in Web Dashboard (option 7)")
+    print("  - Run Asset Explorer for specific analysis (option 6)")
+    print()
+    input("  Press Enter to continue...")
+
+
 def handle_asset_explorer():
     """Guided pipeline to explore a specific asset"""
     clear_screen()
@@ -632,6 +761,8 @@ def main():
             if choice == "0":
                 print("\nDone.")
                 break
+            elif choice.lower() == "r":
+                handle_full_pipeline()
             elif choice == "1":
                 handle_training()
             elif choice == "2":
@@ -645,7 +776,7 @@ def main():
             elif choice == "6":
                 handle_asset_explorer()
             elif choice == "7":
-                print("\n🌐 Launching Web Dashboard...")
+                print("\n Launching Web Dashboard...")
                 print("   Opening browser at http://localhost:8501")
                 print("\n   Press Ctrl+C in terminal to stop the server")
                 print("-" * 60)
