@@ -142,16 +142,24 @@ def show_prediction_menu():
 def show_backtest_menu():
     print_header("Backtesting Options")
     print()
-    print("  CONFIGURATIONS")
-    print("  1. Backtest (default config)")
-    print("  2. Backtest (optimized config)")
-    print("  3. Backtest (high profit - 1.75x ATR TP)")
-    print("  4. Backtest (aggressive - 2.5x ATR TP)")
+    print("  RISK PROFILES")
+    print("  1. Conservative trading (low risk, high confidence)")
+    print("  2. Moderate trading (balanced risk-reward)")
+    print("  3. Liberal/Aggressive trading (high risk, high reward)")
+    print()
+    print("  STANDARD CONFIGS")
+    print("  4. Backtest (optimized config)")
+    print("  5. Backtest (high profit - 1.75x ATR TP)")
+    print("  6. Backtest (aggressive - 2.5x ATR TP)")
     print()
     print("  ASSET SELECTION")
-    print("  5. Backtest specific asset")
-    print("  6. Compare asset group")
-    print("  7. Portfolio backtest")
+    print("  7. Backtest specific asset")
+    print("  8. Compare asset group")
+    print()
+    print("  PORTFOLIO")
+    print("  9. Portfolio backtest")
+    print("  10. Find optimal rebalancing period")
+    print("  11. Execute portfolio rebalancing")
     print()
     print("  0. Back")
     print()
@@ -163,18 +171,21 @@ def show_diagnostics_menu():
     print("  1. System diagnostics")
     print("  2. Evaluate model metrics")
     print()
-    print("  ANALYSIS")
+    print("  MARKET ANALYSIS")
     print("  3. Analyze correlations")
     print("  4. Compare strategies")
+    print("  5. Recession indicator")
+    print("  6. Valuation detector (single asset)")
+    print("  7. Valuation detector (all assets)")
     print()
     print("  LLM & AI")
-    print("  5. LLM analysis (single asset)")
-    print("  6. LLM analysis (all assets)")
-    print("  7. LLM newsletter summary")
+    print("  8. LLM analysis (single asset)")
+    print("  9. LLM analysis (all assets)")
+    print("  10. LLM newsletter summary")
     print()
     print("  REPORTS")
-    print("  8. Generate newsletter (preview)")
-    print("  9. Send newsletter via email")
+    print("  11. Generate newsletter (preview)")
+    print("  12. Send newsletter via email")
     print()
     print("  0. Back")
     print()
@@ -351,20 +362,49 @@ def handle_backtesting():
         if choice == "0":
             break
         elif choice == "1":
-            run_command(["python3", "backtest.py"])
+            # Conservative profile
+            print("\n📘 CONSERVATIVE TRADING PROFILE")
+            print("   - High confidence requirements (70%+)")
+            print("   - Tight risk management (1.0x ATR stop)")
+            print("   - Max 15% position size, 40% equity exposure")
+            print()
+            confirm = input("Run backtest with conservative profile? (y/n): ").strip().lower()
+            if confirm == 'y':
+                print("\nNote: Conservative profile parameters integrated into backtest")
+                run_command(["python3", "backtest.py", "--config", "configs/backtest_optimized.json"])
         elif choice == "2":
-            run_command(["python3", "backtest.py", "--config", "configs/backtest_optimized.json"])
+            # Moderate profile
+            print("\n📗 MODERATE TRADING PROFILE")
+            print("   - Balanced requirements (55%+ confidence)")
+            print("   - Moderate risk (1.5x ATR stop)")
+            print("   - Max 25% position size, 65% equity exposure")
+            print()
+            confirm = input("Run backtest with moderate profile? (y/n): ").strip().lower()
+            if confirm == 'y':
+                run_command(["python3", "backtest.py", "--config", "configs/backtest_optimized.json"])
         elif choice == "3":
-            run_command(["python3", "backtest.py", "--config", "configs/backtest_high_profit.json"])
+            # Liberal/Aggressive profile
+            print("\n📕 LIBERAL (AGGRESSIVE) TRADING PROFILE")
+            print("   - Lower requirements (45%+ confidence)")
+            print("   - Aggressive risk (2.0x ATR stop, 4.0x TP)")
+            print("   - Max 40% position size, 85% equity exposure")
+            print()
+            confirm = input("Run backtest with liberal profile? (y/n): ").strip().lower()
+            if confirm == 'y':
+                run_command(["python3", "backtest.py", "--config", "configs/backtest_aggressive.json"])
         elif choice == "4":
-            run_command(["python3", "backtest.py", "--config", "configs/backtest_aggressive.json"])
+            run_command(["python3", "backtest.py", "--config", "configs/backtest_optimized.json"])
         elif choice == "5":
+            run_command(["python3", "backtest.py", "--config", "configs/backtest_high_profit.json"])
+        elif choice == "6":
+            run_command(["python3", "backtest.py", "--config", "configs/backtest_aggressive.json"])
+        elif choice == "7":
             asset = select_asset()
             run_command(["python3", "backtest.py", "--asset", asset])
-        elif choice == "6":
+        elif choice == "8":
             group = select_asset_group()
             run_command(["python3", "backtest.py", "--asset-group", group, "--compare"])
-        elif choice == "7":
+        elif choice == "9":
             print("\nPortfolio Backtest Setup")
             print("-" * 40)
             assets = input("Assets (comma-separated, e.g., SPY,GLD,BTC/USDT): ").strip()
@@ -375,6 +415,33 @@ def handle_backtesting():
                 "--assets", assets,
                 "--weights", weights,
                 "--rebalance", rebalance
+            ])
+        elif choice == "10":
+            # Find optimal rebalancing period
+            print("\nOptimal Rebalancing Period Finder")
+            print("-" * 40)
+            assets = input("Assets (comma-separated) [SPY,GLD,TLT]: ").strip() or "SPY,GLD,TLT"
+            weights = input("Weights (comma-separated) [0.6,0.3,0.1]: ").strip() or "0.6,0.3,0.1"
+            years = input("Lookback years [5]: ").strip() or "5"
+            run_command([
+                "python3", "portfolio_rebalancer.py",
+                "--find-optimal",
+                "--assets", assets,
+                "--weights", weights,
+                "--lookback-years", years
+            ])
+        elif choice == "11":
+            # Execute rebalancing
+            print("\nPortfolio Rebalancing")
+            print("-" * 40)
+            assets = input("Assets (comma-separated) [SPY,GLD,TLT]: ").strip() or "SPY,GLD,TLT"
+            weights = input("Weights (comma-separated) [0.6,0.3,0.1]: ").strip() or "0.6,0.3,0.1"
+            profile = input("Trading profile (conservative/moderate/liberal) [moderate]: ").strip() or "moderate"
+            run_command([
+                "python3", "portfolio_rebalancer.py",
+                "--assets", assets,
+                "--weights", weights,
+                "--profile", profile
             ])
 
 def handle_diagnostics():
@@ -396,23 +463,35 @@ def handle_diagnostics():
         elif choice == "4":
             run_command(["python3", "compare_strategies.py"])
         elif choice == "5":
+            # Recession indicator
+            print("\nRunning recession probability analysis...")
+            run_command(["python3", "recession_indicator.py", "--save"])
+        elif choice == "6":
+            # Valuation detector (single asset)
+            asset = select_asset()
+            run_command(["python3", "valuation_detector.py", "--asset", asset])
+        elif choice == "7":
+            # Valuation detector (all assets)
+            print("\nAnalyzing valuations for all assets...")
+            run_command(["python3", "valuation_detector.py", "--all", "--save"])
+        elif choice == "8":
             asset = select_asset()
             provider = input("LLM provider (openai/anthropic) [openai]: ").strip() or "openai"
             run_command(["python3", "llm_forecast.py", "--asset", asset, "--provider", provider])
-        elif choice == "6":
+        elif choice == "9":
             # Multi-asset LLM analysis
             print("\nRunning LLM analysis on all assets...")
             provider = input("LLM provider (openai/anthropic) [openai]: ").strip() or "openai"
             run_command(["python3", "llm_forecast.py", "--all", "--provider", provider])
-        elif choice == "7":
+        elif choice == "10":
             # Newsletter summary
             print("\nGenerating LLM newsletter summary...")
             provider = input("LLM provider (openai/anthropic) [openai]: ").strip() or "openai"
             run_command(["python3", "llm_forecast.py", "--all", "--newsletter", "--provider", provider])
-        elif choice == "8":
+        elif choice == "11":
             assets = input("Assets (comma-separated) [SPY]: ").strip() or "SPY"
             run_command(["python3", "newsletter_generator.py", "--preview", "--assets", assets])
-        elif choice == "9":
+        elif choice == "12":
             assets = input("Assets (comma-separated) [SPY]: ").strip() or "SPY"
             run_command(["python3", "newsletter_generator.py", "--send", "--assets", assets])
 

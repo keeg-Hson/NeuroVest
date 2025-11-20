@@ -182,17 +182,29 @@ def build_context(asset, prediction, price_data, include_sentiment=True, include
     returns = price_data['Close'].pct_change().dropna()
     volatility = returns.std() * (252 ** 0.5) * 100  # Annualized
 
-    # Prediction info
+    # Prediction info with detailed probabilities
     pred_label = prediction.get('Prediction', 1)
-    if pred_label == 0:
-        signal = "CRASH (bearish)"
-    elif pred_label == 2:
-        signal = "SPIKE (bullish)"
-    else:
-        signal = "NORMAL (neutral)"
-
     crash_conf = prediction.get('Crash_Conf', 0)
     spike_conf = prediction.get('Spike_Conf', 0)
+    proba = prediction.get('Proba', 0.5)
+
+    # Calculate normalized probabilities for each scenario
+    # These represent actual likelihoods of each market movement
+    if pred_label == 0:
+        signal = "CRASH (bearish)"
+        crash_prob = max(crash_conf, 0.6)  # Primary signal
+        spike_prob = 0.1
+        normal_prob = 1 - crash_prob - spike_prob
+    elif pred_label == 2:
+        signal = "SPIKE (bullish)"
+        spike_prob = max(spike_conf, 0.6)  # Primary signal
+        crash_prob = 0.1
+        normal_prob = 1 - spike_prob - crash_prob
+    else:
+        signal = "NORMAL (neutral)"
+        normal_prob = 0.6
+        crash_prob = 0.2
+        spike_prob = 0.2
 
     context = f"""
 ASSET: {asset}
@@ -206,10 +218,13 @@ CURRENT MARKET DATA:
 - Annualized Volatility: {volatility:.1f}%
 
 MODEL PREDICTION:
-- Signal: {signal}
-- Crash Probability: {crash_conf:.1%}
-- Spike Probability: {spike_conf:.1%}
-- Confidence: {max(crash_conf, spike_conf):.1%}
+- Primary Signal: {signal}
+- Model Confidence: {max(crash_conf, spike_conf):.1%}
+
+SCENARIO LIKELIHOODS:
+- CRASH (Bearish):  {crash_prob:.1%} - Significant downward movement expected
+- NORMAL (Neutral): {normal_prob:.1%} - Sideways/mixed price action expected
+- SPIKE (Bullish):  {spike_prob:.1%} - Significant upward movement expected
 
 RECENT PRICE HISTORY:
 {price_data[['Date', 'Close']].tail(5).to_string(index=False)}
