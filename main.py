@@ -43,13 +43,16 @@ def get_available_assets():
 def show_main_menu():
     print_header("NeuroVest - Economic Forecasting System")
     print()
+    print("  CORE")
     print("  1. Training")
     print("  2. Predictions")
     print("  3. Backtesting")
-    print("  4. Diagnostics")
+    print("  4. Diagnostics & LLM")
     print("  5. Data Management")
     print()
+    print("  TOOLS")
     print("  6. Asset Explorer (guided analysis)")
+    print("  7. Web Dashboard (interactive UI)")
     print()
     print("  ?. Quick Start Guide")
     print("  0. Exit")
@@ -160,11 +163,14 @@ def show_diagnostics_menu():
     print("  ANALYSIS")
     print("  3. Analyze correlations")
     print("  4. Compare strategies")
-    print("  5. LLM market analysis")
+    print()
+    print("  LLM & AI")
+    print("  5. LLM market analysis (per asset)")
+    print("  6. Quick LLM test (SPY)")
     print()
     print("  REPORTS")
-    print("  6. Generate newsletter (preview)")
-    print("  7. Send newsletter via email")
+    print("  7. Generate newsletter (preview)")
+    print("  8. Send newsletter via email")
     print()
     print("  0. Back")
     print()
@@ -390,9 +396,13 @@ def handle_diagnostics():
             provider = input("LLM provider (openai/anthropic) [openai]: ").strip() or "openai"
             run_command(["python3", "llm_forecast.py", "--asset", asset, "--provider", provider])
         elif choice == "6":
+            # Quick LLM test with SPY
+            print("\nRunning quick LLM analysis on SPY...")
+            run_command(["python3", "llm_forecast.py", "--asset", "SPY", "--provider", "openai"])
+        elif choice == "7":
             assets = input("Assets (comma-separated) [SPY]: ").strip() or "SPY"
             run_command(["python3", "newsletter_generator.py", "--preview", "--assets", assets])
-        elif choice == "7":
+        elif choice == "8":
             assets = input("Assets (comma-separated) [SPY]: ").strip() or "SPY"
             run_command(["python3", "newsletter_generator.py", "--send", "--assets", assets])
 
@@ -627,6 +637,12 @@ def main():
                 handle_data()
             elif choice == "6":
                 handle_asset_explorer()
+            elif choice == "7":
+                print("\n🌐 Launching Web Dashboard...")
+                print("   Opening browser at http://localhost:8501")
+                print("\n   Press Ctrl+C in terminal to stop the server")
+                print("-" * 60)
+                subprocess.run(["streamlit", "run", "dashboard.py"])
             elif choice == "?":
                 show_help()
             else:
