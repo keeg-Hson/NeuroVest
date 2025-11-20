@@ -8,14 +8,44 @@ Supports OpenAI and Anthropic APIs.
 Usage:
     python3 llm_forecast.py --asset SPY
     python3 llm_forecast.py --asset BTC/USDT --provider anthropic
+    python3 llm_forecast.py --all                    # Analyze all assets
+    python3 llm_forecast.py --all --summary          # Summary newsletter
 """
 
 import os
 import json
 import argparse
 import pandas as pd
+import numpy as np
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+
+def get_available_assets():
+    """Get list of available assets"""
+    assets = []
+
+    # Check data directory
+    data_dir = Path("data")
+    if data_dir.exists():
+        for f in data_dir.glob("*.csv"):
+            if f.stem not in ['cross_asset_features', 'macro_features', 'sentiment_features']:
+                assets.append(f.stem)
+
+    # Check cache directory
+    cache_dir = Path("data_cache")
+    if cache_dir.exists():
+        for f in cache_dir.glob("*_1d.csv"):
+            ticker = f.stem.replace('_1d', '').replace('_', '/')
+            if ticker not in assets:
+                assets.append(ticker)
+
+    return sorted(assets)
+
 
 def load_latest_predictions(asset="SPY"):
     """Load latest predictions for an asset"""
@@ -29,6 +59,7 @@ def load_latest_predictions(asset="SPY"):
     # Get latest prediction
     latest = df.iloc[-1].to_dict()
     return latest
+
 
 def load_asset_data(asset="SPY"):
     """Load recent price data for context"""
@@ -48,8 +79,66 @@ def load_asset_data(asset="SPY"):
     recent = df.tail(20)
     return recent
 
-def build_context(asset, prediction, price_data):
-    """Build context for LLM analysis"""
+
+def load_sentiment_data():
+    """Load sentiment data if available"""
+    sentiment_sources = {}
+
+    # Try to load news sentiment
+    news_path = Path("data/sentiment_features.csv")
+    if news_path.exists():
+        try:
+            df = pd.read_csv(news_path)
+            if len(df) > 0:
+                latest = df.tail(5)
+                sentiment_sources['news'] = latest
+        except Exception:
+            pass
+
+    # Try to load fear/greed index
+    fg_path = Path("data_cache/fear_greed_index.csv")
+    if fg_path.exists():
+        try:
+            df = pd.read_csv(fg_path)
+            if len(df) > 0:
+                latest = df.tail(5)
+                sentiment_sources['fear_greed'] = latest
+        except Exception:
+            pass
+
+    # Try to load Reddit sentiment
+    reddit_path = Path("data/reddit_sentiment.csv")
+    if reddit_path.exists():
+        try:
+            df = pd.read_csv(reddit_path)
+            if len(df) > 0:
+                sentiment_sources['reddit'] = df.tail(5)
+        except Exception:
+            pass
+
+    return sentiment_sources
+
+
+def get_market_news_summary():
+    """Get recent market news/events for context"""
+    # This would ideally fetch from a news API
+    # For now, return placeholder that can be expanded
+    today = datetime.now()
+
+    context = f"""
+MARKET CONTEXT (as of {today.strftime('%Y-%m-%d')}):
+- Federal Reserve policy stance and recent communications
+- Current economic indicators (employment, inflation, GDP)
+- Major geopolitical events affecting markets
+- Sector rotation trends and market breadth
+
+Note: For real-time news, configure NEWS_API_KEY in .env
+"""
+    return context
+
+
+def build_context(asset, prediction, price_data, include_sentiment=True):
+    """Build comprehensive context for LLM analysis"""
     if price_data is None or len(price_data) == 0:
         return None
 
@@ -102,12 +191,37 @@ MODEL PREDICTION:
 RECENT PRICE HISTORY:
 {price_data[['Date', 'Close']].tail(5).to_string(index=False)}
 """
+
+    # Add sentiment data if available
+    if include_sentiment:
+        sentiment_data = load_sentiment_data()
+
+        if 'fear_greed' in sentiment_data:
+            fg = sentiment_data['fear_greed']
+            if len(fg) > 0:
+                latest_fg = fg.iloc[-1]
+                context += f"""
+MARKET SENTIMENT:
+- Fear & Greed Index: {latest_fg.get('Fear_Greed_Value', 'N/A')} ({latest_fg.get('Fear_Greed_Class', 'N/A')})
+"""
+
     return context
 
-def get_llm_analysis(context, provider="openai"):
+
+def get_llm_analysis(context, provider="openai", for_newsletter=False):
     """Get LLM-generated market analysis"""
 
-    system_prompt = """You are a quantitative market analyst. Analyze the provided market data and ML model predictions.
+    if for_newsletter:
+        system_prompt = """You are a quantitative market analyst writing for a newsletter.
+Provide actionable insights that readers can use today. Be specific about:
+1. Current market regime and what it means for positioning
+2. Specific levels to watch (support/resistance)
+3. Risk factors that could change the outlook
+4. Clear recommendation with timeframe
+
+Write in a professional but accessible tone. Use bullet points for clarity."""
+    else:
+        system_prompt = """You are a quantitative market analyst. Analyze the provided market data and ML model predictions.
 Provide a concise analysis covering:
 1. Current market conditions (2-3 sentences)
 2. Model signal interpretation (2-3 sentences)
@@ -129,11 +243,12 @@ Provide your analysis:"""
     else:
         return f"[LLM provider '{provider}' not supported. Set OPENAI_API_KEY or ANTHROPIC_API_KEY]"
 
+
 def _call_openai(system_prompt, user_prompt):
     """Call OpenAI API"""
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        return "[OpenAI API key not set. Export OPENAI_API_KEY to enable LLM analysis]"
+        return "[OpenAI API key not set. Add OPENAI_API_KEY to your .env file]"
 
     try:
         import openai
@@ -146,18 +261,19 @@ def _call_openai(system_prompt, user_prompt):
                 {"role": "user", "content": user_prompt}
             ],
             temperature=0.3,
-            max_tokens=500
+            max_tokens=800
         )
 
         return response.choices[0].message.content
     except Exception as e:
         return f"[OpenAI error: {e}]"
 
+
 def _call_anthropic(system_prompt, user_prompt):
     """Call Anthropic API"""
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
-        return "[Anthropic API key not set. Export ANTHROPIC_API_KEY to enable LLM analysis]"
+        return "[Anthropic API key not set. Add ANTHROPIC_API_KEY to your .env file]"
 
     try:
         import anthropic
@@ -165,7 +281,7 @@ def _call_anthropic(system_prompt, user_prompt):
 
         response = client.messages.create(
             model="claude-3-haiku-20240307",
-            max_tokens=500,
+            max_tokens=800,
             system=system_prompt,
             messages=[
                 {"role": "user", "content": user_prompt}
@@ -176,7 +292,8 @@ def _call_anthropic(system_prompt, user_prompt):
     except Exception as e:
         return f"[Anthropic error: {e}]"
 
-def generate_forecast(asset="SPY", provider="openai"):
+
+def generate_forecast(asset="SPY", provider="openai", for_newsletter=False):
     """Generate complete forecast with LLM analysis"""
     print(f"\n{'='*60}")
     print(f"  LLM-ENHANCED MARKET ANALYSIS: {asset}")
@@ -185,8 +302,8 @@ def generate_forecast(asset="SPY", provider="openai"):
     # Load data
     prediction = load_latest_predictions(asset)
     if prediction is None:
-        print("❌ No predictions found. Run predict_multi_asset_ensemble.py first.")
-        return None
+        print("⚠️  No predictions found. Using default values.")
+        prediction = {'Prediction': 1, 'Crash_Conf': 0.33, 'Spike_Conf': 0.33}
 
     price_data = load_asset_data(asset)
     if price_data is None:
@@ -205,7 +322,7 @@ def generate_forecast(asset="SPY", provider="openai"):
     # Get LLM analysis
     print(f"\n🤖 LLM Analysis ({provider}):")
     print("-" * 60)
-    analysis = get_llm_analysis(context, provider)
+    analysis = get_llm_analysis(context, provider, for_newsletter)
     print(analysis)
     print("-" * 60)
 
@@ -226,14 +343,123 @@ def generate_forecast(asset="SPY", provider="openai"):
 
     return output
 
+
+def generate_multi_asset_summary(assets=None, provider="openai"):
+    """Generate summary analysis for multiple assets"""
+    if assets is None:
+        assets = get_available_assets()[:5]  # Top 5 assets
+
+    print(f"\n{'='*60}")
+    print(f"  MULTI-ASSET MARKET SUMMARY")
+    print(f"{'='*60}\n")
+
+    # Collect data for all assets
+    asset_summaries = []
+
+    for asset in assets:
+        price_data = load_asset_data(asset)
+        if price_data is None:
+            continue
+
+        prediction = load_latest_predictions(asset)
+        if prediction is None:
+            prediction = {'Prediction': 1, 'Crash_Conf': 0.33, 'Spike_Conf': 0.33}
+
+        # Calculate metrics
+        latest_price = price_data['Close'].iloc[-1]
+        returns = price_data['Close'].pct_change().dropna()
+
+        if len(price_data) >= 5:
+            five_day_return = (latest_price / price_data['Close'].iloc[-5] - 1) * 100
+        else:
+            five_day_return = 0
+
+        pred_label = prediction.get('Prediction', 1)
+        signal = {0: 'BEARISH', 1: 'NEUTRAL', 2: 'BULLISH'}.get(pred_label, 'NEUTRAL')
+        confidence = max(prediction.get('Crash_Conf', 0), prediction.get('Spike_Conf', 0))
+
+        asset_summaries.append({
+            'asset': asset,
+            'price': latest_price,
+            'five_day_return': five_day_return,
+            'signal': signal,
+            'confidence': confidence
+        })
+
+    if not asset_summaries:
+        print("❌ No asset data available")
+        return None
+
+    # Build summary context
+    summary_text = "MULTI-ASSET MARKET OVERVIEW\n"
+    summary_text += f"Date: {datetime.now().strftime('%Y-%m-%d')}\n\n"
+
+    summary_text += "ASSET SIGNALS:\n"
+    for s in asset_summaries:
+        summary_text += f"- {s['asset']}: ${s['price']:.2f} | 5D: {s['five_day_return']:+.1f}% | {s['signal']} ({s['confidence']:.0%})\n"
+
+    # Count signals
+    bullish = sum(1 for s in asset_summaries if s['signal'] == 'BULLISH')
+    bearish = sum(1 for s in asset_summaries if s['signal'] == 'BEARISH')
+    neutral = sum(1 for s in asset_summaries if s['signal'] == 'NEUTRAL')
+
+    summary_text += f"\nOVERALL: {bullish} Bullish, {bearish} Bearish, {neutral} Neutral\n"
+
+    print(summary_text)
+
+    # Get LLM summary
+    system_prompt = """You are a market strategist providing a daily briefing.
+Based on the asset signals provided, give a 3-4 paragraph summary covering:
+1. Overall market sentiment and cross-asset themes
+2. Notable signals and what they suggest
+3. Key risks and opportunities
+4. Actionable takeaways for today
+
+Be specific and practical. This is for experienced traders."""
+
+    print(f"\n🤖 LLM Market Summary ({provider}):")
+    print("-" * 60)
+
+    if provider == "openai":
+        analysis = _call_openai(system_prompt, summary_text)
+    else:
+        analysis = _call_anthropic(system_prompt, summary_text)
+
+    print(analysis)
+    print("-" * 60)
+
+    # Save summary
+    output = {
+        "timestamp": datetime.now().isoformat(),
+        "assets": asset_summaries,
+        "summary": summary_text,
+        "analysis": analysis
+    }
+
+    output_path = Path("logs") / f"llm_multi_asset_summary_{datetime.now().strftime('%Y%m%d')}.json"
+    with open(output_path, 'w') as f:
+        json.dump(output, f, indent=2, default=str)
+
+    print(f"\n📝 Saved to: {output_path}")
+
+    return output
+
+
 def main():
     parser = argparse.ArgumentParser(description="LLM-Enhanced Market Analysis")
     parser.add_argument("--asset", default="SPY", help="Asset to analyze (e.g., SPY, BTC/USDT)")
     parser.add_argument("--provider", default="openai", choices=["openai", "anthropic"],
                         help="LLM provider to use")
+    parser.add_argument("--all", action="store_true", help="Analyze all available assets")
+    parser.add_argument("--summary", action="store_true", help="Generate multi-asset summary")
+    parser.add_argument("--newsletter", action="store_true", help="Format for newsletter")
     args = parser.parse_args()
 
-    generate_forecast(args.asset, args.provider)
+    if args.all or args.summary:
+        generate_multi_asset_summary(provider=args.provider)
+    else:
+        generate_forecast(args.asset, args.provider, args.newsletter)
+
 
 if __name__ == "__main__":
     main()

@@ -165,12 +165,13 @@ def show_diagnostics_menu():
     print("  4. Compare strategies")
     print()
     print("  LLM & AI")
-    print("  5. LLM market analysis (per asset)")
-    print("  6. Quick LLM test (SPY)")
+    print("  5. LLM analysis (single asset)")
+    print("  6. LLM analysis (all assets)")
+    print("  7. LLM newsletter summary")
     print()
     print("  REPORTS")
-    print("  7. Generate newsletter (preview)")
-    print("  8. Send newsletter via email")
+    print("  8. Generate newsletter (preview)")
+    print("  9. Send newsletter via email")
     print()
     print("  0. Back")
     print()
@@ -396,13 +397,19 @@ def handle_diagnostics():
             provider = input("LLM provider (openai/anthropic) [openai]: ").strip() or "openai"
             run_command(["python3", "llm_forecast.py", "--asset", asset, "--provider", provider])
         elif choice == "6":
-            # Quick LLM test with SPY
-            print("\nRunning quick LLM analysis on SPY...")
-            run_command(["python3", "llm_forecast.py", "--asset", "SPY", "--provider", "openai"])
+            # Multi-asset LLM analysis
+            print("\nRunning LLM analysis on all assets...")
+            provider = input("LLM provider (openai/anthropic) [openai]: ").strip() or "openai"
+            run_command(["python3", "llm_forecast.py", "--all", "--provider", provider])
         elif choice == "7":
+            # Newsletter summary
+            print("\nGenerating LLM newsletter summary...")
+            provider = input("LLM provider (openai/anthropic) [openai]: ").strip() or "openai"
+            run_command(["python3", "llm_forecast.py", "--all", "--newsletter", "--provider", provider])
+        elif choice == "8":
             assets = input("Assets (comma-separated) [SPY]: ").strip() or "SPY"
             run_command(["python3", "newsletter_generator.py", "--preview", "--assets", assets])
-        elif choice == "8":
+        elif choice == "9":
             assets = input("Assets (comma-separated) [SPY]: ").strip() or "SPY"
             run_command(["python3", "newsletter_generator.py", "--send", "--assets", assets])
 
