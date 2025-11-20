@@ -174,18 +174,23 @@ def show_data_menu():
     print()
     print("  DOWNLOAD")
     print("  1. Update SPY data")
-    print("  2. Download crypto data (basic - BTC/ETH/SOL)")
-    print("  3. Download crypto data (enhanced - 10 coins, max history)")
-    print("  4. Download equity ETFs")
-    print("  5. Download all framework assets")
+    print("  2. Download crypto (basic - 3 coins)")
+    print("  3. Download crypto (enhanced - 10 coins)")
+    print("  4. Download crypto (comprehensive - 15 coins, multi-source)")
+    print("  5. Download equity ETFs")
+    print("  6. Download all framework assets")
+    print()
+    print("  IMPORT")
+    print("  7. Import custom asset (CSV/Excel)")
+    print("  8. Create sample import template")
     print()
     print("  LIVE UPDATES")
-    print("  6. Run live update (single)")
-    print("  7. Run scheduled updates")
-    print("  8. Download all historical data")
+    print("  9. Run live update (single)")
+    print("  10. Run scheduled updates")
+    print("  11. Download all historical data")
     print()
     print("  INFO")
-    print("  9. List available assets")
+    print("  12. List available assets")
     print()
     print("  0. Back")
     print()
@@ -407,19 +412,36 @@ def handle_data():
         elif choice == "3":
             run_command(["python3", "download_crypto_enhanced.py"])
         elif choice == "4":
-            run_command(["python3", "download_equity_etfs.py"])
+            run_command(["python3", "download_crypto_comprehensive.py"])
         elif choice == "5":
-            run_command(["python3", "framework/download_all_assets.py"])
+            run_command(["python3", "download_equity_etfs.py"])
         elif choice == "6":
+            run_command(["python3", "framework/download_all_assets.py"])
+        elif choice == "7":
+            # Import custom asset
+            filepath = input("Path to CSV/Excel file: ").strip()
+            if filepath:
+                ticker = input("Ticker symbol for this asset: ").strip().upper()
+                if ticker:
+                    run_command(["python3", "import_custom_asset.py", filepath, ticker])
+                else:
+                    print("Ticker symbol required")
+                    input("Press Enter to continue...")
+            else:
+                print("File path required")
+                input("Press Enter to continue...")
+        elif choice == "8":
+            run_command(["python3", "import_custom_asset.py", "--sample"])
+        elif choice == "9":
             assets = input("Assets (comma-separated, blank for SPY,QQQ): ").strip() or "SPY,QQQ"
             run_command(["python3", "live_update.py", "--assets", assets, "--predict"])
-        elif choice == "7":
+        elif choice == "10":
             assets = input("Assets (comma-separated, blank for SPY): ").strip() or "SPY"
             interval = input("Interval in minutes [15]: ").strip() or "15"
             run_command(["python3", "live_update.py", "--mode", "scheduled", "--assets", assets, "--interval", interval])
-        elif choice == "8":
+        elif choice == "11":
             run_command(["python3", "live_update.py", "--download"])
-        elif choice == "9":
+        elif choice == "12":
             assets = get_available_assets()
             print("\nAvailable assets:")
             print("-" * 40)
