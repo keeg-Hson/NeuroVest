@@ -91,7 +91,32 @@ def load_asset_data(ticker):
         return None
 
     df = pd.read_csv(filepath)
-    df['Date'] = pd.to_datetime(df['Date'])
+
+    # Handle different date column names
+    date_col = None
+    for col in ['Date', 'date', 'Timestamp', 'timestamp', 'datetime', 'time']:
+        if col in df.columns:
+            date_col = col
+            break
+
+    # Check if index might be the date
+    if date_col is None:
+        if df.index.name in ['Date', 'date', 'Timestamp']:
+            df = df.reset_index()
+            date_col = df.columns[0]
+        elif len(df.columns) > 0:
+            # Try first column if it looks like dates
+            first_col = df.columns[0]
+            try:
+                pd.to_datetime(df[first_col].iloc[0])
+                date_col = first_col
+            except:
+                return None  # Can't find date column
+
+    if date_col is None:
+        return None
+
+    df['Date'] = pd.to_datetime(df[date_col])
     df = df.sort_values('Date')
 
     return df

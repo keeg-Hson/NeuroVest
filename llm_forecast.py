@@ -49,16 +49,26 @@ def get_available_assets():
 
 def load_latest_predictions(asset="SPY"):
     """Load latest predictions for an asset"""
-    pred_path = Path("logs/daily_predictions.csv")
-    if not pred_path.exists():
-        return None
+    # First try per-asset predictions (from predict_per_asset.py)
+    asset_file = asset.replace("/", "_")
+    per_asset_path = Path(f"logs/predictions/{asset_file}_predictions.csv")
 
-    df = pd.read_csv(pred_path)
-    df['Date'] = pd.to_datetime(df['Date'])
+    if per_asset_path.exists():
+        df = pd.read_csv(per_asset_path)
+        df['Date'] = pd.to_datetime(df['Date'])
+        latest = df.iloc[-1].to_dict()
+        return latest
 
-    # Get latest prediction
-    latest = df.iloc[-1].to_dict()
-    return latest
+    # Fall back to daily_predictions.csv (SPY only from ensemble)
+    if asset == "SPY":
+        pred_path = Path("logs/daily_predictions.csv")
+        if pred_path.exists():
+            df = pd.read_csv(pred_path)
+            df['Date'] = pd.to_datetime(df['Date'])
+            latest = df.iloc[-1].to_dict()
+            return latest
+
+    return None
 
 
 def load_asset_data(asset="SPY"):
@@ -381,8 +391,6 @@ def generate_multi_asset_summary(assets=None, provider="openai"):
             continue
 
         prediction = load_latest_predictions(asset)
-        if prediction is None:
-            prediction = {'Prediction': 1, 'Crash_Conf': 0.33, 'Spike_Conf': 0.33}
 
         # Calculate metrics
         latest_price = price_data['Close'].iloc[-1]
@@ -393,9 +401,15 @@ def generate_multi_asset_summary(assets=None, provider="openai"):
         else:
             five_day_return = 0
 
-        pred_label = prediction.get('Prediction', 1)
-        signal = {0: 'BEARISH', 1: 'NEUTRAL', 2: 'BULLISH'}.get(pred_label, 'NEUTRAL')
-        confidence = max(prediction.get('Crash_Conf', 0), prediction.get('Spike_Conf', 0))
+        # Handle missing predictions
+        if prediction is None:
+            signal = 'NO MODEL'
+            confidence = 0
+            print(f"   ⚠️  {asset}: No per-asset prediction found (run predict_per_asset.py --asset {asset})")
+        else:
+            pred_label = prediction.get('Prediction', 1)
+            signal = {0: 'BEARISH', 1: 'NEUTRAL', 2: 'BULLISH'}.get(pred_label, 'NEUTRAL')
+            confidence = max(prediction.get('Crash_Conf', 0), prediction.get('Spike_Conf', 0))
 
         asset_summaries.append({
             'asset': asset,
