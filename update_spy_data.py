@@ -100,9 +100,12 @@ def _read_existing() -> pd.DataFrame | None:
 
 def _write(df: pd.DataFrame, msg_prefix: str) -> None:
     df.to_csv(CSV_PATH, index=False)
-    print(
-        f"{msg_prefix} → {CSV_PATH}  rows={len(df)}  range={df['Date'].min().date()} → {df['Date'].max().date()}"
-    )
+    if len(df) == 0:
+        print(f"{msg_prefix} → {CSV_PATH}  rows=0  (empty)")
+    else:
+        print(
+            f"{msg_prefix} → {CSV_PATH}  rows={len(df)}  range={df['Date'].min().date()} → {df['Date'].max().date()}"
+        )
 
 
 def _bootstrap() -> pd.DataFrame | None:
