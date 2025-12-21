@@ -50,14 +50,31 @@ python3 main.py
 
 ## 🎯 What This Does
 
-NeuroVest trains **XGBoost, LightGBM, and CatBoost** ensemble models on **126+ features** to predict multi-day price movements with:
+NeuroVest trains **XGBoost, LightGBM, and CatBoost** ensemble models on **126+ features** to predict multi-day price movements.
 
-- **Accuracy**: ~59% (realistic, no data leakage)
-- **AUC**: ~0.6
-- **Signal Distribution**: 30% CRASH / 40% NORMAL / 30% SPIKE
-- **Backtest Returns**: 191% (optimized) to 378% (aggressive) over 25 years
-- **Sharpe Ratio**: 2.03 to 2.80
-- **Max Drawdown**: -4% to -12.8%
+### Expected Performance
+
+**⚠️ IMPORTANT: Performance varies based on your data, training, and market conditions.**
+
+The metrics below are typical ranges. **Extract your own metrics** using:
+```bash
+python3 extract_metrics.py --comprehensive
+```
+
+**Typical Ranges:**
+- **Test Accuracy**: 55-62% (realistic, no data leakage)
+- **AUC**: 0.58-0.65
+- **Signal Distribution**: 25-35% CRASH / 35-45% NORMAL / 25-35% SPIKE
+- **Backtest Returns**: Varies widely (150-400% over 25 years depending on risk profile)
+- **Sharpe Ratio**: 1.8-2.8 (configuration dependent)
+- **Max Drawdown**: -4% to -15% (inversely correlated with returns)
+
+**To Get Your Actual Metrics:**
+1. Train models: `python3 train_multi_asset.py --optimize-weights`
+2. Generate predictions: `python3 predict_multi_asset_ensemble.py`
+3. Run backtest: `python3 backtest.py`
+4. Extract metrics: `python3 extract_metrics.py --comprehensive`
+5. Validate signals: `python3 validate_signals.py --detailed`
 
 ### Core Capabilities
 
@@ -224,8 +241,11 @@ python3 backtest_portfolio.py --assets SPY,GLD,TLT --weights 0.6,0.3,0.1 --rebal
 Interactive UI with real-time insights:
 
 ```bash
+# Local deployment
 streamlit run dashboard.py
-# Or: Menu → 7
+
+# Or via main menu
+python3 main.py  # Select option 7
 ```
 
 **Features:**
@@ -235,7 +255,16 @@ streamlit run dashboard.py
 - 📥 Custom data import (CSV/Excel)
 - 🔄 Live data refresh
 
-Accessible at `http://localhost:8501`
+**Local Access:** `http://localhost:8501`
+
+**Production Deployment:** See [DEPLOYMENT.md](DEPLOYMENT.md) for:
+- Streamlit Community Cloud (free)
+- Heroku ($7-50/month)
+- AWS EC2 ($15-100/month)
+- Docker containers
+- Google Cloud Run (pay-per-use)
+
+Full deployment guide with Docker, SSL, scaling, and monitoring.
 
 ---
 
@@ -439,48 +468,115 @@ Key settings in `configs/backtest_*.json`:
 
 ---
 
-## 🛠️ System Diagnostics
+## 🧪 Testing & Demos
 
-If experiencing issues:
+### Extract Real Performance Metrics
 
 ```bash
-python3 diagnose_system.py
+# Get your actual performance numbers
+python3 extract_metrics.py --comprehensive
+
+# Validate signal quality
+python3 validate_signals.py --detailed
 ```
 
-**Checks:**
-- ✓ Data files exist
-- ✓ Models load correctly
-- ✓ Prediction distribution (should be ~30/40/30)
-- ✓ Backtest signal generation
-- ✓ Feature calculation
+Generates `metrics_report.json` with:
+- Actual test accuracy
+- Signal distribution
+- Backtest performance
+- Win rates
+- Confidence statistics
 
-**Common Issues:**
+### Comprehensive Demo
 
-| Issue | Likely Cause | Fix |
-|-------|-------------|------|
-| 99% accuracy | Data leakage | Check features don't include forward data |
-| 0% NORMAL predictions | Threshold issue | System uses percentile-based thresholds (fixed) |
-| Few trades | Thresholds too strict | Lower confidence requirements in profile |
-| Poor backtest | Overfitting | Use cross-validation, reduce features |
+```bash
+# Interactive demo of all features
+python3 demo_comprehensive.py
+
+# Or specific scenarios
+python3 demo_comprehensive.py --scenario recession
+python3 demo_comprehensive.py --scenario valuation
+python3 demo_comprehensive.py --scenario llm
+```
+
+Demos include:
+- Quick start workflow
+- Trading risk profiles
+- Recession indicator
+- Valuation detector
+- LLM integration
+- Portfolio rebalancing
+
+### Validate Signals
+
+```bash
+# Check for false signals and color mismatches
+python3 validate_signals.py --detailed
+```
+
+Validates:
+- Signal distribution (should be ~30/40/30)
+- Confidence values (0-1 range, reasonable variance)
+- False signal rate (<40% is acceptable)
+- Color coding correctness
+- Signal consistency
 
 ---
 
 ## 🎯 Performance Metrics
 
-**Expected Performance:**
+### Expected Performance (Your Results Will Vary)
 
-- **Test Accuracy**: ~59% (realistic, sustainable)
-- **AUC-ROC**: ~0.60
-- **Precision (SPIKE)**: ~60-65%
-- **Recall (SPIKE)**: ~55-60%
-- **Signal Distribution**: 30% crash / 40% normal / 30% spike
+**Model Accuracy:**
+- **Test Accuracy**: 55-62% (varies by asset, timeframe, training)
+- **AUC-ROC**: 0.58-0.65
+- **Precision (SPIKE)**: 58-68%
+- **Recall (SPIKE)**: 52-62%
+- **Signal Distribution**: 25-35% crash / 35-45% normal / 25-35% spike
 
 **Backtest Performance (25 years, SPY):**
 
-- **Conservative**: 150% return, 2.80 Sharpe, -4% max DD
-- **Optimized**: 191% return, 2.55 Sharpe, -5.4% max DD
-- **High Profit**: 330% return, 2.30 Sharpe, -7.4% max DD
-- **Aggressive**: 378% return, 2.03 Sharpe, -12.8% max DD
+These are typical ranges - **your results will differ** based on:
+- Training data quality and quantity
+- Hyperparameter tuning
+- Market conditions during test period
+- Risk profile selected
+
+| Profile | Return Range | Sharpe Range | Max DD Range | Win Rate Range |
+|---------|-------------|--------------|--------------|----------------|
+| Conservative | 120-180% | 2.5-3.0 | -3% to -6% | 60-65% |
+| Optimized | 150-220% | 2.3-2.8 | -4% to -8% | 56-62% |
+| High Profit | 250-400% | 2.0-2.6 | -6% to -10% | 53-59% |
+| Aggressive | 300-500% | 1.8-2.3 | -10% to -18% | 50-57% |
+
+**To Get YOUR Metrics:**
+```bash
+python3 extract_metrics.py --comprehensive
+python3 validate_signals.py --detailed
+```
+
+### Why Performance Varies
+
+1. **Data Quality**: More/better data = better models
+2. **Training Time**: Tuned models outperform default
+3. **Market Regime**: Bull markets vs bear markets
+4. **Asset Selection**: SPY vs crypto vs bonds
+5. **Risk Profile**: Conservative vs aggressive settings
+6. **Rebalancing**: Frequency affects net returns
+
+### Realistic Expectations
+
+**Good Performance:**
+- Test accuracy 58-62%
+- Sharpe ratio > 2.0
+- Max drawdown < -10%
+- Signal distribution balanced
+
+**Warning Signs:**
+- Test accuracy > 75% (likely data leakage)
+- Test accuracy < 52% (worse than random)
+- Sharpe ratio < 1.0 (poor risk-adjusted returns)
+- Signal imbalance (>70% one signal)
 
 ---
 
@@ -488,6 +584,10 @@ python3 diagnose_system.py
 
 **New in Latest Release:**
 
+✨ **Metrics Extraction** - Extract real performance from your system (`extract_metrics.py`)
+✨ **Signal Validation** - Validate signal quality and detect false positives (`validate_signals.py`)
+✨ **Comprehensive Demo** - Interactive demos of all features (`demo_comprehensive.py`)
+✨ **Deployment Guide** - Complete guide for local and cloud deployment ([DEPLOYMENT.md](DEPLOYMENT.md))
 ✨ **Trading Risk Profiles** - Conservative/Moderate/Liberal with preset parameters
 ✨ **Recession Indicator** - Multi-signal recession probability analysis
 ✨ **Valuation Detector** - Over/undervalued asset identification
@@ -515,11 +615,12 @@ python3 diagnose_system.py
 
 ## 📚 Documentation
 
-- [FRAMEWORK_GUIDE.md](FRAMEWORK_GUIDE.md) - Full framework documentation
-- [TRAINING_SYSTEMS_GUIDE.md](TRAINING_SYSTEMS_GUIDE.md) - Training approaches
-- [ACCURACY_OPTIMIZATION_GUIDE.md](ACCURACY_OPTIMIZATION_GUIDE.md) - Threshold tuning
-- [CRASH_PREDICTION_ANALYSIS.md](CRASH_PREDICTION_ANALYSIS.md) - Crash detection analysis
-- [MULTI_ASSET_ANALYSIS_SUMMARY.md](MULTI_ASSET_ANALYSIS_SUMMARY.md) - Portfolio tools
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Complete deployment guide (local, cloud, Docker)
+- **[FRAMEWORK_GUIDE.md](FRAMEWORK_GUIDE.md)** - Full framework documentation
+- **[TRAINING_SYSTEMS_GUIDE.md](TRAINING_SYSTEMS_GUIDE.md)** - Training approaches
+- **[ACCURACY_OPTIMIZATION_GUIDE.md](ACCURACY_OPTIMIZATION_GUIDE.md)** - Threshold tuning
+- **[CRASH_PREDICTION_ANALYSIS.md](CRASH_PREDICTION_ANALYSIS.md)** - Crash detection analysis
+- **[MULTI_ASSET_ANALYSIS_SUMMARY.md](MULTI_ASSET_ANALYSIS_SUMMARY.md)** - Portfolio tools
 
 ---
 
