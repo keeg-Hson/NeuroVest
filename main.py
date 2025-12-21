@@ -16,9 +16,32 @@ def clear_screen():
     print("\033[2J\033[H", end="")
 
 def print_header(title):
-    print("=" * 60)
+    """Print a styled header"""
+    width = 70
+    print("\n" + "=" * width)
     print(f"  {title}")
-    print("=" * 60)
+    print("=" * width)
+
+def print_section(title):
+    """Print a section divider"""
+    print(f"\n  {title}")
+    print("  " + "-" * (len(title)))
+
+def print_success(message):
+    """Print a success message"""
+    print(f"✓ {message}")
+
+def print_error(message):
+    """Print an error message"""
+    print(f"✗ {message}")
+
+def print_info(message):
+    """Print an info message"""
+    print(f"ℹ {message}")
+
+def print_warning(message):
+    """Print a warning message"""
+    print(f"⚠ {message}")
 
 def get_available_assets():
     """Get list of available assets from data_cache"""
@@ -43,64 +66,88 @@ def get_available_assets():
 def show_main_menu():
     print_header("NeuroVest - Economic Forecasting System")
     print()
-    print("  QUICK START")
-    print("  R. Run Full Pipeline (download, train, predict, backtest)")
+    print_section("QUICK START")
+    print("  R  → Run Full Pipeline (download → train → predict → backtest)")
     print()
-    print("  CORE")
-    print("  1. Training")
-    print("  2. Predictions")
-    print("  3. Backtesting")
-    print("  4. Diagnostics & LLM")
-    print("  5. Data Management")
+    print_section("CORE MODULES")
+    print("  1  → Training           (train models, tune hyperparameters)")
+    print("  2  → Predictions        (generate forecasts)")
+    print("  3  → Backtesting        (test strategies, risk profiles)")
+    print("  4  → Diagnostics & LLM  (analyze performance, AI insights)")
+    print("  5  → Data Management    (download, import data)")
     print()
-    print("  TOOLS")
-    print("  6. Asset Explorer (guided analysis)")
-    print("  7. Web Dashboard (interactive UI)")
+    print_section("TOOLS")
+    print("  6  → Asset Explorer     (guided analysis)")
+    print("  7  → Web Dashboard      (interactive UI)")
     print()
-    print("  ?. Quick Start Guide")
-    print("  0. Exit")
+    print_section("HELP & EXIT")
+    print("  ?  → Quick Start Guide")
+    print("  0  → Exit")
     print()
+    print("=" * 70)
 
 def show_help():
     clear_screen()
-    print_header("Quick Start Guide")
+    print_header("NeuroVest Quick Start Guide")
     print()
-    print("  TYPICAL WORKFLOW")
-    print("  " + "-" * 56)
+
+    print_section("TYPICAL WORKFLOW")
     print()
-    print("  1. DOWNLOAD DATA (first time only)")
-    print("     → Go to: 5. Data Management")
-    print("     → Select: 1. Update SPY data")
-    print("     → Select: 2. Download crypto data")
+    print("  Step 1: DOWNLOAD DATA (first time only)")
+    print("          Menu → 5 (Data Management) → 1 (Update SPY)")
+    print("          Menu → 5 (Data Management) → 2-4 (Download crypto)")
     print()
-    print("  2. TRAIN MODELS")
-    print("     → Go to: 1. Training")
-    print("     → Select: 1. Standard training (5-10 min)")
-    print("     → Or:     4. With optimized weights (better accuracy)")
+    print("  Step 2: TRAIN MODELS")
+    print("          Menu → 1 (Training) → 1 (Standard, 5-10 min)")
+    print("          Menu → 1 (Training) → 4 (Optimized weights, better accuracy)")
     print()
-    print("  3. GENERATE PREDICTIONS")
-    print("     → Go to: 2. Predictions")
-    print("     → Select: 1. Generate predictions (SPY)")
+    print("  Step 3: GENERATE PREDICTIONS")
+    print("          Menu → 2 (Predictions) → 1 (Multi-asset ensemble)")
+    print("          Menu → 2 (Predictions) → 4 (All per-asset models)")
     print()
-    print("  4. RUN BACKTEST")
-    print("     → Go to: 3. Backtesting")
-    print("     → Select: 2. Optimized config (balanced)")
-    print("     → Or:     3. High profit (330% return)")
-    print("     → Or:     4. Aggressive (378% return)")
+    print("  Step 4: RUN BACKTEST")
+    print("          Menu → 3 (Backtesting) → 2 (Moderate profile)")
+    print("          Menu → 3 (Backtesting) → 4 (Optimized config)")
     print()
-    print("  " + "-" * 56)
-    print("  BACKTEST CONFIGURATIONS")
-    print("  " + "-" * 56)
+
+    print_section("QUICK START (AUTOMATED)")
+    print()
+    print("  Option R: Run Full Pipeline")
+    print("           Automates steps 1-4 above (~20-35 minutes)")
+    print()
+
+    print_section("NEW FEATURES")
+    print()
+    print("  Trading Risk Profiles:")
+    print("    • Conservative: 70%+ confidence, tight stops, low risk")
+    print("    • Moderate: 55%+ confidence, balanced risk-reward")
+    print("    • Liberal: 45%+ confidence, aggressive, high reward")
+    print()
+    print("  Market Analysis:")
+    print("    • Recession Indicator: Multi-signal recession probability")
+    print("    • Valuation Detector: Over/undervalued asset analysis")
+    print("    • Portfolio Rebalancing: Optimal period finder")
+    print()
+    print("  AI & Insights:")
+    print("    • LLM Analysis: OpenAI/Anthropic market commentary")
+    print("    • News Integration: Real-time news context (NewsAPI)")
+    print("    • Scenario Likelihoods: Crash/Normal/Spike probabilities")
+    print()
+
+    print_section("BACKTEST CONFIGURATIONS")
     print()
     print("  Config           TP ATR   Return   Sharpe   Max DD")
-    print("  ─────────────────────────────────────────────────────")
-    print("  Optimized        1.25x    191%     2.55     -5.4%")
-    print("  High Profit      1.75x    330%     2.30     -7.4%")
-    print("  Aggressive       2.5x     378%     2.03     -12.8%")
+    print("  ───────────────────────────────────────────────────")
+    print("  Conservative      1.0x     ~150%    2.80     -4%")
+    print("  Moderate (Opt)    1.25x    191%     2.55     -5.4%")
+    print("  High Profit       1.75x    330%     2.30     -7.4%")
+    print("  Aggressive        2.5x     378%     2.03     -12.8%")
     print()
     print("  Higher TP ATR = more profit but more risk")
     print()
-    input("  Press Enter to return to main menu...")
+
+    print("=" * 70)
+    input("\n  Press Enter to return to main menu...")
 
 def show_training_menu():
     print_header("Training Options")
@@ -220,30 +267,51 @@ def select_asset():
     """Interactive asset selection"""
     assets = get_available_assets()
 
-    print("\nAvailable assets:")
-    print("-" * 40)
+    print()
+    print_section("Available Assets")
+    print()
 
     # Group by type
     crypto = [a for a in assets if "/USDT" in a]
     etfs = [a for a in assets if "/USDT" not in a]
 
     if etfs:
-        print(f"  ETFs: {', '.join(etfs)}")
+        print(f"  📈 ETFs/Stocks ({len(etfs)})")
+        print(f"     {', '.join(etfs)}")
+        print()
     if crypto:
-        print(f"  Crypto: {', '.join(crypto)}")
+        print(f"  ₿  Crypto ({len(crypto)})")
+        print(f"     {', '.join(crypto)}")
+        print()
 
-    print()
-    asset = input("Enter asset ticker (e.g., SPY, BTC/USDT): ").strip().upper()
+    if not assets:
+        print_warning("No assets found. Download data first!")
+        return None
 
-    # Handle common variations
-    if asset == "BTC":
-        asset = "BTC/USDT"
-    elif asset == "ETH":
-        asset = "ETH/USDT"
-    elif asset == "SOL":
-        asset = "SOL/USDT"
+    while True:
+        asset = input("  Enter asset ticker (e.g., SPY, BTC/USDT): ").strip().upper()
 
-    return asset
+        if not asset:
+            print_warning("Asset ticker cannot be empty")
+            continue
+
+        # Handle common variations
+        if asset == "BTC":
+            asset = "BTC/USDT"
+        elif asset == "ETH":
+            asset = "ETH/USDT"
+        elif asset == "SOL":
+            asset = "SOL/USDT"
+
+        # Validate asset exists
+        if asset in assets or asset == "SPY":
+            print_success(f"Selected: {asset}")
+            return asset
+        else:
+            print_error(f"Asset '{asset}' not found")
+            retry = input("  Try again? (y/n): ").strip().lower()
+            if retry != 'y':
+                return None
 
 def select_asset_group():
     """Interactive asset group selection"""
@@ -270,13 +338,30 @@ def select_asset_group():
 
 def run_command(cmd, desc=None):
     """Run a command with optional description"""
+    print()
     if desc:
-        print(f"\n{desc}")
-    print(f"Running: {' '.join(cmd)}\n")
-    print("-" * 60)
-    subprocess.run(cmd)
-    print("-" * 60)
-    input("\nPress Enter to continue...")
+        print_info(desc)
+    else:
+        print_info(f"Running: {' '.join(cmd)}")
+
+    print()
+    print("─" * 70)
+    try:
+        result = subprocess.run(cmd)
+        print("─" * 70)
+        if result.returncode == 0:
+            print_success("Command completed successfully")
+        else:
+            print_warning(f"Command exited with code {result.returncode}")
+    except KeyboardInterrupt:
+        print("\n" + "─" * 70)
+        print_warning("Command interrupted by user")
+    except Exception as e:
+        print("\n" + "─" * 70)
+        print_error(f"Error running command: {e}")
+
+    print()
+    input("Press Enter to continue...")
 
 def handle_training():
     while True:
@@ -345,7 +430,8 @@ def handle_predictions():
             run_command(["python3", "predict_multi_asset_ensemble.py"])
         elif choice == "2":
             asset = select_asset()
-            run_command(["python3", "predict_per_asset.py", "--asset", asset])
+            if asset:
+                run_command(["python3", "predict_per_asset.py", "--asset", asset])
         elif choice == "3":
             group = select_asset_group()
             run_command(["python3", "predict_per_asset.py", "--asset-group", group])
@@ -400,7 +486,8 @@ def handle_backtesting():
             run_command(["python3", "backtest.py", "--config", "configs/backtest_aggressive.json"])
         elif choice == "7":
             asset = select_asset()
-            run_command(["python3", "backtest.py", "--asset", asset])
+            if asset:
+                run_command(["python3", "backtest.py", "--asset", asset])
         elif choice == "8":
             group = select_asset_group()
             run_command(["python3", "backtest.py", "--asset-group", group, "--compare"])
@@ -469,15 +556,17 @@ def handle_diagnostics():
         elif choice == "6":
             # Valuation detector (single asset)
             asset = select_asset()
-            run_command(["python3", "valuation_detector.py", "--asset", asset])
+            if asset:
+                run_command(["python3", "valuation_detector.py", "--asset", asset])
         elif choice == "7":
             # Valuation detector (all assets)
             print("\nAnalyzing valuations for all assets...")
             run_command(["python3", "valuation_detector.py", "--all", "--save"])
         elif choice == "8":
             asset = select_asset()
-            provider = input("LLM provider (openai/anthropic) [openai]: ").strip() or "openai"
-            run_command(["python3", "llm_forecast.py", "--asset", asset, "--provider", provider])
+            if asset:
+                provider = input("LLM provider (openai/anthropic) [openai]: ").strip() or "openai"
+                run_command(["python3", "llm_forecast.py", "--asset", asset, "--provider", provider])
         elif choice == "9":
             # Multi-asset LLM analysis
             print("\nRunning LLM analysis on all assets...")
