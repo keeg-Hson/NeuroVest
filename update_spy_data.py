@@ -130,8 +130,20 @@ def _bootstrap() -> pd.DataFrame | None:
 
 
 def _append_new_rows(base_df: pd.DataFrame) -> pd.DataFrame:
+    # Handle empty dataframe - need to bootstrap instead
+    if len(base_df) == 0:
+        print("⚠️  Base dataframe is empty - bootstrapping instead...")
+        return _bootstrap() or base_df
+
     # Last available date
-    last_date = pd.to_datetime(base_df["Date"]).max().date()
+    last_date_ts = pd.to_datetime(base_df["Date"]).max()
+
+    # Handle NaT (Not a Time) - dataframe has no valid dates
+    if pd.isna(last_date_ts):
+        print("⚠️  No valid dates in base dataframe - bootstrapping instead...")
+        return _bootstrap() or base_df
+
+    last_date = last_date_ts.date()
     # Start next business day after last_date
     start = (pd.Timestamp(last_date) + BDay(1)).date()
     end = date.today() + timedelta(days=1)  # exclusive end
@@ -207,7 +219,10 @@ def main() -> int:
         return 0
 
     # Try to append fresh rows; never hard-fail
-    _append_new_rows(base_df)
+    updated_df = _append_new_rows(base_df)
+    # If we got a different dataframe back (e.g., from bootstrap), write it
+    if updated_df is not base_df and updated_df is not None:
+        _write(updated_df, "✅ Updated")
     return 0
 
 

@@ -90,7 +90,18 @@ def load_asset_data(ticker):
     if not filepath.exists():
         return None
 
-    df = pd.read_csv(filepath)
+    try:
+        df = pd.read_csv(filepath)
+    except Exception as e:
+        st.error(f"Error reading {ticker}: {e}")
+        return None
+
+    # Check if file is empty
+    if len(df) == 0:
+        st.warning(f"{ticker} data file is empty. Run: python3 update_spy_data.py")
+        return None
+
+    df = df.copy()  # Avoid SettingWithCopyWarning
 
     # Handle different date column names
     date_col = None
@@ -392,11 +403,15 @@ def show_dashboard(selected_asset):
         st.subheader(f"{selected_asset} Quick View")
 
         df = load_asset_data(selected_asset)
-        if df is not None:
+        if df is not None and len(df) > 0:
             # Show last 90 days
             recent = df.tail(90)
             fig = create_price_chart(recent, selected_asset)
             st.plotly_chart(fig, width='stretch')
+        else:
+            st.info("No data available for this asset")
+    else:
+        st.info("Select an asset from the sidebar or import data to get started")
 
 
 def show_asset_analysis(selected_asset):
