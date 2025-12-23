@@ -1,24 +1,23 @@
 #!/usr/bin/env python3
 """
-NeuroVest Web Dashboard
+NeuroVest API Dashboard
 
-Interactive web interface for NeuroVest using Streamlit.
+Interactive web interface for NeuroVest Market Forecasting API.
+View predictions, analyze forecast accuracy, and monitor API performance.
 
 Usage:
     streamlit run dashboard.py
-
-    Or with custom port:
     streamlit run dashboard.py --server.port 8080
 
 Requirements:
     pip install streamlit plotly pandas
 
 Features:
-- Asset overview and data visualization
-- Interactive predictions
-- Backtest results viewer
-- Custom asset import
-- LLM analysis integration
+- Asset data visualization
+- API forecast results viewer
+- Prediction accuracy metrics
+- Historical forecast performance
+- Custom data import for forecasting
 """
 
 import os
@@ -42,8 +41,8 @@ except ImportError:
 
 # Configure page
 st.set_page_config(
-    page_title="NeuroVest Dashboard",
-    page_icon="📈",
+    page_title="NeuroVest Forecasting API",
+    page_icon="📊",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -56,7 +55,7 @@ LOGS_DIR = Path("logs")
 
 
 def get_available_assets():
-    """Get list of available assets"""
+    """Get list of available assets for forecasting"""
     assets = set()
 
     # Check data directory
@@ -144,7 +143,7 @@ def load_asset_data(ticker):
 
 
 def load_predictions(ticker):
-    """Load latest predictions for an asset"""
+    """Load API forecast results for an asset"""
     pred_path = LOGS_DIR / "predictions" / f"{ticker.replace('/', '_')}_predictions.csv"
 
     if pred_path.exists():
@@ -153,8 +152,8 @@ def load_predictions(ticker):
     return None
 
 
-def load_backtest_results():
-    """Load backtest results if available"""
+def load_forecast_results():
+    """Load forecast results if available"""
     results_path = LOGS_DIR / "backtest_results.csv"
 
     if results_path.exists():
@@ -164,109 +163,68 @@ def load_backtest_results():
 
 
 def create_price_chart(df, ticker):
-    """Create interactive price chart with indicators"""
-    df = df.copy()  # Avoid SettingWithCopyWarning
+    """Create interactive price chart"""
+    df = df.copy()
     fig = make_subplots(
-        rows=3, cols=1,
+        rows=2, cols=1,
         shared_xaxes=True,
         vertical_spacing=0.05,
-        row_heights=[0.6, 0.2, 0.2],
-        subplot_titles=[f'{ticker} Price', 'Volume', 'RSI']
+        row_heights=[0.7, 0.3],
+        subplot_titles=(f'{ticker} Price', 'Volume')
     )
 
-    # Candlestick chart
-    fig.add_trace(
-        go.Candlestick(
-            x=df['Date'],
-            open=df['Open'],
-            high=df['High'],
-            low=df['Low'],
-            close=df['Close'],
-            name='Price'
-        ),
-        row=1, col=1
-    )
-
-    # Add moving averages
-    if len(df) >= 20:
-        df['MA20'] = df['Close'].rolling(20).mean()
+    # Candlestick if OHLC available
+    if all(col in df.columns for col in ['Open', 'High', 'Low', 'Close']):
         fig.add_trace(
-            go.Scatter(x=df['Date'], y=df['MA20'], name='MA20',
-                      line=dict(color='orange', width=1)),
+            go.Candlestick(
+                x=df['Date'],
+                open=df['Open'],
+                high=df['High'],
+                low=df['Low'],
+                close=df['Close'],
+                name=ticker
+            ),
             row=1, col=1
         )
-
-    if len(df) >= 50:
-        df['MA50'] = df['Close'].rolling(50).mean()
+    else:
+        # Just close price
         fig.add_trace(
-            go.Scatter(x=df['Date'], y=df['MA50'], name='MA50',
-                      line=dict(color='blue', width=1)),
+            go.Scatter(
+                x=df['Date'],
+                y=df['Close'],
+                mode='lines',
+                name=ticker,
+                line=dict(color='blue', width=2)
+            ),
             row=1, col=1
         )
 
     # Volume
-    colors = ['red' if df['Close'].iloc[i] < df['Open'].iloc[i] else 'green'
-              for i in range(len(df))]
-    fig.add_trace(
-        go.Bar(x=df['Date'], y=df['Volume'], name='Volume',
-               marker_color=colors, showlegend=False),
-        row=2, col=1
-    )
-
-    # RSI
-    if len(df) >= 14:
-        delta = df['Close'].diff()
-        gain = delta.clip(lower=0).rolling(14).mean()
-        loss = (-delta.clip(upper=0)).rolling(14).mean()
-        rs = gain / loss.replace(0, np.nan)
-        rsi = 100 - (100 / (1 + rs))
+    if 'Volume' in df.columns:
+        colors = ['red' if df['Close'].iloc[i] < df['Close'].iloc[i-1] else 'green'
+                 for i in range(1, len(df))]
+        colors = ['gray'] + colors  # First bar
 
         fig.add_trace(
-            go.Scatter(x=df['Date'], y=rsi, name='RSI',
-                      line=dict(color='purple', width=1)),
-            row=3, col=1
+            go.Bar(
+                x=df['Date'],
+                y=df['Volume'],
+                name='Volume',
+                marker_color=colors,
+                showlegend=False
+            ),
+            row=2, col=1
         )
 
-        # RSI levels
-        fig.add_hline(y=70, line_dash="dash", line_color="red", row=3, col=1)
-        fig.add_hline(y=30, line_dash="dash", line_color="green", row=3, col=1)
-
     fig.update_layout(
-        height=700,
+        height=600,
         xaxis_rangeslider_visible=False,
-        showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        hovermode='x unified'
     )
 
-    return fig
-
-
-def create_returns_chart(df):
-    """Create returns distribution chart"""
-    returns = df['Close'].pct_change().dropna() * 100
-
-    fig = go.Figure()
-
-    fig.add_trace(go.Histogram(
-        x=returns,
-        nbinsx=50,
-        name='Daily Returns',
-        marker_color='steelblue'
-    ))
-
-    # Add normal distribution overlay
-    mean = returns.mean()
-    std = returns.std()
-
-    fig.add_vline(x=mean, line_dash="dash", line_color="red",
-                 annotation_text=f"Mean: {mean:.2f}%")
-
-    fig.update_layout(
-        title='Daily Returns Distribution',
-        xaxis_title='Return (%)',
-        yaxis_title='Frequency',
-        height=400
-    )
+    fig.update_xaxes(title_text="Date", row=2, col=1)
+    fig.update_yaxes(title_text="Price ($)", row=1, col=1)
+    fig.update_yaxes(title_text="Volume", row=2, col=1)
 
     return fig
 
@@ -313,13 +271,14 @@ def calculate_metrics(df):
 
 def main():
     # Sidebar
-    st.sidebar.title("NeuroVest")
+    st.sidebar.title("NeuroVest API")
+    st.sidebar.markdown("*Market Forecasting Tool*")
     st.sidebar.markdown("---")
 
     # Navigation
     page = st.sidebar.selectbox(
         "Navigation",
-        ["Dashboard", "Asset Analysis", "Predictions", "Backtest", "Import Data", "Settings"]
+        ["Dashboard", "Asset Analysis", "API Forecasts", "Forecast Performance", "Import Data", "Settings"]
     )
 
     # Asset selection
@@ -342,10 +301,10 @@ def main():
         show_dashboard(selected_asset)
     elif page == "Asset Analysis":
         show_asset_analysis(selected_asset)
-    elif page == "Predictions":
-        show_predictions(selected_asset)
-    elif page == "Backtest":
-        show_backtest()
+    elif page == "API Forecasts":
+        show_forecasts(selected_asset)
+    elif page == "Forecast Performance":
+        show_performance()
     elif page == "Import Data":
         show_import()
     elif page == "Settings":
@@ -354,7 +313,8 @@ def main():
 
 def show_dashboard(selected_asset):
     """Main dashboard view"""
-    st.title("NeuroVest Dashboard")
+    st.title("NeuroVest Forecasting API Dashboard")
+    st.markdown("*AI-Powered Market Predictions & Economic Forecasting*")
 
     # Summary cards
     col1, col2, col3, col4 = st.columns(4)
@@ -370,7 +330,7 @@ def show_dashboard(selected_asset):
 
     with col3:
         etfs = len([a for a in assets if '/' not in a])
-        st.metric("ETF Assets", etfs)
+        st.metric("Stock/ETF Assets", etfs)
 
     with col4:
         # Check for recent predictions
@@ -378,7 +338,7 @@ def show_dashboard(selected_asset):
         if LOGS_DIR.exists():
             pred_files = list(LOGS_DIR.glob("*predictions*.csv"))
             pred_count = len(pred_files)
-        st.metric("Predictions", pred_count)
+        st.metric("Forecast Files", pred_count)
 
     st.markdown("---")
 
@@ -405,7 +365,7 @@ def show_dashboard(selected_asset):
 
         if overview_data:
             overview_df = pd.DataFrame(overview_data)
-            st.dataframe(overview_df, width='stretch')
+            st.dataframe(overview_df, use_container_width=True)
 
     # Quick chart for selected asset
     if selected_asset:
@@ -417,7 +377,7 @@ def show_dashboard(selected_asset):
             # Show last 90 days
             recent = df.tail(90)
             fig = create_price_chart(recent, selected_asset)
-            st.plotly_chart(fig, width='stretch')
+            st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("No data available for this asset")
     else:
@@ -458,121 +418,65 @@ def show_asset_analysis(selected_asset):
         with cols[i % 4]:
             st.metric(key, value)
 
+    # Price chart
     st.markdown("---")
+    st.subheader("Price Chart")
 
-    # Charts
-    tab1, tab2, tab3 = st.tabs(["Price Chart", "Returns", "Statistics"])
-
-    with tab1:
-        fig = create_price_chart(filtered_df, selected_asset)
-        st.plotly_chart(fig, width='stretch')
-
-    with tab2:
-        fig = create_returns_chart(filtered_df)
-        st.plotly_chart(fig, width='stretch')
-
-    with tab3:
-        # Detailed statistics
-        returns = filtered_df['Close'].pct_change().dropna()
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.markdown("**Return Statistics**")
-            st.write(f"Mean Daily Return: {returns.mean()*100:.3f}%")
-            st.write(f"Median Daily Return: {returns.median()*100:.3f}%")
-            st.write(f"Std Dev: {returns.std()*100:.3f}%")
-            st.write(f"Skewness: {returns.skew():.3f}")
-            st.write(f"Kurtosis: {returns.kurtosis():.3f}")
-
-        with col2:
-            st.markdown("**Tail Risk**")
-            st.write(f"5% VaR: {returns.quantile(0.05)*100:.2f}%")
-            st.write(f"1% VaR: {returns.quantile(0.01)*100:.2f}%")
-            st.write(f"Best Day: {returns.max()*100:.2f}%")
-            st.write(f"Worst Day: {returns.min()*100:.2f}%")
+    fig = create_price_chart(filtered_df, selected_asset)
+    st.plotly_chart(fig, use_container_width=True)
 
 
-def show_predictions(selected_asset):
-    """Predictions view"""
-    st.title("Predictions")
+def show_forecasts(selected_asset):
+    """API forecasts view"""
+    st.title("API Forecast Results")
+    st.markdown("*View predictions generated by the forecasting models*")
 
-    if not selected_asset:
-        st.warning("Please select an asset from the sidebar")
-        return
+    st.subheader("Recent Forecasts")
 
-    st.subheader(f"Generate Prediction for {selected_asset}")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        horizon = st.selectbox("Prediction Horizon", [1, 5, 10, 20], index=1)
-
-    with col2:
-        confidence_threshold = st.slider("Confidence Threshold", 0.5, 0.9, 0.7)
-
-    if st.button("Run Prediction", type="primary"):
-        with st.spinner("Running prediction..."):
-            # Here you would call the actual prediction code
-            # For now, show placeholder
-            st.info("Prediction functionality would run here")
-            st.write("To run predictions from command line:")
-            st.code(f"python3 predict.py --asset {selected_asset}")
-
-    st.markdown("---")
-
-    # Show existing predictions if available
-    st.subheader("Recent Predictions")
-
-    signals_path = LOGS_DIR / "signals.csv"
+    signals_path = LOGS_DIR / "labeled_predictions.csv"
     if signals_path.exists():
         signals = pd.read_csv(signals_path)
         if len(signals) > 0:
             recent = signals.tail(20)
-            st.dataframe(recent, width='stretch')
+
+            # Map predictions to labels
+            if 'Prediction' in recent.columns:
+                recent = recent.copy()
+                recent['Forecast'] = recent['Prediction'].map({
+                    0: '🔴 CRASH',
+                    1: '🟡 NORMAL',
+                    2: '🟢 SPIKE'
+                })
+
+            st.dataframe(recent, use_container_width=True)
         else:
-            st.info("No predictions found")
+            st.info("No forecast results found")
     else:
-        st.info("No prediction history available. Run predictions first.")
+        st.info("No forecast history available. Run: `python3 predict_multi_asset_ensemble.py`")
 
 
-def show_backtest():
-    """Backtest results view"""
-    st.title("Backtest Results")
+def show_performance():
+    """Forecast performance analysis"""
+    st.title("Forecast Performance Analysis")
 
-    # Configuration
-    st.subheader("Backtest Configuration")
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        config = st.selectbox(
-            "Strategy",
-            ["Optimized (1.25x ATR)", "High Profit (1.75x ATR)", "Aggressive (2.5x ATR)"]
-        )
-
-    with col2:
-        initial_capital = st.number_input("Initial Capital", value=10000, min_value=1000)
-
-    with col3:
-        asset = st.selectbox("Asset", get_available_assets())
-
-    if st.button("Run Backtest", type="primary"):
-        with st.spinner("Running backtest..."):
-            st.info("Backtest would run here")
-            st.write("To run from command line:")
-            st.code(f"python3 backtest.py --asset {asset}")
-
-    st.markdown("---")
-
-    # Show results if available
-    results = load_backtest_results()
+    # Load results
+    results = load_forecast_results()
 
     if results is not None:
         st.subheader("Latest Results")
-        st.dataframe(results, width='stretch')
+        st.dataframe(results, use_container_width=True)
     else:
-        st.info("No backtest results available. Run a backtest first.")
+        st.info("No performance results available. Run forecast validation first.")
+
+    st.markdown("---")
+    st.subheader("Performance Metrics")
+    st.code("""
+# Extract performance metrics
+python3 extract_metrics.py --comprehensive
+
+# Validate forecast signals
+python3 validate_signals.py --detailed
+    """)
 
 
 def show_import():
@@ -580,7 +484,7 @@ def show_import():
     st.title("Import Custom Data")
 
     st.markdown("""
-    Import your own asset data from CSV or Excel files.
+    Import your own asset data to generate forecasts.
 
     **Required columns:**
     - Date (or Time, Timestamp)
@@ -597,7 +501,6 @@ def show_import():
     )
 
     if uploaded_file:
-        # Preview data
         try:
             if uploaded_file.name.endswith('.csv'):
                 df = pd.read_csv(uploaded_file)
@@ -605,7 +508,7 @@ def show_import():
                 df = pd.read_excel(uploaded_file)
 
             st.subheader("Data Preview")
-            st.dataframe(df.head(10), width='stretch')
+            st.dataframe(df.head(10), use_container_width=True)
 
             st.write(f"**Rows:** {len(df)}")
             st.write(f"**Columns:** {list(df.columns)}")
@@ -616,9 +519,6 @@ def show_import():
             if st.button("Import Data", type="primary"):
                 # Save to data_cache
                 save_path = CACHE_DIR / f"{ticker}_1d.csv"
-
-                # Standardize columns
-                # (simplified version - full logic in import_custom_asset.py)
                 df.to_csv(save_path, index=False)
                 st.success(f"Imported as {ticker}")
                 st.info(f"Saved to: {save_path}")
@@ -627,11 +527,9 @@ def show_import():
             st.error(f"Error reading file: {e}")
 
     st.markdown("---")
-
-    # Show command line option
     st.subheader("Command Line Import")
     st.code("""
-# Import from command line with full validation:
+# Import from command line with validation:
 python3 import_custom_asset.py my_data.csv MYTICKER
 
 # Create sample template:
@@ -641,7 +539,7 @@ python3 import_custom_asset.py --sample
 
 def show_settings():
     """Settings view"""
-    st.title("Settings")
+    st.title("API Settings")
 
     st.subheader("API Keys")
 
@@ -650,9 +548,8 @@ def show_settings():
         if api_key:
             st.info("API key configured (not saved)")
 
-    with st.expander("Telegram Notifications"):
-        telegram_token = st.text_input("Bot Token", type="password")
-        chat_id = st.text_input("Chat ID")
+    with st.expander("NewsAPI"):
+        news_key = st.text_input("News API Key", type="password")
 
     st.markdown("---")
 
@@ -664,13 +561,12 @@ def show_settings():
         st.selectbox("Default Model", ["XGBoost", "LightGBM", "CatBoost", "Ensemble"])
 
     with col2:
-        st.number_input("Prediction Horizon (days)", value=5, min_value=1, max_value=30)
+        st.number_input("Forecast Horizon (days)", value=5, min_value=1, max_value=30)
 
     st.markdown("---")
 
     st.subheader("System Information")
 
-    # Show system info
     col1, col2 = st.columns(2)
 
     with col1:
@@ -679,7 +575,6 @@ def show_settings():
         st.write(f"**Models Directory:** {MODELS_DIR}")
 
     with col2:
-        # Check for installed packages
         packages = {
             'streamlit': st.__version__,
             'pandas': pd.__version__,
