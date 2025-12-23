@@ -130,6 +130,16 @@ def load_asset_data(ticker):
     df['Date'] = pd.to_datetime(df[date_col])
     df = df.sort_values('Date')
 
+    # Convert numeric columns to proper types
+    numeric_cols = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume', 'Price']
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    # Drop rows where Close is NaN (essential for calculations)
+    if 'Close' in df.columns:
+        df = df.dropna(subset=['Close'])
+
     return df
 
 
