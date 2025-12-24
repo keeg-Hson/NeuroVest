@@ -49,8 +49,22 @@ DATA_DIR = Path("data")
 LOGS_DIR = Path("logs")
 MODELS_DIR = Path("models")
 
-st.title("⚡ NeuroVest Quick Demo Dashboard")
-st.markdown("*Fast testing and debugging interface*")
+# Hero section
+st.markdown("""
+<div style="text-align: center; padding: 1.5rem 0;">
+    <h1 style="font-size: 3rem; margin-bottom: 0.5rem;">⚡ NeuroVest Quick Demo</h1>
+    <p style="font-size: 1.3rem; color: #666;">Fast Testing & Debugging Interface</p>
+</div>
+""", unsafe_allow_html=True)
+
+# Value proposition - compact version
+st.markdown("""
+<div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 1.5rem; border-radius: 12px; color: white; margin: 1rem 0;">
+    <p style="font-size: 1.1rem; line-height: 1.5; margin-bottom: 0;">
+        <b>Market Forecasting API</b> using ensemble ML (XGBoost + LightGBM + CatBoost) for 3-class predictions (CRASH/NORMAL/SPIKE)
+    </p>
+</div>
+""", unsafe_allow_html=True)
 
 # Tabs for organization
 tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Overview", "🤖 Models", "📈 Predictions", "💰 Backtest", "📁 Data"])
@@ -59,9 +73,9 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(["📊 Overview", "🤖 Models", "📈 Pr
 # TAB 1: OVERVIEW
 # ============================================================================
 with tab1:
-    st.header("System Overview")
+    st.markdown("### 🔧 System Status")
 
-    # Quick status cards
+    # Quick status cards with better colors
     col1, col2, col3, col4 = st.columns(4)
 
     # Check data files
@@ -77,24 +91,29 @@ with tab1:
 
     with col1:
         if spy_exists:
-            st.success("✅ SPY Data")
+            st.success("🟢 SPY Data Ready")
         else:
-            st.error("❌ SPY Data")
+            st.error("🔴 SPY Data Missing")
 
     with col2:
-        st.info(f"🤖 Models: {model_count}/3")
+        if model_count == 3:
+            st.success(f"🟢 All {model_count} Models")
+        elif model_count > 0:
+            st.warning(f"🟡 {model_count}/3 Models")
+        else:
+            st.error(f"🔴 No Models")
 
     with col3:
         if pred_exists:
-            st.success("✅ Predictions")
+            st.success("🟢 Predictions Ready")
         else:
-            st.error("❌ Predictions")
+            st.error("🔴 No Predictions")
 
     with col4:
         if backtest_exists:
-            st.success("✅ Backtest")
+            st.success("🟢 Backtest Complete")
         else:
-            st.warning("⚠️ Backtest")
+            st.warning("🟡 No Backtest")
 
     st.markdown("---")
 

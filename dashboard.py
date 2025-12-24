@@ -312,65 +312,142 @@ def main():
 
 
 def show_dashboard(selected_asset):
-    """Main dashboard view"""
-    st.title("NeuroVest Forecasting API Dashboard")
-    st.markdown("*AI-Powered Market Predictions & Economic Forecasting*")
+    """Main dashboard view - Deployment-ready homepage"""
+    # Hero section
+    st.markdown("""
+    <div style="text-align: center; padding: 2rem 0;">
+        <h1 style="font-size: 3.5rem; margin-bottom: 0.5rem;">📊 NeuroVest Forecasting API</h1>
+        <p style="font-size: 1.5rem; color: #666;">AI-Powered Market Predictions & Economic Analysis</p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    # Summary cards
+    # Value proposition
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem; border-radius: 15px; color: white; margin: 2rem 0;">
+        <h2 style="color: white; margin-top: 0;">🎯 What is NeuroVest?</h2>
+        <p style="font-size: 1.2rem; line-height: 1.6;">
+            <b>NeuroVest is a Market Forecasting API</b> that predicts price movements using ensemble machine learning (XGBoost + LightGBM + CatBoost).
+        </p>
+        <p style="font-size: 1.1rem; line-height: 1.6;">
+            ✨ <b>Primary Function:</b> Generate 3-class forecasts (CRASH / NORMAL / SPIKE) for stocks, ETFs, crypto, and precious metals
+        </p>
+        <p style="font-size: 1.0rem; line-height: 1.6; margin-bottom: 0;">
+            ⚠️ <b>Note:</b> This is a forecasting tool, NOT a trading system. It provides predictions and analysis, not trade execution.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Key metrics
     col1, col2, col3, col4 = st.columns(4)
 
     assets = get_available_assets()
+    crypto = len([a for a in assets if '/' in a])
+    etfs = len([a for a in assets if '/' not in a])
 
     with col1:
-        st.metric("Total Assets", len(assets))
+        st.metric("📈 Total Assets", len(assets), help="All available assets for forecasting")
 
     with col2:
-        crypto = len([a for a in assets if '/' in a])
-        st.metric("Crypto Assets", crypto)
+        st.metric("💎 Crypto Assets", crypto, help="Cryptocurrency pairs")
 
     with col3:
-        etfs = len([a for a in assets if '/' not in a])
-        st.metric("Stock/ETF Assets", etfs)
+        st.metric("📊 Stock/ETF Assets", etfs, help="Traditional market assets")
 
     with col4:
-        # Check for recent predictions
         pred_count = 0
         if LOGS_DIR.exists():
             pred_files = list(LOGS_DIR.glob("*predictions*.csv"))
             pred_count = len(pred_files)
-        st.metric("Forecast Files", pred_count)
+        st.metric("🔮 Forecast Files", pred_count, help="Generated prediction files")
 
+    # Use Cases
     st.markdown("---")
+    st.markdown("### 🎬 Use Cases")
 
-    # Asset overview table
-    st.subheader("Asset Overview")
+    use_case_col1, use_case_col2, use_case_col3 = st.columns(3)
 
-    if assets:
-        overview_data = []
+    with use_case_col1:
+        st.markdown("""
+        <div style="background-color: #E8F5E9; padding: 1.5rem; border-radius: 10px; height: 100%;">
+            <h4 style="color: #2E7D32;">💼 Institutional Research</h4>
+            <p style="color: #1B5E20;">
+                • Market regime classification<br>
+                • Economic indicator analysis<br>
+                • Risk assessment & stress testing<br>
+                • Multi-asset correlation studies
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
-        for asset in assets[:10]:  # Show first 10
-            df = load_asset_data(asset)
-            if df is not None and len(df) > 0:
-                returns = df['Close'].pct_change().dropna()
-                total_return = (df['Close'].iloc[-1] / df['Close'].iloc[0] - 1) * 100
-                daily_return = returns.iloc[-1] * 100 if len(returns) > 0 else 0
+    with use_case_col2:
+        st.markdown("""
+        <div style="background-color: #E3F2FD; padding: 1.5rem; border-radius: 10px; height: 100%;">
+            <h4 style="color: #1565C0;">📊 Portfolio Management</h4>
+            <p style="color: #0D47A1;">
+                • Asset allocation signals<br>
+                • Rebalancing optimization<br>
+                • Recession probability tracking<br>
+                • Valuation-based positioning
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
-                overview_data.append({
-                    'Asset': asset,
-                    'Last Price': f"${df['Close'].iloc[-1]:,.2f}",
-                    'Daily Return': f"{daily_return:+.2f}%",
-                    'Total Return': f"{total_return:,.1f}%",
-                    'Days': len(df)
-                })
+    with use_case_col3:
+        st.markdown("""
+        <div style="background-color: #FCE4EC; padding: 1.5rem; border-radius: 10px; height: 100%;">
+            <h4 style="color: #C2185B;">🔬 Research & Development</h4>
+            <p style="color: #880E4F;">
+                • ML model benchmarking<br>
+                • Feature importance analysis<br>
+                • Prediction accuracy studies<br>
+                • Custom model integration
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
-        if overview_data:
-            overview_df = pd.DataFrame(overview_data)
-            st.dataframe(overview_df, use_container_width=True)
+    # System Status
+    st.markdown("---")
+    st.markdown("### 🔧 System Status")
+
+    status_col1, status_col2, status_col3 = st.columns(3)
+
+    with status_col1:
+        st.markdown("**📁 Data Files**")
+        spy_exists = (DATA_DIR / "SPY.csv").exists()
+        spy_status = "🟢 Ready" if spy_exists else "🔴 Missing"
+
+        if spy_exists:
+            spy_df = load_asset_data('SPY')
+            rows = len(spy_df) if spy_df is not None else 0
+            st.markdown(f"{spy_status} SPY.csv ({rows:,} rows)")
+        else:
+            st.markdown(f"{spy_status} SPY.csv")
+
+        st.markdown(f"Total assets: {len(assets)}")
+
+    with status_col2:
+        st.markdown("**🤖 ML Models**")
+        for model in ['xgboost', 'lightgbm', 'catboost']:
+            exists = (MODELS_DIR / f"{model}_multi_asset.pkl").exists()
+            status = "🟢" if exists else "🔴"
+            st.markdown(f"{status} {model.capitalize()}")
+
+    with status_col3:
+        st.markdown("**🔮 Forecasts**")
+        pred_file = LOGS_DIR / "labeled_predictions.csv"
+        if pred_file.exists():
+            try:
+                df = pd.read_csv(pred_file)
+                st.markdown(f"🟢 {len(df):,} predictions")
+            except:
+                st.markdown("🟡 File exists (parse error)")
+        else:
+            st.markdown("🔴 No predictions yet")
 
     # Quick chart for selected asset
     if selected_asset:
         st.markdown("---")
-        st.subheader(f"{selected_asset} Quick View")
+        st.markdown(f"### 📈 {selected_asset} Quick View")
 
         df = load_asset_data(selected_asset)
         if df is not None and len(df) > 0:
@@ -381,7 +458,7 @@ def show_dashboard(selected_asset):
         else:
             st.info("No data available for this asset")
     else:
-        st.info("Select an asset from the sidebar or import data to get started")
+        st.info("💡 Select an asset from the sidebar to view its price chart")
 
 
 def show_asset_analysis(selected_asset):
