@@ -689,6 +689,10 @@ def handle_full_pipeline():
         print("\nUpdating SPY data...")
         result = subprocess.run(["python3", "update_spy_data.py"], capture_output=False)
 
+        # Download all equity ETFs, bonds, precious metals
+        print("\nDownloading equity ETFs, bonds, and precious metals...")
+        subprocess.run(["python3", "download_equity_etfs.py"])
+
         # Download crypto if requested
         if include_crypto:
             print("\nDownloading crypto data...")

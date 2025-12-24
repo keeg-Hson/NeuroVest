@@ -121,9 +121,23 @@ def _bootstrap() -> pd.DataFrame | None:
     if df is None or df.empty:
         print("❌ Could not download initial SPY history.")
         return None
+
+    # Reset index and ensure it's named 'Date'
     df = df.reset_index()
-    df = df.rename(columns={"Adj Close": "Adj Close"})  # explicit for clarity
-    df = df[["Date", "Open", "High", "Low", "Close", "Adj Close", "Volume"]]
+
+    # Rename index column to 'Date' if it has a different name
+    if df.columns[0] != 'Date':
+        df = df.rename(columns={df.columns[0]: 'Date'})
+
+    # Select and order columns (only if they exist)
+    available_cols = []
+    for col in ["Date", "Open", "High", "Low", "Close", "Adj Close", "Volume"]:
+        if col in df.columns:
+            available_cols.append(col)
+
+    if available_cols:
+        df = df[available_cols]
+
     df = _canonicalize(df)
     _write(df, "✅ Created")
     return df

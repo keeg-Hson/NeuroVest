@@ -85,6 +85,16 @@ def load_asset_data(asset="SPY"):
     df = pd.read_csv(data_path)
     df['Date'] = pd.to_datetime(df['Date'])
 
+    # Convert numeric columns to proper types
+    numeric_cols = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume', 'Price']
+    for col in numeric_cols:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
+    # Drop rows where Close is NaN
+    if 'Close' in df.columns:
+        df = df.dropna(subset=['Close'])
+
     # Get last 20 days
     recent = df.tail(20)
     return recent

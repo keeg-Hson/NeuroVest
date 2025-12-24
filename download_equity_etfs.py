@@ -26,14 +26,47 @@ HEADERS = {
 
 # Equity ETFs with similar characteristics to SPY
 EQUITY_ETFS = {
+    # Major Indexes
     'QQQ': 'Nasdaq 100 (Tech-heavy)',
     'IWM': 'Russell 2000 (Small caps)',
     'DIA': 'Dow Jones (Blue chips)',
     'VTI': 'Total Stock Market (Broader)',
+    'EFA': 'Developed Markets EAFE',
     'EEM': 'Emerging Markets (International)',
+    'VWO': 'Emerging Markets Vanguard',
+
+    # Sector ETFs
     'XLF': 'Financials Sector',
     'XLK': 'Technology Sector',
     'XLE': 'Energy Sector',
+    'XLV': 'Healthcare Sector',
+    'XLI': 'Industrials Sector',
+    'XLY': 'Consumer Discretionary',
+    'XLP': 'Consumer Staples',
+    'XLU': 'Utilities Sector',
+    'XLRE': 'Real Estate Sector',
+
+    # Bonds
+    'AGG': 'Total Bond Market',
+    'BND': 'Total Bond Market Vanguard',
+    'TLT': '20+ Year Treasuries',
+    'IEF': '7-10 Year Treasuries',
+    'SHY': '1-3 Year Treasuries',
+    'LQD': 'Investment Grade Bonds',
+    'HYG': 'High Yield Bonds',
+
+    # Precious Metals
+    'GLD': 'Gold Trust',
+    'SLV': 'Silver Trust',
+    'GDX': 'Gold Miners',
+    'GDXJ': 'Junior Gold Miners',
+    'IAU': 'iShares Gold',
+    'PPLT': 'Platinum',
+    'PALL': 'Palladium',
+
+    # Commodities
+    'USO': 'US Oil Fund',
+    'UNG': 'Natural Gas Fund',
 }
 
 # Match SPY date range
@@ -45,13 +78,14 @@ start_ts = int(datetime.strptime(START_DATE, '%Y-%m-%d').timestamp())
 end_ts = int(datetime.now().timestamp())
 
 print("=" * 80)
-print("EQUITY ETF DATA DOWNLOAD (RECOMMENDED FOR SPY TRAINING)")
+print("MULTI-ASSET DATA DOWNLOAD (ETFs, Bonds, Precious Metals, Commodities)")
 print("=" * 80)
-print(f"\n✅ Benefits over crypto:")
-print(f"   - Same market structure (9:30-16:00 ET)")
-print(f"   - Similar volatility (15-25% annualized)")
-print(f"   - Proven cross-asset learning")
-print(f"   - 7-8x more training data")
+print(f"\n✅ Downloading {len(EQUITY_ETFS)} assets:")
+print(f"   - Major indexes (QQQ, IWM, DIA, etc.)")
+print(f"   - Sector ETFs (XLF, XLK, XLE, etc.)")
+print(f"   - Bonds (TLT, HYG, LQD, etc.)")
+print(f"   - Precious metals (GLD, SLV, etc.)")
+print(f"   - Commodities (USO, UNG)")
 print("\n" + "=" * 80)
 
 successful = []
