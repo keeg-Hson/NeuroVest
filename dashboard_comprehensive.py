@@ -403,28 +403,159 @@ def show_overview():
         </div>
         """, unsafe_allow_html=True)
 
-    # API Endpoints (if applicable)
+    # API Endpoints & Integration
     st.markdown("---")
-    st.markdown("### 🌐 Deployment Information")
+    st.markdown("### 🌐 REST API Integration")
 
-    deploy_col1, deploy_col2 = st.columns(2)
+    st.markdown("""
+    <div style="background-color: #E8EAF6; padding: 1.5rem; border-radius: 10px; margin-bottom: 1.5rem;">
+        <h4 style="color: #283593; margin-top: 0;">FastAPI Server</h4>
+        <p style="color: #1A237E; margin-bottom: 0;">
+            Start the REST API server: <code style="background: #C5CAE9; padding: 0.2rem 0.5rem; border-radius: 3px;">python framework/api_server.py</code><br>
+            Server runs on: <code style="background: #C5CAE9; padding: 0.2rem 0.5rem; border-radius: 3px;">http://localhost:8000</code><br>
+            API Documentation: <code style="background: #C5CAE9; padding: 0.2rem 0.5rem; border-radius: 3px;">http://localhost:8000/docs</code>
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
-    with deploy_col1:
-        st.info("""
-        **📡 API Access:**
-        - This dashboard provides a visual interface to the forecasting engine
-        - For programmatic access, see `api.py` or `utils.py` for core functions
-        - All predictions stored in `logs/` directory as CSV files
-        """)
+    api_col1, api_col2 = st.columns(2)
 
-    with deploy_col2:
-        st.success("""
-        **✅ Production Ready:**
-        - Ensemble models for robustness
-        - Data validation & error handling
-        - Caching for performance
-        - Comprehensive logging
-        """)
+    with api_col1:
+        st.markdown("**🔌 Core Endpoints:**")
+        st.code("""
+GET  /health
+     → Health check & server status
+
+GET  /assets
+     → List all configured assets
+
+GET  /models
+     → List trained models with accuracy
+
+GET  /predict/{asset}
+     → Latest prediction for asset
+
+GET  /predict/{asset}/history
+     → Prediction history
+        """, language="plaintext")
+
+    with api_col2:
+        st.markdown("**📊 Example Usage (Python):**")
+        st.code("""
+import requests
+
+# Get latest SPY prediction
+response = requests.get(
+    'http://localhost:8000/predict/SPY'
+)
+data = response.json()
+
+print(f"Asset: {data['asset']}")
+print(f"Prediction: {data['prediction']}")
+print(f"Probability: {data['probability']}")
+print(f"Confidence: {data['confidence']}")
+
+# Response format:
+# {
+#   "asset": "SPY",
+#   "timestamp": "2024-12-24T10:30:00",
+#   "prediction": 2,  // 0=CRASH, 1=NORMAL, 2=SPIKE
+#   "probability": 0.78,
+#   "confidence": "high",
+#   "models_agree": true
+# }
+        """, language="python")
+
+    st.markdown("---")
+
+    # Integration examples
+    int_col1, int_col2 = st.columns(2)
+
+    with int_col1:
+        st.markdown("**🔗 JavaScript Integration:**")
+        st.code("""
+// Fetch prediction
+fetch('http://localhost:8000/predict/SPY')
+  .then(res => res.json())
+  .then(data => {
+    console.log('Prediction:', data.prediction);
+    console.log('Probability:', data.probability);
+  });
+
+// Get all assets
+fetch('http://localhost:8000/assets')
+  .then(res => res.json())
+  .then(assets => {
+    assets.forEach(asset => {
+      console.log(asset.ticker, asset.name);
+    });
+  });
+        """, language="javascript")
+
+    with int_col2:
+        st.markdown("**🔧 cURL Examples:**")
+        st.code("""
+# Health check
+curl http://localhost:8000/health
+
+# Get SPY prediction
+curl http://localhost:8000/predict/SPY
+
+# List all assets
+curl http://localhost:8000/assets
+
+# Get crypto predictions
+curl http://localhost:8000/predict/BTC-USDT
+
+# Filter assets by type
+curl "http://localhost:8000/assets?asset_type=crypto"
+        """, language="bash")
+
+    # Client libraries & SDKs
+    st.markdown("---")
+    st.markdown("### 📦 Client Integration")
+
+    client_col1, client_col2, client_col3 = st.columns(3)
+
+    with client_col1:
+        st.markdown("""
+        <div style="background-color: #E8F5E9; padding: 1.5rem; border-radius: 10px;">
+            <h4 style="color: #2E7D32;">Python SDK</h4>
+            <p style="color: #1B5E20; font-size: 0.9rem;">
+                <code>utils.py</code> provides helper functions:<br><br>
+                • <b>load_predictions()</b><br>
+                • <b>get_latest_signal()</b><br>
+                • <b>load_asset_data()</b><br>
+                • <b>calculate_metrics()</b>
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with client_col2:
+        st.markdown("""
+        <div style="background-color: #E3F2FD; padding: 1.5rem; border-radius: 10px;">
+            <h4 style="color: #1565C0;">Web Dashboard</h4>
+            <p style="color: #0D47A1; font-size: 0.9rem;">
+                Streamlit dashboards:<br><br>
+                • <b>dashboard.py</b> - Main API<br>
+                • <b>dashboard_comprehensive.py</b> - Full features<br>
+                • <b>dashboard_demo.py</b> - Quick testing
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with client_col3:
+        st.markdown("""
+        <div style="background-color: #FCE4EC; padding: 1.5rem; border-radius: 10px;">
+            <h4 style="color: #C2185B;">Data Access</h4>
+            <p style="color: #880E4F; font-size: 0.9rem;">
+                CSV exports available:<br><br>
+                • <b>logs/daily_predictions.csv</b><br>
+                • <b>logs/labeled_predictions.csv</b><br>
+                • <b>outputs/backtest_results.json</b>
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
 
 def show_asset_manager():
@@ -454,8 +585,43 @@ def show_asset_manager():
         df_assets = pd.DataFrame(asset_data)
         st.dataframe(df_assets, use_container_width=True)
 
-        st.markdown("**Download Command:**")
-        st.code("python3 update_spy_data.py  # For SPY\npython3 download_equity_etfs.py  # For all ETFs")
+        st.markdown("---")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("**📥 Download SPY Data:**")
+            if st.button("🔄 Update SPY Data", key="download_spy"):
+                with st.spinner("Downloading SPY data..."):
+                    result = subprocess.run(
+                        ["python3", "update_spy_data.py"],
+                        capture_output=True,
+                        text=True
+                    )
+                    if result.returncode == 0:
+                        st.success("✅ SPY data updated successfully!")
+                        st.cache_data.clear()  # Clear cache to reload data
+                    else:
+                        st.error(f"❌ Error: {result.stderr[:200]}")
+
+            st.caption("Downloads S&P 500 data from 2000-present")
+
+        with col2:
+            st.markdown("**📥 Download All ETFs:**")
+            if st.button("🔄 Download ETFs & Bonds", key="download_etfs"):
+                with st.spinner("Downloading 35+ assets..."):
+                    result = subprocess.run(
+                        ["python3", "download_equity_etfs.py"],
+                        capture_output=True,
+                        text=True
+                    )
+                    if result.returncode == 0:
+                        st.success("✅ ETFs & bonds downloaded!")
+                        st.cache_data.clear()
+                    else:
+                        st.error(f"❌ Error: {result.stderr[:200]}")
+
+            st.caption("Downloads ETFs, bonds, precious metals, commodities")
 
     with tab2:
         st.subheader(f"Precious Metals ({len(PRECIOUS_METALS)} available)")
@@ -498,22 +664,49 @@ def show_asset_manager():
         df_crypto = pd.DataFrame(crypto_data)
         st.dataframe(df_crypto, use_container_width=True)
 
-        st.markdown("**Download Command:**")
-        st.code("python3 download_crypto_enhanced.py  # Downloads all 10 crypto assets")
+        st.markdown("---")
 
-    # Bulk download section
+        st.markdown("**📥 Download Cryptocurrency Data:**")
+        if st.button("🔄 Download All 10 Cryptocurrencies", key="download_crypto"):
+            with st.spinner("Downloading crypto data from Binance..."):
+                result = subprocess.run(
+                    ["python3", "download_crypto_enhanced.py"],
+                    capture_output=True,
+                    text=True
+                )
+                if result.returncode == 0:
+                    st.success("✅ Cryptocurrency data downloaded!")
+                    st.cache_data.clear()
+                else:
+                    st.error(f"❌ Error: {result.stderr[:200]}")
+
+        st.caption("Downloads BTC, ETH, SOL, BNB, XRP, ADA, DOGE, AVAX, MATIC, LINK")
+
+    # Quick Actions
     st.markdown("---")
-    st.subheader("📦 Bulk Downloads")
+    st.subheader("⚡ Quick Actions")
 
-    col1, col2 = st.columns(2)
+    qa_col1, qa_col2, qa_col3 = st.columns(3)
 
-    with col1:
-        st.markdown("**Download All Stocks/ETFs:**")
-        st.code("python3 download_equity_etfs.py")
+    with qa_col1:
+        if st.button("🔄 Refresh All Data", key="refresh_display"):
+            st.cache_data.clear()
+            st.success("✅ Cache cleared! Reload page to see fresh data.")
 
-    with col2:
-        st.markdown("**Download All Crypto:**")
-        st.code("python3 download_crypto_enhanced.py")
+    with qa_col2:
+        if st.button("📊 Download All Assets", key="download_all"):
+            with st.spinner("Downloading all assets..."):
+                # SPY
+                subprocess.run(["python3", "update_spy_data.py"], capture_output=True)
+                # ETFs
+                subprocess.run(["python3", "download_equity_etfs.py"], capture_output=True)
+                # Crypto
+                subprocess.run(["python3", "download_crypto_enhanced.py"], capture_output=True)
+                st.success("✅ All downloads complete!")
+                st.cache_data.clear()
+
+    with qa_col3:
+        st.info("💡 Individual downloads above for granular control")
 
 
 def show_recession_indicator():
@@ -697,6 +890,10 @@ def show_valuation_detector():
     st.title("💰 Valuation Detector")
     st.markdown("*Identify over/undervalued assets using technical indicators*")
 
+    # Evaluation timestamp
+    eval_time = datetime.now().strftime("%B %d, %Y at %I:%M %p")
+    st.caption(f"📅 Analysis Date: {eval_time}")
+
     st.info("💡 **Feature:** Uses RSI, Z-Score, Bollinger Bands, and MA deviation to classify asset valuation")
 
     # Asset selector
@@ -718,6 +915,10 @@ def show_valuation_detector():
     # Calculate valuation metrics
     recent = df.tail(252)
     latest = recent.iloc[-1]
+
+    # Get latest data date
+    latest_data_date = latest['Date'].strftime("%B %d, %Y") if 'Date' in latest else "Unknown"
+    st.info(f"📊 Latest Market Data: {latest_data_date} | Price: ${latest['Close']:.2f}")
 
     # RSI
     delta = recent['Close'].diff()
