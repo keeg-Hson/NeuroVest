@@ -86,6 +86,7 @@ def check_asset_status(ticker):
 
     return "available"
 
+@st.cache_data(ttl=300)  # Cache for 5 minutes
 def load_asset_data(ticker):
     """Load asset data if available"""
     # Try data/ first
@@ -106,7 +107,7 @@ def load_asset_data(ticker):
         # Convert date column
         for col in ['Date', 'date', 'Timestamp']:
             if col in df.columns:
-                df['Date'] = pd.to_datetime(df[col])
+                df['Date'] = pd.to_datetime(df[col], errors='coerce')
                 break
 
         # Convert numeric columns
@@ -115,9 +116,16 @@ def load_asset_data(ticker):
                 df[col] = pd.to_numeric(df[col], errors='coerce')
 
         if 'Close' in df.columns:
+            # Drop rows where Close is NaN
             df = df.dropna(subset=['Close'])
 
-        return df.sort_values('Date') if 'Date' in df.columns else df
+        # Ensure we have Date column
+        if 'Date' in df.columns:
+            df = df.sort_values('Date')
+            # Drop rows where Date is NaT
+            df = df.dropna(subset=['Date'])
+
+        return df if len(df) > 0 else None
 
     except Exception as e:
         st.error(f"Error loading {ticker}: {e}")
@@ -191,22 +199,32 @@ def main():
 
 
 def show_overview():
-    """Overview page"""
-    st.title("📊 NeuroVest Forecasting API")
-    st.markdown("### AI-Powered Market Predictions & Economic Analysis")
-
+    """Overview page - Deployment-ready homepage"""
+    # Hero section
     st.markdown("""
-    <div style="background-color: #f0f2f6; padding: 20px; border-radius: 10px; margin: 20px 0;">
-    <h4>🎯 What NeuroVest Does</h4>
-    <p><b>NeuroVest is a Market Forecasting API</b> that predicts price movements using ensemble machine learning.</p>
-
-    <p><b>Primary Function:</b> Generate 3-class forecasts (CRASH / NORMAL / SPIKE) for stocks, ETFs, crypto, and precious metals</p>
-
-    <p><b>Not a Trading System:</b> This is a forecasting tool. It provides predictions and analysis, not trade execution.</p>
+    <div style="text-align: center; padding: 2rem 0;">
+        <h1 style="font-size: 3.5rem; margin-bottom: 0.5rem;">📊 NeuroVest Forecasting API</h1>
+        <p style="font-size: 1.5rem; color: #666;">AI-Powered Market Predictions & Economic Analysis</p>
     </div>
     """, unsafe_allow_html=True)
 
-    # Stats
+    # Value proposition
+    st.markdown("""
+    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem; border-radius: 15px; color: white; margin: 2rem 0;">
+        <h2 style="color: white; margin-top: 0;">🎯 What is NeuroVest?</h2>
+        <p style="font-size: 1.2rem; line-height: 1.6;">
+            <b>NeuroVest is a Market Forecasting API</b> that predicts price movements using ensemble machine learning (XGBoost + LightGBM + CatBoost).
+        </p>
+        <p style="font-size: 1.1rem; line-height: 1.6;">
+            ✨ <b>Primary Function:</b> Generate 3-class forecasts (CRASH / NORMAL / SPIKE) for stocks, ETFs, crypto, and precious metals
+        </p>
+        <p style="font-size: 1.0rem; line-height: 1.6; margin-bottom: 0;">
+            ⚠️ <b>Note:</b> This is a forecasting tool, NOT a trading system. It provides predictions and analysis, not trade execution.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Key metrics
     col1, col2, col3, col4 = st.columns(4)
 
     total_assets = len(STOCK_ETFS) + len(PRECIOUS_METALS) + len(CRYPTO_ASSETS)
@@ -214,75 +232,195 @@ def show_overview():
                     if check_asset_status(t) == "downloaded")
 
     with col1:
-        st.metric("Total Assets Supported", total_assets)
+        st.metric("📈 Assets Supported", total_assets, help="Stocks, ETFs, Crypto, Precious Metals")
 
     with col2:
-        st.metric("Assets Downloaded", downloaded)
+        st.metric("✅ Assets Ready", downloaded, help="Data downloaded and ready for analysis")
 
     with col3:
         pred_count = len(list(LOGS_DIR.glob("*predictions*.csv"))) if LOGS_DIR.exists() else 0
-        st.metric("Forecast Files", pred_count)
+        st.metric("🔮 Forecast Files", pred_count, help="Generated prediction files")
 
     with col4:
         model_count = sum(1 for f in ['xgboost_multi_asset.pkl', 'lightgbm_multi_asset.pkl', 'catboost_multi_asset.pkl']
                          if (MODELS_DIR / f).exists())
-        st.metric("Models Trained", f"{model_count}/3")
+        st.metric("🤖 Models Trained", f"{model_count}/3", help="XGBoost, LightGBM, CatBoost")
 
-    # Feature showcase
+    # Use Cases
     st.markdown("---")
-    st.subheader("🎯 Core Features")
+    st.markdown("### 🎬 Use Cases")
 
-    col1, col2 = st.columns(2)
+    use_case_col1, use_case_col2, use_case_col3 = st.columns(3)
 
-    with col1:
+    with use_case_col1:
         st.markdown("""
-        **Forecasting & Analysis:**
-        - 📈 Multi-asset ensemble predictions
-        - 📉 Recession probability indicator
-        - 💰 Asset valuation detector
-        - 🤖 LLM-powered market analysis
-        - 📊 Signal validation & backtesting
-        """)
+        <div style="background-color: #E8F5E9; padding: 1.5rem; border-radius: 10px; height: 100%;">
+            <h4 style="color: #2E7D32;">💼 Institutional Research</h4>
+            <p style="color: #1B5E20;">
+                • Market regime classification<br>
+                • Economic indicator analysis<br>
+                • Risk assessment & stress testing<br>
+                • Multi-asset correlation studies
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
-    with col2:
+    with use_case_col2:
         st.markdown("""
-        **Asset Coverage:**
-        - 📊 14 Stock/ETF assets
-        - 🥇 7 Precious metals (Gold, Silver, etc.)
-        - 💎 10 Cryptocurrencies
-        - 📁 Custom data imports
-        - 🔄 Multi-asset portfolio analysis
-        """)
+        <div style="background-color: #E3F2FD; padding: 1.5rem; border-radius: 10px; height: 100%;">
+            <h4 style="color: #1565C0;">📊 Portfolio Management</h4>
+            <p style="color: #0D47A1;">
+                • Asset allocation signals<br>
+                • Rebalancing optimization<br>
+                • Recession probability tracking<br>
+                • Valuation-based positioning
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
-    # Quick status
+    with use_case_col3:
+        st.markdown("""
+        <div style="background-color: #FCE4EC; padding: 1.5rem; border-radius: 10px; height: 100%;">
+            <h4 style="color: #C2185B;">🔬 Research & Development</h4>
+            <p style="color: #880E4F;">
+                • ML model benchmarking<br>
+                • Feature importance analysis<br>
+                • Prediction accuracy studies<br>
+                • Custom model integration
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Core Features
     st.markdown("---")
-    st.subheader("📊 System Status")
+    st.markdown("### ⚡ Core Features")
+
+    feat_col1, feat_col2 = st.columns(2)
+
+    with feat_col1:
+        st.markdown("""
+        <div style="background-color: #FFF3E0; padding: 1.5rem; border-radius: 10px;">
+            <h4 style="color: #E65100;">🔮 Forecasting & Analysis</h4>
+            <ul style="color: #BF360C;">
+                <li><b>Multi-Asset Ensemble Predictions:</b> XGBoost + LightGBM + CatBoost</li>
+                <li><b>Recession Probability Indicator:</b> Yield curves, market stress, death cross</li>
+                <li><b>Asset Valuation Detector:</b> RSI, Z-Score, Bollinger Bands</li>
+                <li><b>LLM Market Analysis:</b> OpenAI GPT-4 & Anthropic Claude integration</li>
+                <li><b>Signal Validation:</b> Backtesting with multiple risk profiles</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with feat_col2:
+        st.markdown("""
+        <div style="background-color: #F3E5F5; padding: 1.5rem; border-radius: 10px;">
+            <h4 style="color: #6A1B9A;">📦 Asset Coverage</h4>
+            <ul style="color: #4A148C;">
+                <li><b>14 Stock/ETF Assets:</b> SPY, QQQ, IWM, DIA, VTI, sector ETFs</li>
+                <li><b>7 Precious Metals:</b> Gold, Silver, GDX, GDXJ, Platinum, Palladium</li>
+                <li><b>10 Cryptocurrencies:</b> BTC, ETH, SOL, BNB, XRP, ADA, DOGE, AVAX, MATIC, LINK</li>
+                <li><b>Custom Data Imports:</b> Upload your own CSV files</li>
+                <li><b>Portfolio Analysis:</b> Rebalancing frequency optimization</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # System Status
+    st.markdown("---")
+    st.markdown("### 🔧 System Status")
 
     status_col1, status_col2, status_col3 = st.columns(3)
 
     with status_col1:
-        st.markdown("**Data Files:**")
-        spy_status = "✅" if (DATA_DIR / "SPY.csv").exists() else "❌"
-        st.markdown(f"{spy_status} SPY.csv")
+        st.markdown("**📁 Data Files**")
+        spy_exists = (DATA_DIR / "SPY.csv").exists()
+        spy_status = "🟢 Ready" if spy_exists else "🔴 Missing"
+
+        if spy_exists:
+            spy_df = load_asset_data('SPY')
+            rows = len(spy_df) if spy_df is not None else 0
+            st.markdown(f"{spy_status} SPY.csv ({rows:,} rows)")
+        else:
+            st.markdown(f"{spy_status} SPY.csv")
 
         crypto_downloaded = sum(1 for t in CRYPTO_ASSETS.keys() if check_asset_status(t) == "downloaded")
-        st.markdown(f"💎 Crypto: {crypto_downloaded}/10 downloaded")
+        st.markdown(f"💎 Crypto: {crypto_downloaded}/10")
 
     with status_col2:
-        st.markdown("**Models:**")
+        st.markdown("**🤖 ML Models**")
         for model in ['xgboost', 'lightgbm', 'catboost']:
             exists = (MODELS_DIR / f"{model}_multi_asset.pkl").exists()
-            icon = "✅" if exists else "❌"
-            st.markdown(f"{icon} {model.capitalize()}")
+            status = "🟢" if exists else "🔴"
+            st.markdown(f"{status} {model.capitalize()}")
 
     with status_col3:
-        st.markdown("**Forecasts:**")
+        st.markdown("**🔮 Forecasts**")
         pred_file = LOGS_DIR / "labeled_predictions.csv"
         if pred_file.exists():
-            df = pd.read_csv(pred_file)
-            st.markdown(f"✅ {len(df):,} predictions")
+            try:
+                df = pd.read_csv(pred_file)
+                st.markdown(f"🟢 {len(df):,} predictions")
+            except:
+                st.markdown("🟡 File exists (parse error)")
         else:
-            st.markdown("❌ No predictions")
+            st.markdown("🔴 No predictions yet")
+
+    # Quick Start
+    st.markdown("---")
+    st.markdown("### 🚀 Quick Start")
+
+    quickstart_col1, quickstart_col2 = st.columns(2)
+
+    with quickstart_col1:
+        st.markdown("""
+        <div style="background-color: #E8EAF6; padding: 1.5rem; border-radius: 10px;">
+            <h4 style="color: #283593;">1️⃣ First Time Setup</h4>
+            <p style="color: #1A237E; font-family: monospace; font-size: 0.9rem;">
+                # Download data<br>
+                python3 main.py → 5 → 1  # SPY<br>
+                python3 main.py → 5 → 2  # Crypto<br><br>
+
+                # Train models<br>
+                python3 train_multi_asset.py --optimize-weights
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with quickstart_col2:
+        st.markdown("""
+        <div style="background-color: #E0F2F1; padding: 1.5rem; border-radius: 10px;">
+            <h4 style="color: #00695C;">2️⃣ Run Full Pipeline</h4>
+            <p style="color: #004D40; font-family: monospace; font-size: 0.9rem;">
+                # Automated pipeline (20-35 min)<br>
+                python3 main.py → R<br><br>
+
+                # Steps: Download → Train → Predict → Backtest → LLM
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # API Endpoints (if applicable)
+    st.markdown("---")
+    st.markdown("### 🌐 Deployment Information")
+
+    deploy_col1, deploy_col2 = st.columns(2)
+
+    with deploy_col1:
+        st.info("""
+        **📡 API Access:**
+        - This dashboard provides a visual interface to the forecasting engine
+        - For programmatic access, see `api.py` or `utils.py` for core functions
+        - All predictions stored in `logs/` directory as CSV files
+        """)
+
+    with deploy_col2:
+        st.success("""
+        **✅ Production Ready:**
+        - Ensemble models for robustness
+        - Data validation & error handling
+        - Caching for performance
+        - Comprehensive logging
+        """)
 
 
 def show_asset_manager():
