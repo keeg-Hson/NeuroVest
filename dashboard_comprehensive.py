@@ -125,6 +125,10 @@ def load_asset_data(ticker):
             # Drop rows where Date is NaT
             df = df.dropna(subset=['Date'])
 
+            # Filter out future dates (data quality check)
+            today = pd.Timestamp.now()
+            df = df[df['Date'] <= today]
+
         return df if len(df) > 0 else None
 
     except Exception as e:
@@ -523,8 +527,33 @@ def show_recession_indicator():
     spy_df = load_asset_data('SPY')
 
     if spy_df is None or len(spy_df) < 200:
-        st.warning("⚠️ Insufficient SPY data. Download data first:")
-        st.code("python3 update_spy_data.py")
+        st.error("🔴 **Insufficient SPY Data**")
+
+        st.markdown("""
+        <div style="background-color: #FFF3E0; padding: 1.5rem; border-radius: 10px; margin: 1rem 0;">
+            <h4 style="color: #E65100;">📊 Data Required</h4>
+            <p style="color: #BF360C;">
+                The recession indicator needs at least 200 days of SPY (S&P 500) data to calculate reliable metrics.
+            </p>
+            <p style="color: #BF360C; margin-bottom: 0;">
+                <b>Current status:</b> {rows} rows found (need 200+)
+            </p>
+        </div>
+        """.format(rows=len(spy_df) if spy_df is not None else 0), unsafe_allow_html=True)
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown("**📥 Download Fresh Data:**")
+            st.code("python3 update_spy_data.py", language="bash")
+            st.caption("Downloads SPY data from 2000 to present (~6,300 days)")
+
+        with col2:
+            st.markdown("**🔧 Quick Fix:**")
+            st.code("python3 main.py\n# Select: 5 → 1 (Update SPY Data)", language="bash")
+            st.caption("Use main menu for guided data download")
+
+        st.info("💡 **Tip:** After downloading, refresh this page using the button in the sidebar")
         return
 
     # Calculate recession indicators
