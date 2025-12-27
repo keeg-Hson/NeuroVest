@@ -1,0 +1,24 @@
+services:
+  # Customer-facing API Demo
+  - type: web
+    name: neurovest-api-demo
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run api_demo.py --server.port=10000 --server.address=0.0.0.0
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+
+  # Full Comprehensive Dashboard
+  - type: web
+    name: neurovest-dashboard
+    env: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run dashboard_comprehensive.py --server.port=10000 --server.address=0.0.0.0
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
