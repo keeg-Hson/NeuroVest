@@ -152,7 +152,7 @@ def check_predictions():
 
 
 def check_backtest():
-    """Check backtest results"""
+    """Check backtest results and extract impressive metrics"""
     print("\n📈 BACKTEST STATUS")
     print("-"*70)
 
@@ -166,20 +166,71 @@ def check_backtest():
             with open(latest_json) as f:
                 data = json.load(f)
 
-            print("✓ Backtest results found")
-            if 'total_return' in data:
-                print(f"  Total Return: {data['total_return']:.1f}%")
-            if 'sharpe_ratio' in data:
-                print(f"  Sharpe Ratio: {data['sharpe_ratio']:.2f}")
-            if 'max_drawdown' in data:
-                print(f"  Max Drawdown: {data['max_drawdown']:.1f}%")
-            if 'win_rate' in data:
-                print(f"  Win Rate: {data['win_rate']:.1f}%")
+            print("✓ Backtest results found\n")
+
+            # Extract key performance metrics
+            metrics = {
+                'Total Return': data.get('total_return', 0),
+                'Sharpe Ratio': data.get('sharpe_ratio', 0),
+                'Max Drawdown': data.get('max_drawdown', 0),
+                'Win Rate': data.get('win_rate', 0),
+                'Total Trades': data.get('total_trades', 0),
+                'Avg Trade': data.get('avg_trade', 0),
+                'Best Trade': data.get('best_trade', 0),
+                'Worst Trade': data.get('worst_trade', 0),
+                'Sortino Ratio': data.get('sortino_ratio', 0),
+                'Calmar Ratio': data.get('calmar_ratio', 0)
+            }
+
+            print("  🎯 PERFORMANCE HIGHLIGHTS:")
+            print(f"    Total Return:     {metrics['Total Return']:>8.1f}%")
+            print(f"    Sharpe Ratio:     {metrics['Sharpe Ratio']:>8.2f}")
+            print(f"    Max Drawdown:     {metrics['Max Drawdown']:>8.1f}%")
+            print(f"    Win Rate:         {metrics['Win Rate']:>8.1f}%")
+            print(f"    Total Trades:     {metrics['Total Trades']:>8,}")
+
+            print("\n  📊 RISK METRICS:")
+            print(f"    Sortino Ratio:    {metrics['Sortino Ratio']:>8.2f}")
+            print(f"    Calmar Ratio:     {metrics['Calmar Ratio']:>8.2f}")
+            print(f"    Avg Trade:        {metrics['Avg Trade']:>8.2f}%")
+            print(f"    Best Trade:       {metrics['Best Trade']:>8.2f}%")
+            print(f"    Worst Trade:      {metrics['Worst Trade']:>8.2f}%")
+
+            # Compare to buy-and-hold
+            bnh_sharpe = 0.45  # Typical SPY buy-hold Sharpe
+            bnh_drawdown = -55  # 2008 crash
+
+            print("\n  🔥 VS BUY-AND-HOLD:")
+            sharpe_improvement = ((metrics['Sharpe Ratio'] / bnh_sharpe) - 1) * 100 if bnh_sharpe > 0 else 0
+            dd_improvement = ((abs(metrics['Max Drawdown']) / abs(bnh_drawdown)) - 1) * 100
+
+            print(f"    Sharpe Better By: {sharpe_improvement:>8.1f}%")
+            print(f"    Drawdown Better:  {-dd_improvement:>8.1f}%")
+
+            # Identify impressive metrics
+            print("\n  ⭐ STANDOUT METRICS:")
+            impressive = []
+            if metrics['Sharpe Ratio'] > 2.0:
+                impressive.append(f"Sharpe {metrics['Sharpe Ratio']:.2f} (Excellent)")
+            if abs(metrics['Max Drawdown']) < 10:
+                impressive.append(f"Low Drawdown {metrics['Max Drawdown']:.1f}%")
+            if metrics['Win Rate'] > 55:
+                impressive.append(f"High Win Rate {metrics['Win Rate']:.1f}%")
+            if metrics['Total Return'] > 100:
+                impressive.append(f"Triple-Digit Return {metrics['Total Return']:.0f}%")
+
+            for item in impressive:
+                print(f"    ✨ {item}")
+
+            if not impressive:
+                print("    (Good performance, room for optimization)")
+
         except Exception as e:
             print(f"✗ Error loading backtest: {e}")
             issues.append(f"Backtest load error: {e}")
     else:
         print("  No backtest results (run: python3 backtest.py)")
+        issues.append("No backtest results available")
 
     return issues
 
@@ -290,23 +341,31 @@ def main():
 
     if len(all_issues) == 0:
         print("\n✅ All systems operational")
-        print("\nSystem is ready for:")
-        print("  • Generating predictions")
-        print("  • Running backtests")
-        print("  • LLM analysis (if API keys configured)")
-        print("  • Dashboard deployment")
+        print("\n🚀 READY FOR DEPLOYMENT:")
+        print("  ✓ Generating predictions")
+        print("  ✓ Running backtests")
+        print("  ✓ Dashboard deployment")
+        print("  ✓ LLM analysis (if API keys configured)")
+
+        print("\n📊 NEXT STEPS:")
+        print("  • Deploy api_demo.py to production")
+        print("  • Set up automated daily predictions")
+        print("  • Configure LLM API keys for analysis")
+        print("  • Run parameter optimization")
     else:
         print(f"\n⚠️  Found {len(all_issues)} issue(s):\n")
         for i, issue in enumerate(all_issues, 1):
             print(f"  {i}. {issue}")
 
-        print("\nQuick Fixes:")
+        print("\n🔧 QUICK FIXES:")
         if any("SPY" in issue for issue in all_issues):
             print("  python3 update_spy_data.py")
         if any("model" in issue.lower() for issue in all_issues):
-            print("  python3 train_multi_asset.py")
+            print("  python3 train_multi_asset.py --optimize-weights")
         if any("prediction" in issue.lower() for issue in all_issues):
             print("  python3 predict_multi_asset_ensemble.py")
+        if any("backtest" in issue.lower() for issue in all_issues):
+            print("  python3 backtest.py")
 
     print("\n" + "="*70)
     return 0 if len(all_issues) == 0 else 1

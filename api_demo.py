@@ -138,7 +138,7 @@ def show_quick_stats():
     with col1:
         st.markdown("""
         <div class="metric-card">
-            <h2 style="margin: 0; color: #667eea;">191%</h2>
+            <h2 style="margin: 0; color: #3498db;">191%</h2>
             <p style="margin: 0.5rem 0 0 0; color: #666;">Total Return<br><small>25-year SPY backtest</small></p>
         </div>
         """, unsafe_allow_html=True)
@@ -146,7 +146,7 @@ def show_quick_stats():
     with col2:
         st.markdown("""
         <div class="metric-card">
-            <h2 style="margin: 0; color: #667eea;">2.55</h2>
+            <h2 style="margin: 0; color: #3498db;">2.55</h2>
             <p style="margin: 0.5rem 0 0 0; color: #666;">Sharpe Ratio<br><small>Risk-adjusted returns</small></p>
         </div>
         """, unsafe_allow_html=True)
@@ -154,7 +154,7 @@ def show_quick_stats():
     with col3:
         st.markdown("""
         <div class="metric-card">
-            <h2 style="margin: 0; color: #667eea;">-5.4%</h2>
+            <h2 style="margin: 0; color: #3498db;">-5.4%</h2>
             <p style="margin: 0.5rem 0 0 0; color: #666;">Max Drawdown<br><small>vs -55% buy-hold</small></p>
         </div>
         """, unsafe_allow_html=True)
@@ -162,7 +162,7 @@ def show_quick_stats():
     with col4:
         st.markdown("""
         <div class="metric-card">
-            <h2 style="margin: 0; color: #667eea;">59+</h2>
+            <h2 style="margin: 0; color: #3498db;">59+</h2>
             <p style="margin: 0.5rem 0 0 0; color: #666;">Assets Covered<br><small>Stocks, ETFs, Crypto</small></p>
         </div>
         """, unsafe_allow_html=True)
@@ -391,7 +391,7 @@ def show_pricing():
         st.markdown("""
         <div class="pricing-tier">
             <h3>Free Tier</h3>
-            <h2 style="color: #667eea;">$0/mo</h2>
+            <h2 style="color: #3498db;">$0/mo</h2>
             <ul style="text-align: left; list-style: none; padding: 0;">
                 <li>✓ 1,000 requests/month</li>
                 <li>✓ All 59 assets</li>
@@ -408,7 +408,7 @@ def show_pricing():
         st.markdown("""
         <div class="pricing-tier">
             <h3>Developer</h3>
-            <h2 style="color: #667eea;">$99/mo</h2>
+            <h2 style="color: #3498db;">$99/mo</h2>
             <ul style="text-align: left; list-style: none; padding: 0;">
                 <li>✓ 50,000 requests/month</li>
                 <li>✓ All features</li>
@@ -423,9 +423,9 @@ def show_pricing():
 
     with col3:
         st.markdown("""
-        <div class="pricing-tier" style="border: 3px solid #667eea;">
+        <div class="pricing-tier" style="border: 3px solid #3498db;">
             <h3>Professional</h3>
-            <h2 style="color: #667eea;">$499/mo</h2>
+            <h2 style="color: #3498db;">$499/mo</h2>
             <ul style="text-align: left; list-style: none; padding: 0;">
                 <li>✓ 500,000 requests/month</li>
                 <li>✓ All features</li>
@@ -442,7 +442,7 @@ def show_pricing():
         st.markdown("""
         <div class="pricing-tier">
             <h3>Enterprise</h3>
-            <h2 style="color: #667eea;">Custom</h2>
+            <h2 style="color: #3498db;">Custom</h2>
             <ul style="text-align: left; list-style: none; padding: 0;">
                 <li>✓ Unlimited requests</li>
                 <li>✓ All features</li>
@@ -624,14 +624,14 @@ def show_cta():
     """Call-to-action section"""
     st.markdown("---")
     st.markdown("""
-    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 3rem 2rem; border-radius: 15px; color: white; text-align: center;">
+    <div style="background: linear-gradient(120deg, #2c3e50 0%, #3498db 100%); padding: 3rem 2rem; border-radius: 15px; color: white; text-align: center;">
         <h2 style="color: white; margin-top: 0;">Ready to Get Started?</h2>
         <p style="font-size: 1.2rem; margin: 1rem 0;">
             Join hedge funds, quant developers, and institutions using NeuroVest API
         </p>
         <div style="margin: 2rem 0;">
             <a href="#" class="cta-button" style="margin: 0 1rem;">Start Free Trial</a>
-            <a href="#" class="cta-button" style="margin: 0 1rem; background: white; color: #667eea;">Schedule Demo</a>
+            <a href="#" class="cta-button" style="margin: 0 1rem; background: white; color: #3498db;">Schedule Demo</a>
         </div>
         <p style="font-size: 0.9rem; opacity: 0.9; margin: 1rem 0 0 0;">
             No credit card required • 1,000 free requests/month • Cancel anytime

@@ -99,16 +99,53 @@ for ticker, name in EQUITY_ETFS.items():
     try:
         print(f"\n⬇ {ticker:6s} ({name:30s}) - Downloading...")
 
-        # Direct CSV download from Yahoo Finance with proper headers
-        url = f"https://query1.finance.yahoo.com/v7/finance/download/{ticker}?period1={start_ts}&period2={end_ts}&interval=1d&events=history"
+        # Try multiple Yahoo Finance endpoints with retry logic
+        endpoints = [
+            f"https://query1.finance.yahoo.com/v7/finance/download/{ticker}",
+            f"https://query2.finance.yahoo.com/v7/finance/download/{ticker}"
+        ]
 
-        response = requests.get(url, headers=HEADERS, timeout=30)
-        response.raise_for_status()
+        df = None
+        last_error = None
 
-        df = pd.read_csv(StringIO(response.text))
+        for endpoint_idx, base_url in enumerate(endpoints):
+            url = f"{base_url}?period1={start_ts}&period2={end_ts}&interval=1d&events=history"
 
-        if len(df) == 0:
-            raise ValueError("No data returned")
+            # Try up to 3 times per endpoint
+            for attempt in range(3):
+                try:
+                    if attempt > 0:
+                        print(f"   Retry {attempt}/2...")
+
+                    response = requests.get(url, headers=HEADERS, timeout=30)
+                    response.raise_for_status()
+
+                    df = pd.read_csv(StringIO(response.text))
+
+                    if len(df) == 0:
+                        raise ValueError("No data returned")
+
+                    # Success!
+                    break
+
+                except requests.exceptions.HTTPError as e:
+                    if e.response.status_code == 401:
+                        last_error = f"401 Unauthorized (endpoint {endpoint_idx + 1})"
+                        # Don't retry 401 errors on same endpoint
+                        break
+                    last_error = str(e)
+                    if attempt < 2:
+                        time.sleep(2 ** attempt)  # Exponential backoff
+                except Exception as e:
+                    last_error = str(e)
+                    if attempt < 2:
+                        time.sleep(2 ** attempt)
+
+            if df is not None:
+                break
+
+        if df is None:
+            raise ValueError(f"Failed all endpoints: {last_error}")
 
         # Date column is already present from Yahoo CSV
         # Ensure consistent capitalization

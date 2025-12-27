@@ -214,17 +214,25 @@ def show_overview():
 
     # Value proposition
     st.markdown("""
-    <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem; border-radius: 15px; color: white; margin: 2rem 0;">
-        <h2 style="color: white; margin-top: 0;">🎯 What is NeuroVest?</h2>
-        <p style="font-size: 1.2rem; line-height: 1.6;">
-            <b>NeuroVest is a market forecasting platform</b> that predicts price movements using ensemble machine learning (XGBoost + LightGBM + CatBoost).
+    <div style="background: linear-gradient(120deg, #2c3e50 0%, #3498db 100%); padding: 2.5rem; border-radius: 12px; color: white; margin: 2rem 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+        <h2 style="color: white; margin-top: 0; font-size: 2rem;">What is NeuroVest?</h2>
+        <p style="font-size: 1.15rem; line-height: 1.7; margin: 1.5rem 0;">
+            NeuroVest is an ensemble ML forecasting platform that predicts market movements across 41 assets. The system combines XGBoost, LightGBM, and CatBoost models trained on 126+ features to generate three-class predictions with quantified confidence levels.
         </p>
-        <p style="font-size: 1.1rem; line-height: 1.6;">
-            ✨ <b>Core Capability:</b> Generates three-class forecasts (CRASH / NORMAL / SPIKE) for stocks, ETFs, crypto, and precious metals with confidence scores and probability distributions.
-        </p>
-        <p style="font-size: 1.0rem; line-height: 1.6; margin-bottom: 0;">
-            📊 <b>Proven Track Record:</b> 25-year SPY backtest shows 191% return, 2.55 Sharpe ratio, -5.4% max drawdown vs buy-and-hold -55%.
-        </p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 2rem;">
+            <div>
+                <h4 style="color: #ecf0f1; margin: 0 0 0.5rem 0;">Core Capability</h4>
+                <p style="font-size: 1rem; line-height: 1.6; margin: 0;">
+                    Three-class forecasts (CRASH/NORMAL/SPIKE) with probability distributions for stocks, ETFs, crypto, and precious metals. Each prediction includes confidence scores and model agreement flags.
+                </p>
+            </div>
+            <div>
+                <h4 style="color: #ecf0f1; margin: 0 0 0.5rem 0;">Proven Results</h4>
+                <p style="font-size: 1rem; line-height: 1.6; margin: 0;">
+                    25-year SPY backtest: 191% total return, 2.55 Sharpe ratio, -5.4% max drawdown. Risk-adjusted returns beat buy-and-hold by 5x while maintaining 90% lower drawdowns.
+                </p>
+            </div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -258,9 +266,9 @@ def show_overview():
 
     with use_case_col1:
         st.markdown("""
-        <div style="background-color: #E8F5E9; padding: 1.5rem; border-radius: 10px; height: 100%;">
-            <h4 style="color: #2E7D32;">💼 Institutional Research</h4>
-            <p style="color: #1B5E20;">
+        <div style="background: white; border: 2px solid #3498db; border-radius: 10px; padding: 1.5rem; height: 100%;">
+            <h4 style="color: #2c3e50; margin-top: 0;">💼 Institutional Research</h4>
+            <p style="color: #34495e; line-height: 1.6;">
                 • Market regime classification<br>
                 • Economic indicator analysis<br>
                 • Risk assessment & stress testing<br>
@@ -271,9 +279,9 @@ def show_overview():
 
     with use_case_col2:
         st.markdown("""
-        <div style="background-color: #E3F2FD; padding: 1.5rem; border-radius: 10px; height: 100%;">
-            <h4 style="color: #1565C0;">📊 Portfolio Management</h4>
-            <p style="color: #0D47A1;">
+        <div style="background: white; border: 2px solid #3498db; border-radius: 10px; padding: 1.5rem; height: 100%;">
+            <h4 style="color: #2c3e50; margin-top: 0;">📊 Portfolio Management</h4>
+            <p style="color: #34495e; line-height: 1.6;">
                 • Asset allocation signals<br>
                 • Rebalancing optimization<br>
                 • Recession probability tracking<br>
@@ -284,9 +292,9 @@ def show_overview():
 
     with use_case_col3:
         st.markdown("""
-        <div style="background-color: #FCE4EC; padding: 1.5rem; border-radius: 10px; height: 100%;">
-            <h4 style="color: #C2185B;">🔬 Research & Development</h4>
-            <p style="color: #880E4F;">
+        <div style="background: white; border: 2px solid #3498db; border-radius: 10px; padding: 1.5rem; height: 100%;">
+            <h4 style="color: #2c3e50; margin-top: 0;">🔬 Research & Development</h4>
+            <p style="color: #34495e; line-height: 1.6;">
                 • ML model benchmarking<br>
                 • Feature importance analysis<br>
                 • Prediction accuracy studies<br>
@@ -303,9 +311,9 @@ def show_overview():
 
     with feat_col1:
         st.markdown("""
-        <div style="background-color: #FFF3E0; padding: 1.5rem; border-radius: 10px;">
-            <h4 style="color: #E65100;">🔮 Forecasting & Analysis</h4>
-            <ul style="color: #BF360C;">
+        <div style="background: white; border-left: 4px solid #3498db; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <h4 style="color: #2c3e50; margin-top: 0;">🔮 Forecasting & Analysis</h4>
+            <ul style="color: #34495e; line-height: 1.8;">
                 <li><b>Multi-Asset Ensemble Predictions:</b> XGBoost + LightGBM + CatBoost</li>
                 <li><b>Recession Probability Indicator:</b> Yield curves, market stress, death cross</li>
                 <li><b>Asset Valuation Detector:</b> RSI, Z-Score, Bollinger Bands</li>
@@ -317,9 +325,9 @@ def show_overview():
 
     with feat_col2:
         st.markdown("""
-        <div style="background-color: #F3E5F5; padding: 1.5rem; border-radius: 10px;">
-            <h4 style="color: #6A1B9A;">📦 Asset Coverage</h4>
-            <ul style="color: #4A148C;">
+        <div style="background: white; border-left: 4px solid #3498db; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+            <h4 style="color: #2c3e50; margin-top: 0;">📦 Asset Coverage</h4>
+            <ul style="color: #34495e; line-height: 1.8;">
                 <li><b>14 Stock/ETF Assets:</b> SPY, QQQ, IWM, DIA, VTI, sector ETFs</li>
                 <li><b>7 Precious Metals:</b> Gold, Silver, GDX, GDXJ, Platinum, Palladium</li>
                 <li><b>10 Cryptocurrencies:</b> BTC, ETH, SOL, BNB, XRP, ADA, DOGE, AVAX, MATIC, LINK</li>
