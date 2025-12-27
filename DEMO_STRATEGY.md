@@ -1,226 +1,98 @@
-# Demo Page Strategy: GitHub vs Customer-Facing
+# Demo Strategy
 
-## Overview
+## Two-Demo Approach
 
-NeuroVest needs two distinct demo experiences to serve different audiences effectively. This document outlines the strategy for separating GitHub repository demos from customer-facing API demos.
+NeuroVest uses separate demos for technical users (GitHub) vs business users (API customers).
 
-## Recommendation: Two-Demo Approach
+### GitHub Demo (Technical Users)
 
-### 1. GitHub Demo (`demo.py`) - For Developers
+**Files:** demo.py, dashboard_comprehensive.py
 
-**Purpose:** Showcase technical capabilities to developers who want to self-host or understand the codebase.
+**Audience:** Developers, quants, researchers exploring the codebase
 
-**Target Audience:**
-- Open-source developers exploring the repository
-- Quants evaluating the ML architecture
-- Researchers interested in the methodology
-- Contributors looking to extend functionality
+**Focus:**
+- Full system capabilities (all 41 assets)
+- Model architecture details
+- Configurable thresholds and parameters
+- Complete backtest metrics
+- Setup and installation guides
 
-**Key Features:**
-- Full system demonstration with all assets
-- Technical details about model architecture
-- Adjustable prediction thresholds (sensitivity sliders)
-- Backtest performance metrics with configuration details
-- Links to documentation and GitHub repository
-- Setup instructions and requirements
-
-**Tone:** Technical, educational, transparent about methodology and performance metrics.
-
-**Current Implementation:** `demo.py` (already optimized for this purpose)
+**Tone:** Technical, educational, transparent
 
 **Deployment:**
-- Streamlit Community Cloud (free tier)
-- Linked from GitHub README
-- URL: https://neurovest-demo.streamlit.app
+- demo.py: Included in GitHub repo for CLI testing
+- dashboard_comprehensive.py: Optional Streamlit Cloud deployment
+- Linked from README
 
----
+### API Demo (Business Users)
 
-### 2. Customer-Facing API Demo (`api_demo.py`) - For API Customers
+**File:** api_demo.py
 
-**Purpose:** Demonstrate API value proposition to potential paying customers.
+**Audience:** Hedge funds, fintech platforms, institutional traders
 
-**Target Audience:**
-- Institutional traders evaluating the API
-- Quantitative developers at hedge funds
-- Fintech platforms looking for prediction APIs
-- Portfolio managers seeking market intelligence
+**Focus:**
+- API playground with live examples
+- Pricing tiers ($0 to Enterprise)
+- Integration code (Python, JavaScript, cURL)
+- Real-world use cases (hedge funds, quant desks)
+- Performance metrics (191% return, 2.55 Sharpe)
+- Signup flow
 
-**Key Features:**
-- API endpoint examples with live responses
-- Interactive API playground (try prediction calls)
-- Pricing tiers and subscription options
-- Performance metrics (Sharpe, returns, accuracy)
-- Integration code snippets (Python, JavaScript, cURL)
-- Beta waitlist signup
-- Customer testimonials/case studies
-
-**Tone:** Professional, business-focused, emphasizes value and ROI.
-
-**Recommended Implementation:** Create new `api_demo.py` focused on API capabilities
+**Tone:** Professional, business-focused, ROI-driven
 
 **Deployment:**
-- Professional hosting (Render/Railway paid tier)
-- Custom domain: demo.neurovest.ai or api.neurovest.ai
-- Integrated with landing page at neurovest.netlify.app
+- Render/Railway paid tier
+- Custom domain (demo.neurovest.ai)
+- Linked from landing page
 
----
+## Current Status
 
-## Implementation Plan
+### Complete
+- demo.py: CLI demo for terminal testing
+- dashboard_comprehensive.py: Full internal dashboard
+- api_demo.py: Customer-facing API showcase
 
-### Phase 1: Optimize Existing GitHub Demo (Complete ✅)
-- ✅ Updated `demo.py` with professional descriptions
-- ✅ Removed defensive "not a trading system" language
-- ✅ Enhanced feature explanations
-- ✅ Improved backtest metrics presentation
+### api_demo.py Sections
 
-### Phase 2: Create API-Focused Demo (Recommended Next Step)
+1. Hero: "Market Intelligence API for Quant Developers"
+2. Quick Stats: 191% return, 2.55 Sharpe, -5.4% drawdown, 59+ assets
+3. Features: Real-time predictions, batch analysis, custom backtests
+4. API Playground: Live examples (single prediction, batch, backtest)
+5. Pricing: Free, Developer ($99), Professional ($499), Enterprise (custom)
+6. Integration: Code samples (Python, JavaScript, cURL)
+7. Use Cases: Hedge fund risk, sector rotation, fintech integration, prop trading
+8. CTA: "Start Free Trial" + "Schedule Demo"
 
-Create `api_demo.py` with these sections:
+## Why Separate Demos
 
-1. **Hero Section**
-   - "Market Intelligence API for Quantitative Developers"
-   - Key value prop: "59+ assets, real-time predictions, 25-year backtest"
-   - CTA: "Start Free Trial" or "Get API Key"
+GitHub demo targets technical users who care about:
+- Full codebase access
+- Model architecture
+- Local installation
+- Contributing to open source
 
-2. **Live API Playground**
-   ```python
-   # Interactive widget to test API calls
-   import streamlit as st
-   import requests
+API demo targets business users who care about:
+- Pricing
+- Integration time
+- ROI and performance
+- Support and SLAs
 
-   asset = st.selectbox("Asset", ["SPY", "BTC/USDT", "QQQ"])
-   if st.button("Get Prediction"):
-       response = requests.post(
-           "https://api.neurovest.ai/predict",
-           json={"asset": asset},
-           headers={"Authorization": f"Bearer {api_key}"}
-       )
-       st.json(response.json())
-   ```
+Combining them creates mixed messaging and confuses both audiences.
 
-3. **Integration Examples**
-   - Python SDK usage
-   - REST API examples
-   - WebSocket streaming
-   - Batch prediction workflows
+## Deployment
 
-4. **Pricing Table**
-   | Tier | Requests/Month | Price | Use Case |
-   |------|----------------|-------|----------|
-   | Free | 1,000 | $0 | Testing & research |
-   | Developer | 50,000 | $99/mo | Individual traders |
-   | Professional | 500,000 | $499/mo | Hedge funds |
-   | Enterprise | Unlimited | Custom | Institutions |
+### GitHub Demo
+- demo.py in repository (CLI)
+- Optional: dashboard_comprehensive.py on Streamlit Community Cloud
+- Free tier, linked from README
 
-5. **Performance Metrics Dashboard**
-   - Real-time accuracy tracker
-   - Live Sharpe ratio
-   - Asset coverage matrix
-   - Prediction latency stats
+### API Demo
+- Deploy api_demo.py to Render/Railway
+- Custom domain: demo.neurovest.ai
+- Professional hosting with analytics
 
-6. **Customer Logos / Testimonials**
-   - "How XYZ Fund uses NeuroVest for sector rotation"
-   - "Integrating NeuroVest into our risk management system"
+### Cross-Promotion
+- GitHub demo links to "API access available"
+- API demo links to "View source on GitHub"
 
-7. **Signup Flow**
-   - Email capture for beta waitlist
-   - Direct signup for free tier
-   - Contact sales for enterprise
-
----
-
-## Key Differences Summary
-
-| Aspect | GitHub Demo (`demo.py`) | API Demo (`api_demo.py`) |
-|--------|-------------------------|-------------------------|
-| **Audience** | Developers, researchers | Paying customers |
-| **Focus** | Technical depth | Business value |
-| **Tone** | Educational | Persuasive |
-| **Primary CTA** | "Star on GitHub" | "Start Free Trial" |
-| **Content** | Full system capabilities | API-specific features |
-| **Deployment** | Free (Streamlit Cloud) | Paid (custom domain) |
-| **Metrics Shown** | All technical details | Highlights + ROI |
-| **Integration** | Links to docs | Signup flow |
-
----
-
-## Why Separate Demos Work Better
-
-### For GitHub Demo:
-- Developers want to see the full system, not just the API
-- Need to showcase local installation capabilities
-- Educational content builds trust in methodology
-- Code transparency is the value proposition
-
-### For API Demo:
-- Business buyers don't care about local setup
-- Need clear pricing and value justification
-- Professional presentation builds commercial credibility
-- Focus on integration speed and reliability
-
-### Combined Demo Risks:
-- Confusing value proposition (is this open-source or paid?)
-- Mixed messaging (technical vs business language)
-- Different CTAs compete (star repo vs buy API)
-- One audience gets neglected
-
----
-
-## Example Content Differences
-
-### GitHub Demo Heading:
-> "NeuroVest - Economic Forecasting Platform
-> Ensemble ML system for multi-asset market predictions. Open-source, fully documented, ready to deploy."
-
-### API Demo Heading:
-> "Market Intelligence API
-> Get real-time predictions for 59+ assets via REST API. Used by hedge funds and quant developers worldwide."
-
----
-
-## Deployment Strategy
-
-### Current State:
-- ✅ `demo.py` deployed to Streamlit Community Cloud
-- ✅ Linked from GitHub README
-- ⏳ `api_demo.py` to be created
-
-### Recommended Next Steps:
-
-1. **Create `api_demo.py`** (2-3 hours)
-   - Focus on API value proposition
-   - Add pricing table
-   - Include signup flow
-   - Showcase integration examples
-
-2. **Deploy to Production** (30 minutes)
-   - Use Render or Railway paid tier
-   - Setup custom domain (demo.neurovest.ai)
-   - Enable HTTPS
-   - Add analytics tracking
-
-3. **Update Landing Page** (1 hour)
-   - Link API demo from neurovest.netlify.app
-   - Separate CTA buttons:
-     - "View GitHub Demo" → neurovest-demo.streamlit.app
-     - "Try API Demo" → demo.neurovest.ai
-
-4. **Add Beta Waitlist Backend** (optional, 2 hours)
-   - Google Forms integration
-   - Mailchimp signup
-   - Custom database
-
----
-
-## Conclusion
-
-**Yes, GitHub and customer-facing demos should be different.** They serve distinct audiences with different goals:
-
-- **`demo.py`**: Educate developers about the open-source system
-- **`api_demo.py`**: Convert prospects into paying API customers
-
-Both demos can coexist and cross-promote:
-- GitHub demo can link to "Enterprise API available"
-- API demo can link to "View open-source code on GitHub"
-
-This dual-demo strategy maximizes reach while keeping messaging clear for each audience.
+Both demos serve their audiences without mixing messages.
