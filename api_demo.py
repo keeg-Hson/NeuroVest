@@ -36,66 +36,74 @@ st.set_page_config(
     }
 )
 
-# Professional UI styling
+# Dark theme with readable text
 st.markdown("""
 <style>
-    /* Clean background */
+    /* Dark background */
     [data-testid="stAppViewContainer"] {
-        background: #f5f7fa;
+        background: #0e1117;
     }
 
-    /* Typography */
+    /* Typography - white text on dark background */
     h1, h2, h3 {
-        color: #2c3e50;
+        color: #ffffff;
         font-weight: 600;
     }
 
-    /* Metric cards */
+    p {
+        color: #ffffff;
+    }
+
+    /* Metric cards - white bg with DARK text */
     .metric-box {
         background: white;
         padding: 1.5rem;
         border-radius: 8px;
         border-left: 4px solid #3498db;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         text-align: center;
         margin: 1rem 0;
     }
 
     .metric-box h2 {
-        color: #3498db;
+        color: #1a1a1a !important;
         font-size: 2.5rem;
         margin: 0;
     }
 
     .metric-box p {
-        color: #555;
+        color: #1a1a1a !important;
         margin: 0.5rem 0 0 0;
     }
 
-    /* Info cards */
+    .metric-box small {
+        color: #555 !important;
+    }
+
+    /* Info cards - white bg with DARK text */
     .info-card {
         background: white;
         padding: 2rem;
         border-radius: 8px;
         border-left: 4px solid #3498db;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         height: 100%;
     }
 
     .info-card h3 {
-        color: #2c3e50;
+        color: #1a1a1a !important;
         margin-top: 0;
     }
 
-    .info-card p {
-        color: #555;
+    .info-card p, .info-card strong {
+        color: #1a1a1a !important;
         line-height: 1.7;
     }
 
     /* Buttons */
     .stButton > button {
         background: #3498db;
-        color: white;
+        color: white !important;
         border: none;
         border-radius: 6px;
         padding: 0.75rem 1.5rem;

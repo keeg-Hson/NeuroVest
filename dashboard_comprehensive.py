@@ -49,25 +49,34 @@ st.set_page_config(
     }
 )
 
-# Clean professional UI
+# Dark theme with readable text
 st.markdown("""
 <style>
     [data-testid="stAppViewContainer"] {
-        background: #f8f9fa;
+        background: #0e1117;
     }
     [data-testid="stSidebar"] {
-        background: #2c3e50;
+        background: #1a1d23;
     }
     [data-testid="stSidebar"] * {
         color: white !important;
     }
     h1, h2, h3 {
-        color: #2c3e50 !important;
+        color: #ffffff !important;
         font-weight: 600 !important;
+    }
+    p {
+        color: #ffffff !important;
+    }
+    /* White cards with dark text */
+    div[style*="background: white"] h3,
+    div[style*="background: white"] p,
+    div[style*="background: white"] strong {
+        color: #1a1a1a !important;
     }
     .stButton > button {
         background: #3498db;
-        color: white;
+        color: white !important;
         border-radius: 6px;
         font-weight: 500;
     }
