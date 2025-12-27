@@ -49,7 +49,7 @@ st.set_page_config(
     }
 )
 
-# Dark theme with readable text
+# Dark theme with readable text - dark cards with light text
 st.markdown("""
 <style>
     [data-testid="stAppViewContainer"] {
@@ -66,14 +66,89 @@ st.markdown("""
         font-weight: 600 !important;
     }
     p {
-        color: #ffffff !important;
+        color: #e0e0e0 !important;
     }
-    /* White cards with dark text */
-    div[style*="background: white"] h3,
-    div[style*="background: white"] p,
-    div[style*="background: white"] strong {
-        color: #1a1a1a !important;
+
+    /* Dark info cards */
+    .info-card {
+        background: #1e2530;
+        border: 1px solid #3498db;
+        border-radius: 8px;
+        padding: 2rem;
     }
+    .info-card h3 {
+        color: #3498db;
+        margin-top: 0;
+    }
+    .info-card p {
+        color: #e0e0e0;
+        line-height: 1.7;
+    }
+
+    /* Dark use case boxes */
+    .use-case-box {
+        background: #1e2530;
+        border: 2px solid #3498db;
+        border-radius: 10px;
+        padding: 1.5rem;
+        height: 100%;
+    }
+    .use-case-box h4 {
+        color: #ffffff;
+        margin-top: 0;
+    }
+    .use-case-box p {
+        color: #e0e0e0;
+        line-height: 1.6;
+    }
+
+    /* Dark feature boxes */
+    .feature-box {
+        background: #1e2530;
+        border-left: 4px solid #3498db;
+        padding: 1.5rem;
+        border-radius: 8px;
+    }
+    .feature-box h4 {
+        color: #ffffff;
+        margin-top: 0;
+    }
+    .feature-box ul {
+        color: #e0e0e0;
+        line-height: 1.8;
+    }
+
+    /* Dark quick start boxes */
+    .quickstart-box {
+        background: #1e2530;
+        padding: 1.5rem;
+        border-radius: 10px;
+        border: 1px solid #3498db;
+    }
+    .quickstart-box h4 {
+        color: #3498db;
+    }
+    .quickstart-box p {
+        color: #e0e0e0;
+        font-family: monospace;
+        font-size: 0.9rem;
+    }
+
+    /* Dark client boxes */
+    .client-box {
+        background: #1e2530;
+        padding: 1.5rem;
+        border-radius: 10px;
+        border: 1px solid #3498db;
+    }
+    .client-box h4 {
+        color: #3498db;
+    }
+    .client-box p {
+        color: #e0e0e0;
+        font-size: 0.9rem;
+    }
+
     .stButton > button {
         background: #3498db;
         color: white !important;
@@ -254,14 +329,14 @@ def show_overview():
     st.markdown("### AI-Powered Market Predictions & Economic Analysis")
     st.markdown("---")
 
-    # Value proposition - clean white cards
+    # Value proposition - dark cards with light text
     col1, col2 = st.columns(2)
 
     with col1:
         st.markdown("""
-        <div style="background: white; padding: 2rem; border-radius: 8px; border-left: 4px solid #3498db; height: 100%; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-            <h3 style="color: #2c3e50; margin-top: 0;">🔬 What is NeuroVest?</h3>
-            <p style="color: #555; line-height: 1.7; margin: 0;">
+        <div class="info-card">
+            <h3>🔬 What is NeuroVest?</h3>
+            <p>
                 NeuroVest is an ensemble ML forecasting platform that predicts market movements across 41 assets.
                 The system combines XGBoost, LightGBM, and CatBoost models trained on 126+ features to generate
                 three-class predictions (CRASH/NORMAL/SPIKE) with quantified confidence levels.
@@ -271,9 +346,9 @@ def show_overview():
 
     with col2:
         st.markdown("""
-        <div style="background: white; padding: 2rem; border-radius: 8px; border-left: 4px solid #27ae60; height: 100%; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
-            <h3 style="color: #2c3e50; margin-top: 0;">📊 Proven Results</h3>
-            <p style="color: #555; line-height: 1.7; margin: 0;">
+        <div class="info-card">
+            <h3>📊 Proven Results</h3>
+            <p>
                 <strong>25-year SPY backtest:</strong><br>
                 • 191% total return, 2.55 Sharpe ratio<br>
                 • -5.4% max drawdown (vs -55% buy-hold)<br>
@@ -288,30 +363,30 @@ def show_overview():
     # Quick Start Guide
     st.markdown("---")
     st.markdown("""
-    <div style="background: #f8f9fa; padding: 2rem; border-radius: 10px; border-left: 5px solid #3498db; margin: 2rem 0;">
-        <h3 style="color: #2c3e50; margin-top: 0; margin-bottom: 1rem;">🚀 Quick Start Guide</h3>
-        <p style="color: #555; margin-bottom: 1.5rem; font-size: 1.05rem;">
+    <div class="info-card" style="border-left: 5px solid #3498db; margin: 2rem 0;">
+        <h3 style="margin-bottom: 1rem;">🚀 Quick Start Guide</h3>
+        <p style="margin-bottom: 1.5rem; font-size: 1.05rem;">
             This dashboard is your sandbox for exploring NeuroVest's capabilities. Navigate through the sidebar to access different features:
         </p>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
             <div>
-                <p style="color: #34495e; margin: 0.5rem 0; line-height: 1.7;">
-                    <strong style="color: #2c3e50;">📊 Overview:</strong> System status and key metrics<br>
-                    <strong style="color: #2c3e50;">🔮 Market Forecast:</strong> Get real-time predictions for any supported asset<br>
-                    <strong style="color: #2c3e50;">📉 Recession Indicator:</strong> US recession probability with historical data<br>
-                    <strong style="color: #2c3e50;">🤖 LLM Forecast:</strong> Natural language market analysis<br>
+                <p style="margin: 0.5rem 0; line-height: 1.7;">
+                    <strong>📊 Overview:</strong> System status and key metrics<br>
+                    <strong>🔮 Market Forecast:</strong> Get real-time predictions for any supported asset<br>
+                    <strong>📉 Recession Indicator:</strong> US recession probability with historical data<br>
+                    <strong>🤖 LLM Forecast:</strong> Natural language market analysis<br>
                 </p>
             </div>
             <div>
-                <p style="color: #34495e; margin: 0.5rem 0; line-height: 1.7;">
-                    <strong style="color: #2c3e50;">💼 Portfolio Rebalancer:</strong> Optimize allocations across assets<br>
-                    <strong style="color: #2c3e50;">📈 Backtests:</strong> Test strategies with historical data<br>
-                    <strong style="color: #2c3e50;">🔧 Automation:</strong> Schedule predictions and reports<br>
-                    <strong style="color: #2c3e50;">📁 Custom Imports:</strong> Add your own data sources
+                <p style="margin: 0.5rem 0; line-height: 1.7;">
+                    <strong>💼 Portfolio Rebalancer:</strong> Optimize allocations across assets<br>
+                    <strong>📈 Backtests:</strong> Test strategies with historical data<br>
+                    <strong>🔧 Automation:</strong> Schedule predictions and reports<br>
+                    <strong>📁 Custom Imports:</strong> Add your own data sources
                 </p>
             </div>
         </div>
-        <p style="color: #666; margin-top: 1.5rem; font-size: 0.95rem; font-style: italic;">
+        <p style="margin-top: 1.5rem; font-size: 0.95rem; font-style: italic;">
             💡 Tip: Start with Market Forecast to see live predictions, then explore Backtests to validate performance
         </p>
     </div>
@@ -347,9 +422,9 @@ def show_overview():
 
     with use_case_col1:
         st.markdown("""
-        <div style="background: white; border: 2px solid #3498db; border-radius: 10px; padding: 1.5rem; height: 100%;">
-            <h4 style="color: #2c3e50; margin-top: 0;">💼 Institutional Research</h4>
-            <p style="color: #34495e; line-height: 1.6;">
+        <div class="use-case-box">
+            <h4>💼 Institutional Research</h4>
+            <p>
                 • Market regime classification<br>
                 • Economic indicator analysis<br>
                 • Risk assessment & stress testing<br>
@@ -360,9 +435,9 @@ def show_overview():
 
     with use_case_col2:
         st.markdown("""
-        <div style="background: white; border: 2px solid #3498db; border-radius: 10px; padding: 1.5rem; height: 100%;">
-            <h4 style="color: #2c3e50; margin-top: 0;">📊 Portfolio Management</h4>
-            <p style="color: #34495e; line-height: 1.6;">
+        <div class="use-case-box">
+            <h4>📊 Portfolio Management</h4>
+            <p>
                 • Asset allocation signals<br>
                 • Rebalancing optimization<br>
                 • Recession probability tracking<br>
@@ -373,9 +448,9 @@ def show_overview():
 
     with use_case_col3:
         st.markdown("""
-        <div style="background: white; border: 2px solid #3498db; border-radius: 10px; padding: 1.5rem; height: 100%;">
-            <h4 style="color: #2c3e50; margin-top: 0;">🔬 Research & Development</h4>
-            <p style="color: #34495e; line-height: 1.6;">
+        <div class="use-case-box">
+            <h4>🔬 Research & Development</h4>
+            <p>
                 • ML model benchmarking<br>
                 • Feature importance analysis<br>
                 • Prediction accuracy studies<br>
@@ -392,9 +467,9 @@ def show_overview():
 
     with feat_col1:
         st.markdown("""
-        <div style="background: white; border-left: 4px solid #3498db; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-            <h4 style="color: #2c3e50; margin-top: 0;">🔮 Forecasting & Analysis</h4>
-            <ul style="color: #34495e; line-height: 1.8;">
+        <div class="feature-box">
+            <h4>🔮 Forecasting & Analysis</h4>
+            <ul>
                 <li><b>Multi-Asset Ensemble Predictions:</b> XGBoost + LightGBM + CatBoost</li>
                 <li><b>Recession Probability Indicator:</b> Yield curves, market stress, death cross</li>
                 <li><b>Asset Valuation Detector:</b> RSI, Z-Score, Bollinger Bands</li>
@@ -406,9 +481,9 @@ def show_overview():
 
     with feat_col2:
         st.markdown("""
-        <div style="background: white; border-left: 4px solid #3498db; padding: 1.5rem; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-            <h4 style="color: #2c3e50; margin-top: 0;">📦 Asset Coverage</h4>
-            <ul style="color: #34495e; line-height: 1.8;">
+        <div class="feature-box">
+            <h4>📦 Asset Coverage</h4>
+            <ul>
                 <li><b>14 Stock/ETF Assets:</b> SPY, QQQ, IWM, DIA, VTI, sector ETFs</li>
                 <li><b>7 Precious Metals:</b> Gold, Silver, GDX, GDXJ, Platinum, Palladium</li>
                 <li><b>10 Cryptocurrencies:</b> BTC, ETH, SOL, BNB, XRP, ADA, DOGE, AVAX, MATIC, LINK</li>
@@ -466,9 +541,9 @@ def show_overview():
 
     with quickstart_col1:
         st.markdown("""
-        <div style="background-color: #E8EAF6; padding: 1.5rem; border-radius: 10px;">
-            <h4 style="color: #283593;">1️⃣ First Time Setup</h4>
-            <p style="color: #1A237E; font-family: monospace; font-size: 0.9rem;">
+        <div class="quickstart-box">
+            <h4>1️⃣ First Time Setup</h4>
+            <p>
                 # Download data<br>
                 python3 main.py → 5 → 1  # SPY<br>
                 python3 main.py → 5 → 2  # Crypto<br><br>
@@ -481,9 +556,9 @@ def show_overview():
 
     with quickstart_col2:
         st.markdown("""
-        <div style="background-color: #E0F2F1; padding: 1.5rem; border-radius: 10px;">
-            <h4 style="color: #00695C;">2️⃣ Run Full Pipeline</h4>
-            <p style="color: #004D40; font-family: monospace; font-size: 0.9rem;">
+        <div class="quickstart-box">
+            <h4>2️⃣ Run Full Pipeline</h4>
+            <p>
                 # Automated pipeline (20-35 min)<br>
                 python3 main.py → R<br><br>
 
@@ -497,12 +572,12 @@ def show_overview():
     st.markdown("### 🌐 REST API Integration")
 
     st.markdown("""
-    <div style="background-color: #E8EAF6; padding: 1.5rem; border-radius: 10px; margin-bottom: 1.5rem;">
-        <h4 style="color: #283593; margin-top: 0;">FastAPI Server</h4>
-        <p style="color: #1A237E; margin-bottom: 0;">
-            Start the REST API server: <code style="background: #C5CAE9; padding: 0.2rem 0.5rem; border-radius: 3px;">python framework/api_server.py</code><br>
-            Server runs on: <code style="background: #C5CAE9; padding: 0.2rem 0.5rem; border-radius: 3px;">http://localhost:8000</code><br>
-            API Documentation: <code style="background: #C5CAE9; padding: 0.2rem 0.5rem; border-radius: 3px;">http://localhost:8000/docs</code>
+    <div class="quickstart-box" style="margin-bottom: 1.5rem;">
+        <h4>FastAPI Server</h4>
+        <p>
+            Start the REST API server: <code style="background: #2d3748; padding: 0.2rem 0.5rem; border-radius: 3px;">python framework/api_server.py</code><br>
+            Server runs on: <code style="background: #2d3748; padding: 0.2rem 0.5rem; border-radius: 3px;">http://localhost:8000</code><br>
+            API Documentation: <code style="background: #2d3748; padding: 0.2rem 0.5rem; border-radius: 3px;">http://localhost:8000/docs</code>
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -608,9 +683,9 @@ curl "http://localhost:8000/assets?asset_type=crypto"
 
     with client_col1:
         st.markdown("""
-        <div style="background-color: #E8F5E9; padding: 1.5rem; border-radius: 10px;">
-            <h4 style="color: #2E7D32;">Python Access</h4>
-            <p style="color: #1B5E20; font-size: 0.9rem;">
+        <div class="client-box">
+            <h4>Python Access</h4>
+            <p>
                 Direct API requests via <code>requests</code> library or use helper utilities in <code>utils.py</code>
                 for data loading and metric calculation.
             </p>
@@ -619,9 +694,9 @@ curl "http://localhost:8000/assets?asset_type=crypto"
 
     with client_col2:
         st.markdown("""
-        <div style="background-color: #E3F2FD; padding: 1.5rem; border-radius: 10px;">
-            <h4 style="color: #1565C0;">Web Interfaces</h4>
-            <p style="color: #0D47A1; font-size: 0.9rem;">
+        <div class="client-box">
+            <h4>Web Interfaces</h4>
+            <p>
                 <b>dashboard.py</b> - Basic charts and predictions<br>
                 <b>dashboard_comprehensive.py</b> - Full feature set<br>
                 <b>api_demo.py</b> - Customer showcase
@@ -631,9 +706,9 @@ curl "http://localhost:8000/assets?asset_type=crypto"
 
     with client_col3:
         st.markdown("""
-        <div style="background-color: #FCE4EC; padding: 1.5rem; border-radius: 10px;">
-            <h4 style="color: #C2185B;">CSV Exports</h4>
-            <p style="color: #880E4F; font-size: 0.9rem;">
+        <div class="client-box">
+            <h4>CSV Exports</h4>
+            <p>
                 <b>logs/labeled_predictions.csv</b> - Daily forecasts<br>
                 <b>logs/backtest_results.csv</b> - Trade history<br>
                 <b>outputs/</b> - Backtest JSON files
