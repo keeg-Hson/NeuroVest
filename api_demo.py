@@ -170,27 +170,48 @@ def show_quick_stats():
 
 def show_value_proposition():
     """Detailed value proposition"""
-    st.markdown("## What NeuroVest Does")
-
     st.markdown("""
-    NeuroVest is a forecasting API that predicts market movements across 59 assets using ensemble machine learning.
-    The system trains three separate models (XGBoost, LightGBM, CatBoost) on 126+ features and combines their outputs
-    to generate probability-weighted predictions.
+    <div style="background: white; padding: 3rem 2rem; border-radius: 12px; border: 1px solid #e1e4e8; margin: 2rem 0;">
+        <h2 style="color: #2c3e50; text-align: center; margin: 0 0 2rem 0; font-size: 2.2rem;">What is NeuroVest?</h2>
 
-    **How it works:** Each prediction analyzes technical indicators, cross-asset correlations, regime signals, and macro
-    data to classify the next price movement into one of three categories: significant drop (CRASH), sideways action (NORMAL),
-    or significant rally (SPIKE). The API returns both the classification and the underlying probabilities.
+        <p style="color: #34495e; font-size: 1.15rem; line-height: 1.8; text-align: center; max-width: 900px; margin: 0 auto 3rem auto;">
+            NeuroVest is a forecasting API that predicts market movements across 59 assets using ensemble machine learning.
+            The system trains three separate models (XGBoost, LightGBM, CatBoost) on 126+ features and combines their outputs
+            to generate probability-weighted predictions.
+        </p>
 
-    **Why it matters:** Most market data APIs give you raw prices. NeuroVest gives you processed intelligence with
-    quantified confidence levels. This lets you build systems that adjust position sizing based on signal strength,
-    filter out low-confidence trades, or trigger alerts when high-probability setups appear.
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 2rem; margin-top: 2rem;">
+            <div style="background: #f8f9fa; padding: 2rem; border-radius: 10px; border-left: 4px solid #3498db;">
+                <h3 style="color: #2c3e50; margin: 0 0 1rem 0; font-size: 1.3rem;">🔬 How It Works</h3>
+                <p style="color: #555; line-height: 1.7; margin: 0; font-size: 1rem;">
+                    Each prediction analyzes technical indicators, cross-asset correlations, regime signals, and macro data
+                    to classify the next price movement into three categories: CRASH (significant drop), NORMAL (sideways),
+                    or SPIKE (significant rally). Returns both classification and probabilities.
+                </p>
+            </div>
 
-    **Track record:** 25 years of SPY backtests show the system identifying profitable opportunities with 59% accuracy
-    while maintaining risk-adjusted returns (Sharpe 2.55) that beat buy-and-hold by 5x. Maximum drawdown stayed under 6%
-    even during 2008 and 2020 crashes.
-    """)
+            <div style="background: #f8f9fa; padding: 2rem; border-radius: 10px; border-left: 4px solid #3498db;">
+                <h3 style="color: #2c3e50; margin: 0 0 1rem 0; font-size: 1.3rem;">💡 Why It Matters</h3>
+                <p style="color: #555; line-height: 1.7; margin: 0; font-size: 1rem;">
+                    Most market data APIs give you raw prices. NeuroVest gives you processed intelligence with quantified
+                    confidence levels. Build systems that adjust position sizing based on signal strength, filter low-confidence
+                    trades, or trigger alerts when high-probability setups appear.
+                </p>
+            </div>
 
-    st.markdown("---")
+            <div style="background: #f8f9fa; padding: 2rem; border-radius: 10px; border-left: 4px solid #3498db;">
+                <h3 style="color: #2c3e50; margin: 0 0 1rem 0; font-size: 1.3rem;">📊 Track Record</h3>
+                <p style="color: #555; line-height: 1.7; margin: 0; font-size: 1rem;">
+                    25 years of SPY backtests show 59% accuracy with risk-adjusted returns (Sharpe 2.55) beating buy-and-hold
+                    by 5x. Maximum drawdown stayed under 6% even during 2008 and 2020 crashes. Proven performance across
+                    multiple market regimes.
+                </p>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("<div style='margin: 3rem 0;'></div>", unsafe_allow_html=True)
 
 
 def show_features():

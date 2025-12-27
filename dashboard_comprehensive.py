@@ -236,6 +236,38 @@ def show_overview():
     </div>
     """, unsafe_allow_html=True)
 
+    # Quick Start Guide
+    st.markdown("---")
+    st.markdown("""
+    <div style="background: #f8f9fa; padding: 2rem; border-radius: 10px; border-left: 5px solid #3498db; margin: 2rem 0;">
+        <h3 style="color: #2c3e50; margin-top: 0; margin-bottom: 1rem;">🚀 Quick Start Guide</h3>
+        <p style="color: #555; margin-bottom: 1.5rem; font-size: 1.05rem;">
+            This dashboard is your sandbox for exploring NeuroVest's capabilities. Navigate through the sidebar to access different features:
+        </p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+            <div>
+                <p style="color: #34495e; margin: 0.5rem 0; line-height: 1.7;">
+                    <strong style="color: #2c3e50;">📊 Overview:</strong> System status and key metrics<br>
+                    <strong style="color: #2c3e50;">🔮 Market Forecast:</strong> Get real-time predictions for any supported asset<br>
+                    <strong style="color: #2c3e50;">📉 Recession Indicator:</strong> US recession probability with historical data<br>
+                    <strong style="color: #2c3e50;">🤖 LLM Forecast:</strong> Natural language market analysis<br>
+                </p>
+            </div>
+            <div>
+                <p style="color: #34495e; margin: 0.5rem 0; line-height: 1.7;">
+                    <strong style="color: #2c3e50;">💼 Portfolio Rebalancer:</strong> Optimize allocations across assets<br>
+                    <strong style="color: #2c3e50;">📈 Backtests:</strong> Test strategies with historical data<br>
+                    <strong style="color: #2c3e50;">🔧 Automation:</strong> Schedule predictions and reports<br>
+                    <strong style="color: #2c3e50;">📁 Custom Imports:</strong> Add your own data sources
+                </p>
+            </div>
+        </div>
+        <p style="color: #666; margin-top: 1.5rem; font-size: 0.95rem; font-style: italic;">
+            💡 Tip: Start with Market Forecast to see live predictions, then explore Backtests to validate performance
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
     # Key metrics
     col1, col2, col3, col4 = st.columns(4)
 
