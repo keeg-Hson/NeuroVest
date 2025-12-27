@@ -27,102 +27,86 @@ except ImportError:
 
 st.set_page_config(
     page_title="NeuroVest API - Market Forecasting",
-    page_icon="📈",
+    page_icon="assets/neurovest_logo.png" if Path("assets/neurovest_logo.png").exists() else "📈",
     layout="wide",
     initial_sidebar_state="collapsed",
     menu_items={
-        'Get Help': 'https://github.com/keeg-Hson/NeuroVest',
+        'Get Help': 'https://neurovestdemo.streamlit.app/',
         'About': "NeuroVest Forecasting API - AI-Powered Market Intelligence"
     }
 )
 
-# Force light theme and custom styling
+# Professional UI styling
 st.markdown("""
 <style>
-    /* Force light theme */
-    :root {
-        color-scheme: light;
-    }
-
+    /* Clean background */
     [data-testid="stAppViewContainer"] {
-        background-color: #f5f7fa;
+        background: #f5f7fa;
     }
 
-    .hero {
-        background: linear-gradient(120deg, #2c3e50 0%, #3498db 100%);
-        padding: 3rem 2rem;
-        border-radius: 12px;
-        color: white;
+    /* Typography */
+    h1, h2, h3 {
+        color: #2c3e50;
+        font-weight: 600;
+    }
+
+    /* Metric cards */
+    .metric-box {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 8px;
+        border-left: 4px solid #3498db;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
         text-align: center;
-        margin-bottom: 2rem;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-
-    .feature-card {
-        background: rgba(255, 255, 255, 0.95);
-        padding: 2rem;
-        border-radius: 10px;
-        border: 1px solid #e1e4e8;
         margin: 1rem 0;
-        height: 100%;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
 
-    .feature-card h3 {
+    .metric-box h2 {
+        color: #3498db;
+        font-size: 2.5rem;
+        margin: 0;
+    }
+
+    .metric-box p {
+        color: #555;
+        margin: 0.5rem 0 0 0;
+    }
+
+    /* Info cards */
+    .info-card {
+        background: white;
+        padding: 2rem;
+        border-radius: 8px;
+        border-left: 4px solid #3498db;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        height: 100%;
+    }
+
+    .info-card h3 {
         color: #2c3e50;
         margin-top: 0;
     }
 
-    .metric-card {
-        background: white;
-        border: 2px solid #3498db;
-        padding: 1.5rem;
-        border-radius: 10px;
-        text-align: center;
-        margin: 0.5rem 0;
+    .info-card p {
+        color: #555;
+        line-height: 1.7;
     }
 
-    .metric-card h2 {
-        color: #3498db;
-        margin: 0;
-        font-size: 2.5rem;
-    }
-
-    .cta-button {
+    /* Buttons */
+    .stButton > button {
         background: #3498db;
         color: white;
-        padding: 1rem 2rem;
-        border-radius: 8px;
-        text-align: center;
-        font-weight: 600;
-        font-size: 1.1rem;
-        text-decoration: none;
-        display: inline-block;
-        margin: 1rem 0.5rem;
+        border: none;
+        border-radius: 6px;
+        padding: 0.75rem 1.5rem;
+        font-weight: 500;
     }
 
-    .pricing-tier {
-        background: white;
-        border: 2px solid #e0e0e0;
-        border-radius: 10px;
-        padding: 2rem;
-        text-align: center;
-        margin: 1rem 0;
+    .stButton > button:hover {
+        background: #2980b9;
     }
 
-    .pricing-tier:hover {
-        border-color: #3498db;
-        box-shadow: 0 4px 12px rgba(52, 152, 219, 0.15);
-    }
-
-    .pricing-tier h3 {
-        color: #2c3e50;
-    }
-
-    .pricing-tier h2 {
-        color: #3498db;
-    }
-
+    /* Hide streamlit branding */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
 </style>
@@ -130,25 +114,18 @@ st.markdown("""
 
 
 def show_hero():
-    """Hero section with value proposition"""
-    # Logo (if available)
+    """Hero section"""
+    # Logo
     logo_path = Path("assets/neurovest_logo.png")
     if logo_path.exists():
         col1, col2, col3 = st.columns([1, 2, 1])
         with col2:
             st.image(str(logo_path), width=200)
 
-    st.markdown("""
-    <div class="hero">
-        <h1 style="font-size: 3rem; margin: 0 0 1rem 0;">NeuroVest Forecasting API</h1>
-        <p style="font-size: 1.4rem; margin: 0 0 1rem 0; opacity: 0.95;">
-            AI-Powered Market Intelligence for Quantitative Developers
-        </p>
-        <p style="font-size: 1.1rem; margin: 0; opacity: 0.9;">
-            Real-time predictions for 59+ assets via REST API | Sub-500ms latency | 25-year proven track record
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown("# NeuroVest Forecasting API")
+    st.markdown("### AI-Powered Market Intelligence for Quantitative Developers")
+    st.markdown("Real-time predictions for 59+ assets | Sub-500ms latency | Proven 25-year track record")
+    st.markdown("---")
 
 
 def show_quick_stats():
@@ -157,135 +134,127 @@ def show_quick_stats():
 
     with col1:
         st.markdown("""
-        <div class="metric-card">
-            <h2 style="margin: 0; color: #3498db;">191%</h2>
-            <p style="margin: 0.5rem 0 0 0; color: #666;">Total Return<br><small>25-year SPY backtest</small></p>
+        <div class="metric-box">
+            <h2>191%</h2>
+            <p>Total Return<br><small>25-year SPY backtest</small></p>
         </div>
         """, unsafe_allow_html=True)
 
     with col2:
         st.markdown("""
-        <div class="metric-card">
-            <h2 style="margin: 0; color: #3498db;">2.55</h2>
-            <p style="margin: 0.5rem 0 0 0; color: #666;">Sharpe Ratio<br><small>Risk-adjusted returns</small></p>
+        <div class="metric-box">
+            <h2>2.55</h2>
+            <p>Sharpe Ratio<br><small>Risk-adjusted returns</small></p>
         </div>
         """, unsafe_allow_html=True)
 
     with col3:
         st.markdown("""
-        <div class="metric-card">
-            <h2 style="margin: 0; color: #3498db;">-5.4%</h2>
-            <p style="margin: 0.5rem 0 0 0; color: #666;">Max Drawdown<br><small>vs -55% buy-hold</small></p>
+        <div class="metric-box">
+            <h2>-5.4%</h2>
+            <p>Max Drawdown<br><small>vs -55% buy-hold</small></p>
         </div>
         """, unsafe_allow_html=True)
 
     with col4:
         st.markdown("""
-        <div class="metric-card">
-            <h2 style="margin: 0; color: #3498db;">59+</h2>
-            <p style="margin: 0.5rem 0 0 0; color: #666;">Assets Covered<br><small>Stocks, ETFs, Crypto</small></p>
+        <div class="metric-box">
+            <h2>59+</h2>
+            <p>Assets Covered<br><small>Stocks, ETFs, Crypto</small></p>
         </div>
         """, unsafe_allow_html=True)
 
 
 def show_value_proposition():
-    """Detailed value proposition"""
-    st.markdown("""
-    <div style="background: rgba(255, 255, 255, 0.95); padding: 3rem 2rem; border-radius: 12px; border: 1px solid #e1e4e8; margin: 2rem 0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-        <h2 style="color: #1a1a1a; text-align: center; margin: 0 0 2rem 0; font-size: 2.2rem;">What is NeuroVest?</h2>
+    """Value proposition"""
+    st.markdown("## What is NeuroVest?")
 
-        <p style="color: #2d3748; font-size: 1.15rem; line-height: 1.8; text-align: center; max-width: 900px; margin: 0 auto 3rem auto;">
-            NeuroVest is a forecasting API that predicts market movements across 59 assets using ensemble machine learning.
-            The system trains three separate models (XGBoost, LightGBM, CatBoost) on 126+ features and combines their outputs
-            to generate probability-weighted predictions.
-        </p>
+    col1, col2, col3 = st.columns(3)
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 2rem; margin-top: 2rem;">
-            <div style="background: rgba(248, 249, 250, 0.95); padding: 2rem; border-radius: 10px; border-left: 4px solid #3498db; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                <h3 style="color: #1a1a1a; margin: 0 0 1rem 0; font-size: 1.3rem;">🔬 How It Works</h3>
-                <p style="color: #4a5568; line-height: 1.7; margin: 0; font-size: 1rem;">
-                    Each prediction analyzes technical indicators, cross-asset correlations, regime signals, and macro data
-                    to classify the next price movement into three categories: CRASH (significant drop), NORMAL (sideways),
-                    or SPIKE (significant rally). Returns both classification and probabilities.
-                </p>
-            </div>
-
-            <div style="background: rgba(248, 249, 250, 0.95); padding: 2rem; border-radius: 10px; border-left: 4px solid #3498db; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                <h3 style="color: #1a1a1a; margin: 0 0 1rem 0; font-size: 1.3rem;">💡 Why It Matters</h3>
-                <p style="color: #4a5568; line-height: 1.7; margin: 0; font-size: 1rem;">
-                    Most market data APIs give you raw prices. NeuroVest gives you processed intelligence with quantified
-                    confidence levels. Build systems that adjust position sizing based on signal strength, filter low-confidence
-                    trades, or trigger alerts when high-probability setups appear.
-                </p>
-            </div>
-
-            <div style="background: rgba(248, 249, 250, 0.95); padding: 2rem; border-radius: 10px; border-left: 4px solid #3498db; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                <h3 style="color: #1a1a1a; margin: 0 0 1rem 0; font-size: 1.3rem;">📊 Track Record</h3>
-                <p style="color: #4a5568; line-height: 1.7; margin: 0; font-size: 1rem;">
-                    25 years of SPY backtests show 69.85% model accuracy with risk-adjusted returns (Sharpe 2.55) beating buy-and-hold
-                    by 467%. Maximum drawdown stayed under 6% even during 2008 and 2020 crashes. Proven performance across
-                    multiple market regimes.
-                </p>
-            </div>
+    with col1:
+        st.markdown("""
+        <div class="info-card">
+            <h3>🔬 How It Works</h3>
+            <p>
+                Ensemble ML forecasting platform that predicts market movements across 59 assets.
+                Combines XGBoost, LightGBM, and CatBoost models trained on 126+ features to
+                generate three-class predictions (CRASH/NORMAL/SPIKE) with probability distributions.
+            </p>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
-    st.markdown("<div style='margin: 3rem 0;'></div>", unsafe_allow_html=True)
+    with col2:
+        st.markdown("""
+        <div class="info-card">
+            <h3>💡 Why It Matters</h3>
+            <p>
+                Most market data APIs give you raw prices. NeuroVest provides processed intelligence
+                with quantified confidence levels. Build systems that adjust position sizing based on
+                signal strength, filter low-confidence trades, or trigger alerts for high-probability setups.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col3:
+        st.markdown("""
+        <div class="info-card">
+            <h3>📊 Track Record</h3>
+            <p>
+                <strong>25-year SPY backtest:</strong><br>
+                • 69.85% model accuracy<br>
+                • 2.55 Sharpe ratio<br>
+                • 467% better than buy-hold<br>
+                • -5.4% max drawdown<br>
+                Performance proven across multiple market regimes including 2008 and 2020 crashes.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
 
 
 def show_features():
-    """Core API features"""
+    """Core features"""
+    st.markdown("---")
     st.markdown("## Core API Features")
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
         st.markdown("""
-        <div class="feature-card">
-            <h3>🎯 Real-Time Predictions</h3>
-            <p>Single-asset forecasts with three-class output (CRASH/NORMAL/SPIKE) and probability distributions.
-            Response times under 500ms. Works with stocks, ETFs, crypto, and precious metals.</p>
-            <p><strong>Typical use:</strong> Algorithmic entry/exit signals, risk dashboard alerts, portfolio
-            rebalancing triggers based on regime shifts.</p>
-        </div>
-        """, unsafe_allow_html=True)
+        ### 🎯 Real-Time Predictions
+        Single-asset forecasts with three-class output and probability distributions.
+        Response times under 500ms.
+
+        **Typical use:** Algorithmic entry/exit signals, risk alerts, portfolio triggers
+        """)
 
     with col2:
         st.markdown("""
-        <div class="feature-card">
-            <h3>📊 Batch Analysis</h3>
-            <p>Multi-asset requests (up to 50 tickers) processed in parallel. Returns structured JSON with
-            individual predictions, model agreement flags, and aggregate statistics.</p>
-            <p><strong>Typical use:</strong> Cross-sectional screening to find strongest signals, sector
-            rotation strategies, daily report generation for investment committees.</p>
-        </div>
-        """, unsafe_allow_html=True)
+        ### 📊 Batch Analysis
+        Multi-asset requests (up to 50 tickers) processed in parallel with structured JSON output.
+
+        **Typical use:** Cross-sectional screening, sector rotation, daily reports
+        """)
 
     with col3:
         st.markdown("""
-        <div class="feature-card">
-            <h3>📈 Custom Backtests</h3>
-            <p>Test signal performance with configurable parameters: stop losses, profit targets, position sizing,
-            transaction costs. Get Sharpe ratios, drawdowns, win rates, and trade logs.</p>
-            <p><strong>Typical use:</strong> Strategy validation before live deployment, parameter optimization,
-            compliance reporting with auditable performance metrics.</p>
-        </div>
-        """, unsafe_allow_html=True)
+        ### 📈 Custom Backtests
+        Test signal performance with configurable parameters: stops, targets, sizing, costs.
+
+        **Typical use:** Strategy validation, parameter optimization, compliance reporting
+        """)
 
 
 def show_api_playground():
-    """Interactive API demonstration"""
+    """API examples"""
     st.markdown("---")
-    st.markdown("## 🔌 API Playground")
-    st.markdown("Try the API with live examples below:")
+    st.markdown("## 🔌 API Examples")
 
-    tab1, tab2, tab3 = st.tabs(["Single Prediction", "Batch Analysis", "Backtest"])
+    tab1, tab2 = st.tabs(["Single Prediction", "Batch Analysis"])
 
     with tab1:
         st.markdown("### Get Single Asset Prediction")
 
-        col1, col2 = st.columns([1, 1])
+        col1, col2 = st.columns(2)
 
         with col1:
             st.markdown("**Request:**")
@@ -297,128 +266,39 @@ Headers:
 
         with col2:
             st.markdown("**Response:**")
-            sample_response = {
+            st.json({
                 "asset": "SPY",
-                "timestamp": "2024-12-27T10:30:00Z",
                 "prediction": 2,
                 "signal": "SPIKE",
                 "probability": 0.78,
                 "confidence": "high",
-                "probabilities": {
-                    "crash": 0.12,
-                    "normal": 0.10,
-                    "spike": 0.78
-                },
-                "models_agree": True,
-                "latency_ms": 247
-            }
-            st.json(sample_response)
-
-        st.markdown("**Integration Example (Python):**")
-        st.code("""import requests
-
-response = requests.get(
-    'https://api.neurovest.ai/predict/SPY',
-    headers={'Authorization': 'Bearer YOUR_API_KEY'}
-)
-
-data = response.json()
-print(f"Signal: {data['signal']}")
-print(f"Probability: {data['probability']:.1%}")
-print(f"Confidence: {data['confidence']}")""", language="python")
+                "models_agree": True
+            })
 
     with tab2:
         st.markdown("### Batch Asset Analysis")
 
-        col1, col2 = st.columns([1, 1])
+        col1, col2 = st.columns(2)
 
         with col1:
             st.markdown("**Request:**")
             st.code("""POST /batch-predict
 
-Headers:
-  Authorization: Bearer {API_KEY}
-  Content-Type: application/json
-
 Body:
 {
-  "assets": ["SPY", "QQQ", "BTC/USDT"],
-  "format": "json"
+  "assets": ["SPY", "QQQ", "BTC/USDT"]
 }""", language="http")
 
         with col2:
             st.markdown("**Response:**")
-            batch_response = {
-                "timestamp": "2024-12-27T10:30:00Z",
+            st.json({
                 "total_assets": 3,
                 "results": [
-                    {"asset": "SPY", "signal": "SPIKE", "probability": 0.78, "confidence": "high"},
-                    {"asset": "QQQ", "signal": "NORMAL", "probability": 0.62, "confidence": "medium"},
-                    {"asset": "BTC/USDT", "signal": "CRASH", "probability": 0.71, "confidence": "high"}
-                ],
-                "processing_time_ms": 892
-            }
-            st.json(batch_response)
-
-        st.markdown("**Use Case: Portfolio Screening**")
-        st.code("""# Screen portfolio for high-confidence bearish signals
-import requests
-
-assets = ["SPY", "QQQ", "IWM", "DIA", "BTC/USDT", "ETH/USDT"]
-response = requests.post(
-    'https://api.neurovest.ai/batch-predict',
-    headers={'Authorization': 'Bearer YOUR_API_KEY'},
-    json={"assets": assets}
-)
-
-results = response.json()['results']
-bearish = [r for r in results if r['signal'] == 'CRASH' and r['confidence'] == 'high']
-
-for asset in bearish:
-    print(f"⚠️ {asset['asset']}: {asset['probability']:.0%} crash probability")""", language="python")
-
-    with tab3:
-        st.markdown("### Custom Backtest")
-
-        st.markdown("**Request:**")
-        st.code("""POST /backtest
-
-Headers:
-  Authorization: Bearer {API_KEY}
-  Content-Type: application/json
-
-Body:
-{
-  "asset": "SPY",
-  "start_date": "2020-01-01",
-  "end_date": "2024-12-31",
-  "initial_capital": 100000,
-  "position_size": 0.95,
-  "stop_loss": 0.02,
-  "take_profit": 0.05,
-  "transaction_cost_bps": 5
-}""", language="http")
-
-        st.markdown("**Response:**")
-        backtest_response = {
-            "asset": "SPY",
-            "period": "2020-01-01 to 2024-12-31",
-            "total_return": 187.4,
-            "sharpe_ratio": 2.41,
-            "max_drawdown": -6.2,
-            "win_rate": 58.3,
-            "total_trades": 247,
-            "avg_trade": 1.18,
-            "best_trade": 8.4,
-            "worst_trade": -2.1,
-            "metrics": {
-                "annual_return": 37.5,
-                "annual_volatility": 15.6,
-                "sortino_ratio": 3.12,
-                "calmar_ratio": 6.05
-            }
-        }
-        st.json(backtest_response)
+                    {"asset": "SPY", "signal": "SPIKE", "probability": 0.78},
+                    {"asset": "QQQ", "signal": "NORMAL", "probability": 0.62},
+                    {"asset": "BTC/USDT", "signal": "CRASH", "probability": 0.71}
+                ]
+            })
 
 
 def show_pricing():
@@ -430,301 +310,78 @@ def show_pricing():
 
     with col1:
         st.markdown("""
-        <div class="pricing-tier">
-            <h3>Free Tier</h3>
-            <h2 style="color: #3498db;">$0/mo</h2>
-            <ul style="text-align: left; list-style: none; padding: 0;">
-                <li>✓ 1,000 requests/month</li>
-                <li>✓ All 59 assets</li>
-                <li>✓ Basic support</li>
-                <li>✓ API documentation</li>
-                <li>✗ No backtesting</li>
-                <li>✗ Standard latency</li>
-            </ul>
-            <p style="margin-top: 1rem;"><strong>For:</strong> Testing & research</p>
-        </div>
-        """, unsafe_allow_html=True)
+        ### Free Tier
+        **$0/mo**
+
+        - 1,000 requests/month
+        - All 59 assets
+        - Basic support
+        - API documentation
+
+        **For:** Testing & research
+        """)
 
     with col2:
         st.markdown("""
-        <div class="pricing-tier">
-            <h3>Developer</h3>
-            <h2 style="color: #3498db;">$99/mo</h2>
-            <ul style="text-align: left; list-style: none; padding: 0;">
-                <li>✓ 50,000 requests/month</li>
-                <li>✓ All features</li>
-                <li>✓ Priority support</li>
-                <li>✓ Backtesting API</li>
-                <li>✓ Batch endpoints</li>
-                <li>✓ Low latency</li>
-            </ul>
-            <p style="margin-top: 1rem;"><strong>For:</strong> Individual traders</p>
-        </div>
-        """, unsafe_allow_html=True)
+        ### Developer
+        **$99/mo**
+
+        - 50,000 requests/month
+        - All features
+        - Priority support
+        - Backtesting API
+        - Low latency
+
+        **For:** Individual traders
+        """)
 
     with col3:
         st.markdown("""
-        <div class="pricing-tier" style="border: 3px solid #3498db;">
-            <h3>Professional</h3>
-            <h2 style="color: #3498db;">$499/mo</h2>
-            <ul style="text-align: left; list-style: none; padding: 0;">
-                <li>✓ 500,000 requests/month</li>
-                <li>✓ All features</li>
-                <li>✓ Dedicated support</li>
-                <li>✓ WebSocket streaming</li>
-                <li>✓ Custom models</li>
-                <li>✓ SLA guarantee</li>
-            </ul>
-            <p style="margin-top: 1rem;"><strong>For:</strong> Hedge funds</p>
-        </div>
-        """, unsafe_allow_html=True)
+        ### Professional
+        **$499/mo** ⭐
+
+        - 500,000 requests/month
+        - All features
+        - Dedicated support
+        - WebSocket streaming
+        - Custom models
+        - SLA guarantee
+
+        **For:** Hedge funds
+        """)
 
     with col4:
         st.markdown("""
-        <div class="pricing-tier">
-            <h3>Enterprise</h3>
-            <h2 style="color: #3498db;">Custom</h2>
-            <ul style="text-align: left; list-style: none; padding: 0;">
-                <li>✓ Unlimited requests</li>
-                <li>✓ All features</li>
-                <li>✓ White-glove support</li>
-                <li>✓ On-premise deployment</li>
-                <li>✓ Custom integrations</li>
-                <li>✓ Training workshops</li>
-            </ul>
-            <p style="margin-top: 1rem;"><strong>For:</strong> Institutions</p>
-        </div>
-        """, unsafe_allow_html=True)
+        ### Enterprise
+        **Custom**
 
+        - Unlimited requests
+        - White-glove support
+        - On-premise deployment
+        - Custom integrations
+        - Training workshops
 
-def show_integration_examples():
-    """Integration code examples"""
-    st.markdown("---")
-    st.markdown("## 🔧 Integration Examples")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.markdown("### Python SDK")
-        st.code("""from neurovest import Client
-
-client = Client(api_key="YOUR_API_KEY")
-
-# Get single prediction
-prediction = client.predict("SPY")
-print(f"{prediction.signal}: {prediction.probability:.1%}")
-
-# Batch predictions
-results = client.batch_predict(["SPY", "QQQ", "BTC/USDT"])
-for result in results:
-    if result.confidence == "high":
-        print(f"{result.asset}: {result.signal}")
-
-# Run backtest
-backtest = client.backtest(
-    asset="SPY",
-    start="2020-01-01",
-    config={"stop_loss": 0.02}
-)
-print(f"Sharpe: {backtest.sharpe_ratio:.2f}")""", language="python")
-
-    with col2:
-        st.markdown("### JavaScript/Node.js")
-        st.code("""const NeuroVest = require('neurovest-api');
-
-const client = new NeuroVest({
-  apiKey: process.env.NEUROVEST_API_KEY
-});
-
-// Get prediction
-const prediction = await client.predict('SPY');
-console.log(`${prediction.signal}: ${prediction.probability}`);
-
-// Stream real-time updates
-const stream = client.stream(['SPY', 'QQQ']);
-stream.on('prediction', (data) => {
-  console.log(`${data.asset}: ${data.signal}`);
-});
-
-// Batch analysis
-const results = await client.batchPredict([
-  'SPY', 'QQQ', 'IWM', 'DIA'
-]);
-results.forEach(r => {
-  if (r.confidence === 'high') {
-    console.log(`Alert: ${r.asset} ${r.signal}`);
-  }
-});""", language="javascript")
-
-
-def show_use_cases():
-    """Real-world use cases"""
-    st.markdown("---")
-    st.markdown("## 📊 Real-World Use Cases")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.markdown("""
-        ### Hedge Fund Risk Management
-
-        **Challenge:** Need early warning system for market regime shifts
-
-        **Solution:** Integrate NeuroVest API into risk dashboard
-        ```python
-        # Daily risk check
-        predictions = client.batch_predict(portfolio_assets)
-        crash_signals = [p for p in predictions
-                        if p.signal == 'CRASH' and p.probability > 0.7]
-
-        if len(crash_signals) > 0.3 * len(portfolio_assets):
-            trigger_risk_reduction_protocol()
-        ```
-
-        **Results:**
-        - Avoided 2022 drawdown with early de-risking
-        - Reduced portfolio volatility by 40%
-        - Improved Sharpe ratio from 1.2 to 1.8
-        """)
-
-        st.markdown("""
-        ### Quant Fund Sector Rotation
-
-        **Challenge:** Identify optimal sector allocation timing
-
-        **Solution:** Use batch API for daily sector screening
-        ```python
-        sectors = ['XLF', 'XLK', 'XLE', 'XLV', 'XLI']
-        predictions = client.batch_predict(sectors)
-
-        # Overweight sectors with SPIKE signals
-        bullish = [p for p in predictions if p.signal == 'SPIKE']
-        allocation = {s.asset: 0.25 for s in bullish}
-        ```
-
-        **Results:**
-        - Outperformed equal-weight S&P by 8.3% annually
-        - Reduced sector concentration risk
-        - Automated daily rebalancing decisions
-        """)
-
-    with col2:
-        st.markdown("""
-        ### Fintech Platform Integration
-
-        **Challenge:** Provide market intelligence to retail customers
-
-        **Solution:** Embed predictions in mobile app
-        ```javascript
-        // Show daily market outlook
-        const spy = await client.predict('SPY');
-        displayMarketOutlook({
-          signal: spy.signal,
-          confidence: spy.confidence,
-          reasoning: spy.explanation
-        });
-
-        // Portfolio health score
-        const portfolio = await client.batchPredict(userHoldings);
-        const healthScore = calculateHealth(portfolio);
-        ```
-
-        **Results:**
-        - Increased user engagement by 45%
-        - Differentiated product offering
-        - Premium tier conversion up 30%
-        """)
-
-        st.markdown("""
-        ### Proprietary Trading Desk
-
-        **Challenge:** Validate new trading strategies before deployment
-
-        **Solution:** Use backtest API for strategy testing
-        ```python
-        # Test different stop-loss levels
-        configs = [
-            {'stop_loss': 0.01, 'take_profit': 0.03},
-            {'stop_loss': 0.02, 'take_profit': 0.05},
-            {'stop_loss': 0.03, 'take_profit': 0.07}
-        ]
-
-        results = [client.backtest('SPY', config=c)
-                  for c in configs]
-        best = max(results, key=lambda x: x.sharpe_ratio)
-        ```
-
-        **Results:**
-        - Optimized strategy parameters before live trading
-        - Reduced development time from weeks to hours
-        - Validated signals across multiple market regimes
+        **For:** Institutions
         """)
 
 
 def show_cta():
-    """Call-to-action section"""
-    st.markdown("---")
-    st.markdown("""
-    <div style="background: linear-gradient(120deg, #2c3e50 0%, #3498db 100%); padding: 3rem 2rem; border-radius: 15px; color: white; text-align: center;">
-        <h2 style="color: white; margin-top: 0;">Ready to Get Started?</h2>
-        <p style="font-size: 1.2rem; margin: 1rem 0;">
-            Join hedge funds, quant developers, and institutions using NeuroVest API
-        </p>
-        <div style="margin: 2rem 0;">
-            <a href="#" class="cta-button" style="margin: 0 1rem;">Start Free Trial</a>
-            <a href="#" class="cta-button" style="margin: 0 1rem; background: white; color: #3498db;">Schedule Demo</a>
-        </div>
-        <p style="font-size: 0.9rem; opacity: 0.9; margin: 1rem 0 0 0;">
-            No credit card required • 1,000 free requests/month • Cancel anytime
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-def show_footer():
-    """Footer with links"""
+    """Call to action"""
     st.markdown("---")
 
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        st.markdown("""
-        **Product**
-        - Features
-        - Pricing
-        - API Docs
-        - Changelog
-        """)
-
+    col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.markdown("""
-        **Resources**
-        - Documentation
-        - API Reference
-        - Code Examples
-        - Best Practices
-        """)
+        st.markdown("## Ready to Get Started?")
+        st.markdown("Join hedge funds, quant developers, and institutions using NeuroVest API")
 
-    with col3:
-        st.markdown("""
-        **Company**
-        - About
-        - Blog
-        - Careers
-        - Contact
-        """)
+        col_a, col_b = st.columns(2)
+        with col_a:
+            st.markdown("[Start Free Trial](https://neurovestdemo.streamlit.app/)")
+        with col_b:
+            st.markdown("[Schedule Demo](https://neurovestdemo.streamlit.app/)")
 
-    with col4:
-        st.markdown("""
-        **Support**
-        - Help Center
-        - Status Page
-        - Community
-        - Contact Support
-        """)
-
-    st.markdown("---")
-    st.caption("© 2024 NeuroVest. Market data and predictions for informational purposes. Past performance does not guarantee future results.")
+        st.markdown("---")
+        st.caption("No credit card required • 1,000 free requests/month • Cancel anytime")
 
 
 def main():
@@ -734,10 +391,7 @@ def main():
     show_features()
     show_api_playground()
     show_pricing()
-    show_integration_examples()
-    show_use_cases()
     show_cta()
-    show_footer()
 
 
 if __name__ == "__main__":

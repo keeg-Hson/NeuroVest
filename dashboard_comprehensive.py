@@ -40,7 +40,7 @@ except ImportError:
 # Configure page
 st.set_page_config(
     page_title="NeuroVest Forecasting API",
-    page_icon="📊",
+    page_icon="assets/neurovest_logo.png" if Path("assets/neurovest_logo.png").exists() else "📊",
     layout="wide",
     initial_sidebar_state="expanded",
     menu_items={
@@ -49,14 +49,27 @@ st.set_page_config(
     }
 )
 
-# Force light theme
+# Clean professional UI
 st.markdown("""
 <style>
-    :root {
-        color-scheme: light;
-    }
     [data-testid="stAppViewContainer"] {
-        background-color: #f5f7fa;
+        background: #f8f9fa;
+    }
+    [data-testid="stSidebar"] {
+        background: #2c3e50;
+    }
+    [data-testid="stSidebar"] * {
+        color: white !important;
+    }
+    h1, h2, h3 {
+        color: #2c3e50 !important;
+        font-weight: 600 !important;
+    }
+    .stButton > button {
+        background: #3498db;
+        color: white;
+        border-radius: 6px;
+        font-weight: 500;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -227,37 +240,41 @@ def show_overview():
         with col2:
             st.image(str(logo_path), width=250)
 
-    # Hero section
-    st.markdown("""
-    <div style="text-align: center; padding: 2rem 0;">
-        <h1 style="font-size: 3.5rem; margin-bottom: 0.5rem;">📊 NeuroVest Forecasting API</h1>
-        <p style="font-size: 1.5rem; color: #666;">AI-Powered Market Predictions & Economic Analysis</p>
-    </div>
-    """, unsafe_allow_html=True)
+    # Clean header
+    st.markdown("# NeuroVest Forecasting API")
+    st.markdown("### AI-Powered Market Predictions & Economic Analysis")
+    st.markdown("---")
 
-    # Value proposition
-    st.markdown("""
-    <div style="background: linear-gradient(120deg, #2c3e50 0%, #3498db 100%); padding: 2.5rem; border-radius: 12px; color: white; margin: 2rem 0; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-        <h2 style="color: white; margin-top: 0; font-size: 2rem;">What is NeuroVest?</h2>
-        <p style="font-size: 1.15rem; line-height: 1.7; margin: 1.5rem 0;">
-            NeuroVest is an ensemble ML forecasting platform that predicts market movements across 41 assets. The system combines XGBoost, LightGBM, and CatBoost models trained on 126+ features to generate three-class predictions with quantified confidence levels.
-        </p>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 2rem;">
-            <div>
-                <h4 style="color: #ecf0f1; margin: 0 0 0.5rem 0;">Core Capability</h4>
-                <p style="font-size: 1rem; line-height: 1.6; margin: 0;">
-                    Three-class forecasts (CRASH/NORMAL/SPIKE) with probability distributions for stocks, ETFs, crypto, and precious metals. Each prediction includes confidence scores and model agreement flags.
-                </p>
-            </div>
-            <div>
-                <h4 style="color: #ecf0f1; margin: 0 0 0.5rem 0;">Proven Results</h4>
-                <p style="font-size: 1rem; line-height: 1.6; margin: 0;">
-                    25-year SPY backtest: 191% total return, 2.55 Sharpe ratio, -5.4% max drawdown. Risk-adjusted returns beat buy-and-hold by 5x while maintaining 90% lower drawdowns.
-                </p>
-            </div>
+    # Value proposition - clean white cards
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("""
+        <div style="background: white; padding: 2rem; border-radius: 8px; border-left: 4px solid #3498db; height: 100%; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+            <h3 style="color: #2c3e50; margin-top: 0;">🔬 What is NeuroVest?</h3>
+            <p style="color: #555; line-height: 1.7; margin: 0;">
+                NeuroVest is an ensemble ML forecasting platform that predicts market movements across 41 assets.
+                The system combines XGBoost, LightGBM, and CatBoost models trained on 126+ features to generate
+                three-class predictions (CRASH/NORMAL/SPIKE) with quantified confidence levels.
+            </p>
         </div>
-    </div>
-    """, unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
+
+    with col2:
+        st.markdown("""
+        <div style="background: white; padding: 2rem; border-radius: 8px; border-left: 4px solid #27ae60; height: 100%; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+            <h3 style="color: #2c3e50; margin-top: 0;">📊 Proven Results</h3>
+            <p style="color: #555; line-height: 1.7; margin: 0;">
+                <strong>25-year SPY backtest:</strong><br>
+                • 191% total return, 2.55 Sharpe ratio<br>
+                • -5.4% max drawdown (vs -55% buy-hold)<br>
+                • 69.85% model accuracy, 54% win rate<br>
+                • Risk-adjusted returns beat buy-hold by 467%
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("<div style='margin: 2rem 0;'></div>", unsafe_allow_html=True)
 
     # Quick Start Guide
     st.markdown("---")
