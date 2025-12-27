@@ -118,6 +118,13 @@ st.markdown("""
 
 def show_hero():
     """Hero section with value proposition"""
+    # Logo (if available)
+    logo_path = Path("assets/neurovest_logo.png")
+    if logo_path.exists():
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.image(str(logo_path), width=200)
+
     st.markdown("""
     <div class="hero">
         <h1 style="font-size: 3rem; margin: 0 0 1rem 0;">NeuroVest Forecasting API</h1>

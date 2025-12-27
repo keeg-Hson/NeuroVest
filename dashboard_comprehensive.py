@@ -204,6 +204,13 @@ def main():
 
 def show_overview():
     """Overview page - Deployment-ready homepage"""
+    # Logo (if available)
+    logo_path = Path("assets/neurovest_logo.png")
+    if logo_path.exists():
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.image(str(logo_path), width=250)
+
     # Hero section
     st.markdown("""
     <div style="text-align: center; padding: 2rem 0;">

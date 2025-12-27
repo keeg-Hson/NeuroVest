@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="assets/neurovest_logo.png" alt="NeuroVest Logo" width="200"/>
+</div>
+
 # NeuroVest
 
 **AI-Powered Economic Forecasting & Trading Strategy System**
