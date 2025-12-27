@@ -882,12 +882,12 @@ def show_recession_indicator():
         st.error("🔴 **Insufficient SPY Data**")
 
         st.markdown("""
-        <div style="background-color: #FFF3E0; padding: 1.5rem; border-radius: 10px; margin: 1rem 0;">
-            <h4 style="color: #E65100;">📊 Data Required</h4>
-            <p style="color: #BF360C;">
+        <div class="info-card" style="border-left: 4px solid #e74c3c;">
+            <h3>📊 Data Required</h3>
+            <p>
                 The recession indicator needs at least 200 days of SPY (S&P 500) data to calculate reliable metrics.
             </p>
-            <p style="color: #BF360C; margin-bottom: 0;">
+            <p style="margin-bottom: 0;">
                 <b>Current status:</b> {rows} rows found (need 200+)
             </p>
         </div>
