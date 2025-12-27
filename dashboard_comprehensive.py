@@ -42,8 +42,24 @@ st.set_page_config(
     page_title="NeuroVest Forecasting API",
     page_icon="📊",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
+    menu_items={
+        'Get Help': 'https://neurovestdemo.streamlit.app/',
+        'About': "NeuroVest Forecasting API - AI-Powered Market Intelligence"
+    }
 )
+
+# Force light theme
+st.markdown("""
+<style>
+    :root {
+        color-scheme: light;
+    }
+    [data-testid="stAppViewContainer"] {
+        background-color: #f5f7fa;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # Directories
 DATA_DIR = Path("data")

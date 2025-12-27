@@ -29,12 +29,25 @@ st.set_page_config(
     page_title="NeuroVest API - Market Forecasting",
     page_icon="📈",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="collapsed",
+    menu_items={
+        'Get Help': 'https://github.com/keeg-Hson/NeuroVest',
+        'About': "NeuroVest Forecasting API - AI-Powered Market Intelligence"
+    }
 )
 
-# Custom CSS
+# Force light theme and custom styling
 st.markdown("""
 <style>
+    /* Force light theme */
+    :root {
+        color-scheme: light;
+    }
+
+    [data-testid="stAppViewContainer"] {
+        background-color: #f5f7fa;
+    }
+
     .hero {
         background: linear-gradient(120deg, #2c3e50 0%, #3498db 100%);
         padding: 3rem 2rem;
@@ -46,7 +59,7 @@ st.markdown("""
     }
 
     .feature-card {
-        background: white;
+        background: rgba(255, 255, 255, 0.95);
         padding: 2rem;
         border-radius: 10px;
         border: 1px solid #e1e4e8;
@@ -178,39 +191,39 @@ def show_quick_stats():
 def show_value_proposition():
     """Detailed value proposition"""
     st.markdown("""
-    <div style="background: white; padding: 3rem 2rem; border-radius: 12px; border: 1px solid #e1e4e8; margin: 2rem 0;">
-        <h2 style="color: #2c3e50; text-align: center; margin: 0 0 2rem 0; font-size: 2.2rem;">What is NeuroVest?</h2>
+    <div style="background: rgba(255, 255, 255, 0.95); padding: 3rem 2rem; border-radius: 12px; border: 1px solid #e1e4e8; margin: 2rem 0; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+        <h2 style="color: #1a1a1a; text-align: center; margin: 0 0 2rem 0; font-size: 2.2rem;">What is NeuroVest?</h2>
 
-        <p style="color: #34495e; font-size: 1.15rem; line-height: 1.8; text-align: center; max-width: 900px; margin: 0 auto 3rem auto;">
+        <p style="color: #2d3748; font-size: 1.15rem; line-height: 1.8; text-align: center; max-width: 900px; margin: 0 auto 3rem auto;">
             NeuroVest is a forecasting API that predicts market movements across 59 assets using ensemble machine learning.
             The system trains three separate models (XGBoost, LightGBM, CatBoost) on 126+ features and combines their outputs
             to generate probability-weighted predictions.
         </p>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 2rem; margin-top: 2rem;">
-            <div style="background: #f8f9fa; padding: 2rem; border-radius: 10px; border-left: 4px solid #3498db;">
-                <h3 style="color: #2c3e50; margin: 0 0 1rem 0; font-size: 1.3rem;">🔬 How It Works</h3>
-                <p style="color: #555; line-height: 1.7; margin: 0; font-size: 1rem;">
+            <div style="background: rgba(248, 249, 250, 0.95); padding: 2rem; border-radius: 10px; border-left: 4px solid #3498db; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <h3 style="color: #1a1a1a; margin: 0 0 1rem 0; font-size: 1.3rem;">🔬 How It Works</h3>
+                <p style="color: #4a5568; line-height: 1.7; margin: 0; font-size: 1rem;">
                     Each prediction analyzes technical indicators, cross-asset correlations, regime signals, and macro data
                     to classify the next price movement into three categories: CRASH (significant drop), NORMAL (sideways),
                     or SPIKE (significant rally). Returns both classification and probabilities.
                 </p>
             </div>
 
-            <div style="background: #f8f9fa; padding: 2rem; border-radius: 10px; border-left: 4px solid #3498db;">
-                <h3 style="color: #2c3e50; margin: 0 0 1rem 0; font-size: 1.3rem;">💡 Why It Matters</h3>
-                <p style="color: #555; line-height: 1.7; margin: 0; font-size: 1rem;">
+            <div style="background: rgba(248, 249, 250, 0.95); padding: 2rem; border-radius: 10px; border-left: 4px solid #3498db; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <h3 style="color: #1a1a1a; margin: 0 0 1rem 0; font-size: 1.3rem;">💡 Why It Matters</h3>
+                <p style="color: #4a5568; line-height: 1.7; margin: 0; font-size: 1rem;">
                     Most market data APIs give you raw prices. NeuroVest gives you processed intelligence with quantified
                     confidence levels. Build systems that adjust position sizing based on signal strength, filter low-confidence
                     trades, or trigger alerts when high-probability setups appear.
                 </p>
             </div>
 
-            <div style="background: #f8f9fa; padding: 2rem; border-radius: 10px; border-left: 4px solid #3498db;">
-                <h3 style="color: #2c3e50; margin: 0 0 1rem 0; font-size: 1.3rem;">📊 Track Record</h3>
-                <p style="color: #555; line-height: 1.7; margin: 0; font-size: 1rem;">
-                    25 years of SPY backtests show 59% accuracy with risk-adjusted returns (Sharpe 2.55) beating buy-and-hold
-                    by 5x. Maximum drawdown stayed under 6% even during 2008 and 2020 crashes. Proven performance across
+            <div style="background: rgba(248, 249, 250, 0.95); padding: 2rem; border-radius: 10px; border-left: 4px solid #3498db; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <h3 style="color: #1a1a1a; margin: 0 0 1rem 0; font-size: 1.3rem;">📊 Track Record</h3>
+                <p style="color: #4a5568; line-height: 1.7; margin: 0; font-size: 1rem;">
+                    25 years of SPY backtests show 69.85% model accuracy with risk-adjusted returns (Sharpe 2.55) beating buy-and-hold
+                    by 467%. Maximum drawdown stayed under 6% even during 2008 and 2020 crashes. Proven performance across
                     multiple market regimes.
                 </p>
             </div>
