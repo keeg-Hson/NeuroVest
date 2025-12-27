@@ -36,33 +36,47 @@ st.set_page_config(
 st.markdown("""
 <style>
     .hero {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(120deg, #2c3e50 0%, #3498db 100%);
         padding: 3rem 2rem;
-        border-radius: 15px;
+        border-radius: 12px;
         color: white;
         text-align: center;
         margin-bottom: 2rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     }
 
     .feature-card {
-        background: #f8f9fa;
+        background: white;
         padding: 2rem;
         border-radius: 10px;
-        border-left: 4px solid #667eea;
+        border: 1px solid #e1e4e8;
         margin: 1rem 0;
         height: 100%;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    .feature-card h3 {
+        color: #2c3e50;
+        margin-top: 0;
     }
 
     .metric-card {
-        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        background: white;
+        border: 2px solid #3498db;
         padding: 1.5rem;
         border-radius: 10px;
         text-align: center;
         margin: 0.5rem 0;
     }
 
+    .metric-card h2 {
+        color: #3498db;
+        margin: 0;
+        font-size: 2.5rem;
+    }
+
     .cta-button {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: #3498db;
         color: white;
         padding: 1rem 2rem;
         border-radius: 8px;
@@ -71,7 +85,7 @@ st.markdown("""
         font-size: 1.1rem;
         text-decoration: none;
         display: inline-block;
-        margin: 1rem 0;
+        margin: 1rem 0.5rem;
     }
 
     .pricing-tier {
@@ -81,22 +95,19 @@ st.markdown("""
         padding: 2rem;
         text-align: center;
         margin: 1rem 0;
-        transition: transform 0.2s;
     }
 
     .pricing-tier:hover {
-        transform: translateY(-5px);
-        border-color: #667eea;
-        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.3);
+        border-color: #3498db;
+        box-shadow: 0 4px 12px rgba(52, 152, 219, 0.15);
     }
 
-    .code-block {
-        background: #1e1e1e;
-        color: #d4d4d4;
-        padding: 1.5rem;
-        border-radius: 8px;
-        font-family: 'Courier New', monospace;
-        margin: 1rem 0;
+    .pricing-tier h3 {
+        color: #2c3e50;
+    }
+
+    .pricing-tier h2 {
+        color: #3498db;
     }
 
     #MainMenu {visibility: hidden;}
@@ -157,6 +168,31 @@ def show_quick_stats():
         """, unsafe_allow_html=True)
 
 
+def show_value_proposition():
+    """Detailed value proposition"""
+    st.markdown("## What NeuroVest Does")
+
+    st.markdown("""
+    NeuroVest is a forecasting API that predicts market movements across 59 assets using ensemble machine learning.
+    The system trains three separate models (XGBoost, LightGBM, CatBoost) on 126+ features and combines their outputs
+    to generate probability-weighted predictions.
+
+    **How it works:** Each prediction analyzes technical indicators, cross-asset correlations, regime signals, and macro
+    data to classify the next price movement into one of three categories: significant drop (CRASH), sideways action (NORMAL),
+    or significant rally (SPIKE). The API returns both the classification and the underlying probabilities.
+
+    **Why it matters:** Most market data APIs give you raw prices. NeuroVest gives you processed intelligence with
+    quantified confidence levels. This lets you build systems that adjust position sizing based on signal strength,
+    filter out low-confidence trades, or trigger alerts when high-probability setups appear.
+
+    **Track record:** 25 years of SPY backtests show the system identifying profitable opportunities with 59% accuracy
+    while maintaining risk-adjusted returns (Sharpe 2.55) that beat buy-and-hold by 5x. Maximum drawdown stayed under 6%
+    even during 2008 and 2020 crashes.
+    """)
+
+    st.markdown("---")
+
+
 def show_features():
     """Core API features"""
     st.markdown("## Core API Features")
@@ -167,8 +203,10 @@ def show_features():
         st.markdown("""
         <div class="feature-card">
             <h3>🎯 Real-Time Predictions</h3>
-            <p>Get instant three-class forecasts (CRASH/NORMAL/SPIKE) with confidence scores for any supported asset. Sub-500ms API response times.</p>
-            <p><strong>Use Case:</strong> Power algorithmic trading systems, risk dashboards, or portfolio allocation engines with live market intelligence.</p>
+            <p>Single-asset forecasts with three-class output (CRASH/NORMAL/SPIKE) and probability distributions.
+            Response times under 500ms. Works with stocks, ETFs, crypto, and precious metals.</p>
+            <p><strong>Typical use:</strong> Algorithmic entry/exit signals, risk dashboard alerts, portfolio
+            rebalancing triggers based on regime shifts.</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -176,8 +214,10 @@ def show_features():
         st.markdown("""
         <div class="feature-card">
             <h3>📊 Batch Analysis</h3>
-            <p>Process up to 50 assets in a single API call. Async processing with structured JSON/CSV outputs for cross-sectional analysis.</p>
-            <p><strong>Use Case:</strong> Screen entire portfolios, identify sector rotation opportunities, or generate daily market reports for clients.</p>
+            <p>Multi-asset requests (up to 50 tickers) processed in parallel. Returns structured JSON with
+            individual predictions, model agreement flags, and aggregate statistics.</p>
+            <p><strong>Typical use:</strong> Cross-sectional screening to find strongest signals, sector
+            rotation strategies, daily report generation for investment committees.</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -185,8 +225,10 @@ def show_features():
         st.markdown("""
         <div class="feature-card">
             <h3>📈 Custom Backtests</h3>
-            <p>Validate prediction signals with your own parameters: position sizing, stops, take-profits, volatility targeting, and transaction costs.</p>
-            <p><strong>Use Case:</strong> Prove signal quality before deployment, optimize strategy parameters, or generate performance reports for stakeholders.</p>
+            <p>Test signal performance with configurable parameters: stop losses, profit targets, position sizing,
+            transaction costs. Get Sharpe ratios, drawdowns, win rates, and trade logs.</p>
+            <p><strong>Typical use:</strong> Strategy validation before live deployment, parameter optimization,
+            compliance reporting with auditable performance metrics.</p>
         </div>
         """, unsafe_allow_html=True)
 
@@ -647,6 +689,7 @@ def show_footer():
 def main():
     show_hero()
     show_quick_stats()
+    show_value_proposition()
     show_features()
     show_api_playground()
     show_pricing()

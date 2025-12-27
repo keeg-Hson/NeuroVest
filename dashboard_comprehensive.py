@@ -520,13 +520,10 @@ curl "http://localhost:8000/assets?asset_type=crypto"
     with client_col1:
         st.markdown("""
         <div style="background-color: #E8F5E9; padding: 1.5rem; border-radius: 10px;">
-            <h4 style="color: #2E7D32;">Python SDK</h4>
+            <h4 style="color: #2E7D32;">Python Access</h4>
             <p style="color: #1B5E20; font-size: 0.9rem;">
-                <code>utils.py</code> provides helper functions:<br><br>
-                • <b>load_predictions()</b><br>
-                • <b>get_latest_signal()</b><br>
-                • <b>load_asset_data()</b><br>
-                • <b>calculate_metrics()</b>
+                Direct API requests via <code>requests</code> library or use helper utilities in <code>utils.py</code>
+                for data loading and metric calculation.
             </p>
         </div>
         """, unsafe_allow_html=True)
@@ -534,12 +531,11 @@ curl "http://localhost:8000/assets?asset_type=crypto"
     with client_col2:
         st.markdown("""
         <div style="background-color: #E3F2FD; padding: 1.5rem; border-radius: 10px;">
-            <h4 style="color: #1565C0;">Web Dashboard</h4>
+            <h4 style="color: #1565C0;">Web Interfaces</h4>
             <p style="color: #0D47A1; font-size: 0.9rem;">
-                Streamlit dashboards:<br><br>
-                • <b>dashboard.py</b> - Main API<br>
-                • <b>dashboard_comprehensive.py</b> - Full features<br>
-                • <b>dashboard_demo.py</b> - Quick testing
+                <b>dashboard.py</b> - Basic charts and predictions<br>
+                <b>dashboard_comprehensive.py</b> - Full feature set<br>
+                <b>api_demo.py</b> - Customer showcase
             </p>
         </div>
         """, unsafe_allow_html=True)
@@ -547,12 +543,11 @@ curl "http://localhost:8000/assets?asset_type=crypto"
     with client_col3:
         st.markdown("""
         <div style="background-color: #FCE4EC; padding: 1.5rem; border-radius: 10px;">
-            <h4 style="color: #C2185B;">Data Access</h4>
+            <h4 style="color: #C2185B;">CSV Exports</h4>
             <p style="color: #880E4F; font-size: 0.9rem;">
-                CSV exports available:<br><br>
-                • <b>logs/daily_predictions.csv</b><br>
-                • <b>logs/labeled_predictions.csv</b><br>
-                • <b>outputs/backtest_results.json</b>
+                <b>logs/labeled_predictions.csv</b> - Daily forecasts<br>
+                <b>logs/backtest_results.csv</b> - Trade history<br>
+                <b>outputs/</b> - Backtest JSON files
             </p>
         </div>
         """, unsafe_allow_html=True)
@@ -762,9 +757,16 @@ def show_recession_indicator():
     drawdown = ((cumulative - rolling_max) / rolling_max * 100).min()
 
     # Moving averages
-    ma_50 = recent['Close'].rolling(50).mean().iloc[-1]
-    ma_200 = recent['Close'].rolling(200).mean().iloc[-1]
-    death_cross = ma_50 < ma_200
+    ma_50 = recent['Close'].rolling(50).mean().iloc[-1] if len(recent) >= 50 else recent['Close'].mean()
+    ma_200 = recent['Close'].rolling(200).mean().iloc[-1] if len(recent) >= 200 else recent['Close'].mean()
+
+    # Check for NaN values
+    if pd.isna(ma_50):
+        ma_50 = recent['Close'].mean()
+    if pd.isna(ma_200):
+        ma_200 = recent['Close'].mean()
+
+    death_cross = ma_50 < ma_200 if not (pd.isna(ma_50) or pd.isna(ma_200)) else False
 
     # Recession score
     recession_score = 0
