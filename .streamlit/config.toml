@@ -1,15 +1,30 @@
+# Production Configuration for Render Deployment
+
 [server]
+# Render will set PORT via environment variable
 headless = true
-port = 10000
 enableCORS = false
 enableXsrfProtection = false
+maxUploadSize = 200
+runOnSave = false
 
 [browser]
 gatherUsageStats = false
+serverAddress = "0.0.0.0"
 
+# Dark Theme (locked in)
 [theme]
 primaryColor = "#3498db"
 backgroundColor = "#0e1117"
 secondaryBackgroundColor = "#1a1d23"
 textColor = "#ffffff"
 font = "sans serif"
+
+# Client settings
+[client]
+showErrorDetails = false
+toolbarMode = "minimal"
+
+# Logger settings for production
+[logger]
+level = "warning"

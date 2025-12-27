@@ -1,0 +1,65 @@
+# Files to ignore during Render build (reduces slug size)
+
+# Development files
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
+.Python
+
+# Testing
+tests/
+test_*.py
+*_test.py
+pytest.ini
+.pytest_cache/
+
+# Documentation
+docs/
+*.md
+!README.md
+!DEPLOYMENT_GUIDE.md
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Environment
+.env
+.env.local
+venv/
+env/
+
+# Logs
+logs/
+*.log
+
+# Model files (large - don't deploy if not needed)
+# models/*.pkl
+# models/*.joblib
+
+# Data files (large - don't deploy)
+data/
+data_cache/
+outputs/
+
+# Jupyter notebooks
+*.ipynb
+.ipynb_checkpoints/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# OS files
+.DS_Store
+Thumbs.db
