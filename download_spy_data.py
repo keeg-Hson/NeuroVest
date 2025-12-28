@@ -26,19 +26,28 @@ try:
     import yfinance as yf
 
     print("⬇ Downloading via yfinance...")
-    df = yf.download('SPY', start=START_DATE, progress=False)
+    # Use auto_adjust=True to get simpler column structure
+    df = yf.download('SPY', start=START_DATE, progress=False, auto_adjust=True)
 
     if len(df) > 0:
+        # Flatten column names if they're multi-level (newer yfinance versions)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+
         # Reset index to make Date a column
         df.index.name = 'Date'
         df.reset_index(inplace=True)
+
+        # Ensure Adj Close column exists (auto_adjust=True removes it)
+        if 'Adj Close' not in df.columns:
+            df['Adj Close'] = df['Close']
 
         # Save to CSV
         df.to_csv(SPY_PATH, index=False)
 
         print(f"✓ Downloaded {len(df):,} rows")
         print(f"  Date range: {df['Date'].min()} to {df['Date'].max()}")
-        print(f"  Columns: {', '.join(df.columns)}")
+        print(f"  Columns: {list(df.columns)}")
         print(f"  File size: {SPY_PATH.stat().st_size / 1024:.1f} KB")
         print(f"\n✓ Saved to {SPY_PATH}")
         sys.exit(0)

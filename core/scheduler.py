@@ -248,6 +248,7 @@ def create_ccxt_callback(symbol: str, exchange_name: str = 'binance',
     def fetch_data():
         try:
             import ccxt
+            import pandas as pd
 
             exchange_class = getattr(ccxt, exchange_name)
             exchange = exchange_class()

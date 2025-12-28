@@ -189,10 +189,13 @@ class DataManager:
             # Prepare data for insertion with safe float conversion
             records = []
             for timestamp, row in df.iterrows():
+                # Convert timestamp to ISO string for SQLite compatibility
+                timestamp_str = timestamp.isoformat() if hasattr(timestamp, 'isoformat') else str(timestamp)
+
                 records.append((
                     ticker,
                     asset_type,
-                    timestamp,
+                    timestamp_str,
                     self._safe_float(row.get('Open', row.get('open', 0))),
                     self._safe_float(row.get('High', row.get('high', 0))),
                     self._safe_float(row.get('Low', row.get('low', 0))),
@@ -213,13 +216,17 @@ class DataManager:
 
             # Update metadata
             if last_timestamp:
+                # Convert timestamps to ISO strings for SQLite
+                last_update_str = datetime.now().isoformat()
+                last_timestamp_str = last_timestamp.isoformat() if hasattr(last_timestamp, 'isoformat') else str(last_timestamp)
+
                 cursor.execute('''
                     UPDATE asset_metadata
                     SET last_update = ?,
                         last_timestamp = ?,
                         total_records = (SELECT COUNT(*) FROM price_data WHERE ticker = ?)
                     WHERE ticker = ?
-                ''', (datetime.now(), last_timestamp, ticker, ticker))
+                ''', (last_update_str, last_timestamp_str, ticker, ticker))
 
             # FIX: Transaction management - commit only if all succeed
             conn.commit()
@@ -384,6 +391,8 @@ class DataManager:
         cursor = conn.cursor()
 
         try:
+            now_str = datetime.now().isoformat()
+
             if hit:
                 cursor.execute('''
                     INSERT INTO cache_stats (ticker, hit_count, last_access)
@@ -391,7 +400,7 @@ class DataManager:
                     ON CONFLICT(ticker) DO UPDATE SET
                         hit_count = hit_count + 1,
                         last_access = ?
-                ''', (ticker, datetime.now(), datetime.now()))
+                ''', (ticker, now_str, now_str))
             else:
                 cursor.execute('''
                     INSERT INTO cache_stats (ticker, miss_count, last_access)
@@ -399,7 +408,7 @@ class DataManager:
                     ON CONFLICT(ticker) DO UPDATE SET
                         miss_count = miss_count + 1,
                         last_access = ?
-                ''', (ticker, datetime.now(), datetime.now()))
+                ''', (ticker, now_str, now_str))
             conn.commit()
         except sqlite3.Error as e:
             logger.error(f"Error updating cache stats for {ticker}: {e}")
