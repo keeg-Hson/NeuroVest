@@ -36,17 +36,17 @@ class DataManager:
 
     def __init__(self, db_url: Optional[str] = None):
         """Initialize data manager with database connection"""
-        # Determine database URL
-        if db_url is None:
-            db_url = os.getenv('DATABASE_URL')
+        # Determine database connection
+        # Priority: 1) DATABASE_URL env var, 2) db_url parameter, 3) default SQLite
+        database_url = os.getenv('DATABASE_URL')
 
-        if db_url:
-            # PostgreSQL (production)
+        if database_url:
+            # PostgreSQL (production) - Railway sets DATABASE_URL
             # Fix Railway's postgres:// to postgresql://
-            if db_url.startswith('postgres://'):
-                db_url = db_url.replace('postgres://', 'postgresql://', 1)
+            if database_url.startswith('postgres://'):
+                database_url = database_url.replace('postgres://', 'postgresql://', 1)
             self.engine = create_engine(
-                db_url,
+                database_url,
                 poolclass=QueuePool,
                 pool_size=5,
                 max_overflow=10,
@@ -54,9 +54,16 @@ class DataManager:
             )
             self.db_type = 'postgresql'
             logger.info(f"Data Manager initialized: PostgreSQL")
+        elif db_url and '://' in db_url:
+            # Explicit database URL passed (for custom setups)
+            if db_url.startswith('postgres://'):
+                db_url = db_url.replace('postgres://', 'postgresql://', 1)
+            self.engine = create_engine(db_url, pool_pre_ping=True)
+            self.db_type = 'postgresql' if 'postgresql' in db_url else 'other'
+            logger.info(f"Data Manager initialized: {self.db_type}")
         else:
-            # SQLite (local development)
-            db_path = os.getenv('DATABASE_PATH', 'data/market_data.db')
+            # SQLite (local development) - use file path
+            db_path = db_url or os.getenv('DATABASE_PATH', 'data/market_data.db')
             Path(db_path).parent.mkdir(parents=True, exist_ok=True)
             self.engine = create_engine(
                 f'sqlite:///{db_path}',
