@@ -203,10 +203,11 @@ def check_asset_status(ticker):
     try:
         dm = get_data_manager()
         # Query database for this ticker
-        count = dm.get_record_count(ticker)
-        if count > 0:
+        df = dm.get_data(ticker)
+        if len(df) > 0:
             return "downloaded"
-    except Exception:
+    except Exception as e:
+        # Silently continue to CSV fallback
         pass
 
     # Fallback: check CSV files (for backwards compatibility)
