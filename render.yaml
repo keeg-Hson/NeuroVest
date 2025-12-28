@@ -1,4 +1,8 @@
 services:
+  # ============================================================================
+  # WEB SERVICES (Streamlit Dashboards)
+  # ============================================================================
+
   # Customer-facing API Demo Dashboard
   - type: web
     name: neurovest-api-demo
@@ -42,3 +46,65 @@ services:
       - key: STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION
         value: false
     healthCheckPath: /_stcore/health
+
+  # ============================================================================
+  # BACKGROUND WORKERS
+  # ============================================================================
+
+  # Continuous Data Scheduler Worker
+  # Runs 24/7 to keep market data updated
+  - type: worker
+    name: neurovest-data-worker
+    runtime: python
+    region: oregon
+    plan: free
+    branch: claude/assess-codebase-AqOfb
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: python3 worker_data_scheduler.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.14
+      - key: UPDATE_INTERVAL
+        value: "60"  # Update every 60 minutes
+      - key: DATABASE_PATH
+        value: data/market_data.db
+
+  # ============================================================================
+  # CRON JOBS (Scheduled Tasks)
+  # ============================================================================
+
+  # Daily Predictions (after market close)
+  # Runs Mon-Fri at 4:30 PM EST after market close
+  - type: cron
+    name: neurovest-daily-predictions
+    runtime: python
+    region: oregon
+    plan: free
+    branch: claude/assess-codebase-AqOfb
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    schedule: "30 16 * * 1-5"  # 4:30 PM EST, Mon-Fri (market close)
+    startCommand: python3 cron_daily_predictions.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.14
+      - key: CRON_SCHEDULE
+        value: "16:30 EST Mon-Fri"
+
+  # Weekly Model Retraining (Sunday early morning)
+  # Retrains ML models with latest data every Sunday
+  - type: cron
+    name: neurovest-weekly-retrain
+    runtime: python
+    region: oregon
+    plan: free
+    branch: claude/assess-codebase-AqOfb
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    schedule: "0 2 * * 0"  # 2:00 AM EST, Sundays
+    startCommand: python3 cron_weekly_retrain.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.14
+      - key: RETRAIN_DAY
+        value: Sunday
+      - key: RETRAIN_TIME
+        value: "02:00 EST"

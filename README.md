@@ -44,11 +44,32 @@ Advanced ensemble ML system for predicting market opportunities through regime a
 - Custom data imports
 - Real-time predictions for 59+ assets
 
+✅ **Background Data Worker** - `neurovest-data-worker`
+- Continuous 24/7 data updates
+- 17 stocks/commodities + 10 cryptocurrencies
+- Updates every 60 minutes
+- Market hours awareness
+- Auto-recovery from API failures
+
+✅ **Daily Predictions** - `neurovest-daily-predictions` (Cron Job)
+- Runs Mon-Fri at 4:30 PM EST (after market close)
+- Updates all market data
+- Generates ensemble predictions for 59 assets
+- Fresh predictions ready for next trading day
+
+✅ **Weekly Model Retraining** - `neurovest-weekly-retrain` (Cron Job)
+- Runs Sundays at 2:00 AM EST
+- Retrains ML models with latest data
+- Updates ensemble weights
+- Ensures models adapt to market changes
+
 **Deployment Stack:**
 - Platform: Render (Free Tier)
 - Runtime: Python 3.11.14
 - Framework: Streamlit 1.38+
+- Workers: Background + 2 Cron Jobs
 - Theme: Dark mode locked in (#0e1117 background, #3498db accents)
+- **[📖 Workers Setup Guide](WORKERS_GUIDE.md)**
 
 ---
 
@@ -557,6 +578,12 @@ NeuroVest/
 ├── utils.py                         # Feature engineering
 ├── config.py                        # Configuration
 │
+├── worker_data_scheduler.py         # Render background worker (24/7 data updates)
+├── cron_daily_predictions.py        # Render cron job (daily predictions)
+├── cron_weekly_retrain.py           # Render cron job (weekly model retraining)
+├── run_daily_pipeline.py            # Alternative scheduler (APScheduler)
+├── update_data.py                   # Data update utilities
+│
 ├── configs/                         # Configuration files
 │   ├── backtest_*.json              # Backtest configs
 │   └── trading_profile_*.json       # Risk profiles
@@ -569,10 +596,11 @@ NeuroVest/
 │
 ├── .streamlit/
 │   └── config.toml                  # Streamlit production config
-├── render.yaml                      # Render deployment blueprint
+├── render.yaml                      # Render deployment blueprint (5 services)
 ├── requirements.txt                 # Production dependencies
 ├── runtime.txt                      # Python version
-└── DEPLOYMENT_GUIDE.md              # Full deployment guide
+├── DEPLOYMENT_GUIDE.md              # Full deployment guide
+└── WORKERS_GUIDE.md                 # Workers & cron jobs guide
 ```
 
 ---
