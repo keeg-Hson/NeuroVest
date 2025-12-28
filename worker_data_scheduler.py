@@ -94,8 +94,9 @@ class WorkerScheduler:
             self.dm.register_asset(ticker, 'crypto', 'hourly')
 
             try:
+                # Use Coinbase instead of Binance (Binance blocks Railway's region)
                 callback = create_ccxt_callback(
-                    symbol, 'binance', '1h', limit=100
+                    symbol, 'coinbase', '1h', limit=100
                 )
                 self.scheduler.register_update_callback(
                     ticker, callback, interval_minutes=15
