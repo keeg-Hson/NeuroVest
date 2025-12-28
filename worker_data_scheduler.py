@@ -1,15 +1,21 @@
 #!/usr/bin/env python3
 """
-Render Background Worker - Continuous Data Scheduler
-Runs 24/7 to keep market data updated
+Production Worker - Full Automation Pipeline
+- Continuous data collection
+- Automated model training (weekly)
+- Automated predictions (daily)
+- Runs 24/7
 """
 
 import os
 import sys
 import time
 import signal
+import subprocess
 from datetime import datetime
 from pathlib import Path
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 # Add project root to path
 sys.path.insert(0, str(Path(__file__).parent))
@@ -24,12 +30,13 @@ from core.scheduler import (
 
 
 class WorkerScheduler:
-    """Production-ready worker for Render"""
+    """Production-ready worker with full ML pipeline automation"""
 
     def __init__(self):
         self.running = False
         self.dm = None
         self.scheduler = None
+        self.ml_scheduler = None  # APScheduler for training/predictions
 
     def setup(self):
         """Initialize data manager and scheduler"""
@@ -111,10 +118,98 @@ class WorkerScheduler:
 
         print("\n✅ Worker setup complete!\n")
 
+    def train_models(self):
+        """Automated model training - runs weekly"""
+        print(f"\n{'='*70}")
+        print(f"🤖 AUTOMATED MODEL TRAINING STARTED")
+        print(f"   Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"{'='*70}\n")
+
+        try:
+            # Check if training script exists
+            train_script = Path("train_multi_asset.py")
+            if train_script.exists():
+                result = subprocess.run(
+                    [sys.executable, "train_multi_asset.py"],
+                    capture_output=True,
+                    text=True,
+                    timeout=3600  # 1 hour timeout
+                )
+                print(result.stdout)
+                if result.returncode == 0:
+                    print("✅ Model training completed successfully\n")
+                else:
+                    print(f"⚠️  Model training had errors:\n{result.stderr}\n")
+            else:
+                print("⚠️  train_multi_asset.py not found, skipping training\n")
+        except subprocess.TimeoutExpired:
+            print("⚠️  Model training timed out after 1 hour\n")
+        except Exception as e:
+            print(f"⚠️  Model training failed: {e}\n")
+
+    def generate_predictions(self):
+        """Automated prediction generation - runs daily"""
+        print(f"\n{'='*70}")
+        print(f"🔮 AUTOMATED PREDICTION GENERATION STARTED")
+        print(f"   Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"{'='*70}\n")
+
+        try:
+            # Check if prediction script exists
+            pred_script = Path("predict_multi_asset_ensemble.py")
+            if pred_script.exists():
+                result = subprocess.run(
+                    [sys.executable, "predict_multi_asset_ensemble.py"],
+                    capture_output=True,
+                    text=True,
+                    timeout=1800  # 30 minute timeout
+                )
+                print(result.stdout)
+                if result.returncode == 0:
+                    print("✅ Prediction generation completed successfully\n")
+                else:
+                    print(f"⚠️  Prediction generation had errors:\n{result.stderr}\n")
+            else:
+                print("⚠️  predict_multi_asset_ensemble.py not found, skipping predictions\n")
+        except subprocess.TimeoutExpired:
+            print("⚠️  Prediction generation timed out after 30 minutes\n")
+        except Exception as e:
+            print(f"⚠️  Prediction generation failed: {e}\n")
+
+    def setup_ml_automation(self):
+        """Set up automated ML pipeline schedules"""
+        self.ml_scheduler = BackgroundScheduler()
+
+        # Weekly model training - Sundays at 2 AM
+        self.ml_scheduler.add_job(
+            self.train_models,
+            CronTrigger(day_of_week='sun', hour=2, minute=0),
+            id='weekly_training',
+            name='Weekly Model Training'
+        )
+
+        # Daily predictions - Every day at 4:30 PM EST (after market close)
+        self.ml_scheduler.add_job(
+            self.generate_predictions,
+            CronTrigger(hour=16, minute=30),
+            id='daily_predictions',
+            name='Daily Prediction Generation'
+        )
+
+        self.ml_scheduler.start()
+
+        print("📅 ML Automation Schedule:")
+        print("   • Model Training: Every Sunday at 2:00 AM")
+        print("   • Predictions: Every day at 4:30 PM EST")
+        print()
+
     def run(self):
         """Main worker loop"""
         self.setup()
         self.running = True
+
+        # Set up ML automation
+        self.setup_ml_automation()
 
         # Run initial update
         print("🔄 Running initial data update...")
@@ -153,9 +248,13 @@ class WorkerScheduler:
 
         self.running = False
 
+        if self.ml_scheduler:
+            self.ml_scheduler.shutdown()
+            print("  ✓ ML automation stopped")
+
         if self.scheduler:
             self.scheduler.stop()
-            print("  ✓ Scheduler stopped")
+            print("  ✓ Data scheduler stopped")
 
         if self.dm:
             self.dm.close()
