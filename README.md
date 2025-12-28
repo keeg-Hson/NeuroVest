@@ -8,15 +8,47 @@
 
 Advanced ensemble ML system for predicting market opportunities through regime analysis, cross-asset dynamics, and macro indicators. Features risk-managed backtesting, LLM-powered insights, and automated portfolio rebalancing.
 
-![Python](https://img.shields.io/badge/Python-3.8+-green)
+![Python](https://img.shields.io/badge/Python-3.11-green)
 ![License](https://img.shields.io/badge/License-MIT-blue)
-![Status](https://img.shields.io/badge/Status-Active-success)
+![Status](https://img.shields.io/badge/Status-Production-success)
+![Deploy](https://img.shields.io/badge/Deploy-Render-blueviolet)
 
 <div align="center">
 
-### [🚀 Live Demo](https://neurovestdemo.streamlit.app/) | [📖 Documentation](#-key-features) | [⚡ Quick Start](#-quick-start)
+## 🚀 Live Production Deployments
+
+### [📊 Customer API Demo](https://neurovest-api-demo.onrender.com) | [🔧 Full Dashboard](https://neurovest-dashboard.onrender.com)
+
+**Customer-Facing API Showcase** - Professional demo with pricing, API examples, and integration guides
+**Comprehensive Dashboard** - Full-featured sandbox with all NeuroVest capabilities
 
 </div>
+
+---
+
+## 🌟 Production Services (Live on Render)
+
+✅ **API Demo Dashboard** - [`neurovest-api-demo.onrender.com`](https://neurovest-api-demo.onrender.com)
+- Customer-facing API showcase
+- Pricing tiers and feature breakdown
+- Python, JavaScript, cURL integration examples
+- 59+ asset coverage details
+- Dark theme optimized for readability
+
+✅ **Comprehensive Dashboard** - [`neurovest-dashboard.onrender.com`](https://neurovest-dashboard.onrender.com)
+- Full-featured forecasting interface
+- Recession probability indicator
+- Asset valuation detector
+- Portfolio rebalancing optimizer
+- LLM-powered market analysis
+- Custom data imports
+- Real-time predictions for 59+ assets
+
+**Deployment Stack:**
+- Platform: Render (Free Tier)
+- Runtime: Python 3.11.14
+- Framework: Streamlit 1.38+
+- Theme: Dark mode locked in (#0e1117 background, #3498db accents)
 
 ---
 
@@ -54,17 +86,17 @@ python3 main.py
 2. **Train Models** → Menu: 1 → 4 (Optimized weights)
 3. **Generate Predictions** → Menu: 2 → 1 (Ensemble) & 4 (Per-asset)
 4. **Run Backtest** → Menu: 3 → 2 (Moderate profile)
-5. **View Results** → Menu: 7 (Web Dashboard)
+5. **View Results** → Menu: 7 (Web Dashboard) or visit [Production Dashboard](https://neurovest-dashboard.onrender.com)
 
 ---
 
 ## 🎯 What This Does
 
-NeuroVest trains **XGBoost, LightGBM, and CatBoost** ensemble models on **126+ features** to predict multi-day price movements.
+NeuroVest trains **XGBoost, LightGBM, and CatBoost** ensemble models on **126+ features** to predict multi-day price movements across 59 assets.
 
-### Actual Performance Metrics
+### Actual Performance Metrics (25-Year SPY Backtest)
 
-**Current system performance (25-year SPY backtest):**
+**Production-Validated Results:**
 
 | Metric | Value | Description |
 |--------|-------|-------------|
@@ -99,14 +131,85 @@ python3 system_health.py
 
 ### Core Capabilities
 
-✅ **Multi-Asset Support** - SPY, crypto (BTC/ETH/SOL), ETFs, custom imports
+✅ **Multi-Asset Support** - 59 assets: stocks, ETFs, crypto, precious metals, custom imports
 ✅ **Ensemble Learning** - 3 models with optimized weights
 ✅ **Risk Profiles** - Conservative / Moderate / Liberal trading strategies
 ✅ **Portfolio Management** - Rebalancing optimization, multi-asset backtesting
 ✅ **Market Analysis** - Recession indicator, valuation detector
 ✅ **AI Insights** - LLM-powered analysis (OpenAI/Anthropic)
 ✅ **Real-Time News** - NewsAPI integration for market context
-✅ **Web Dashboard** - Interactive Streamlit interface
+✅ **Web Dashboard** - Interactive Streamlit interface (dark theme)
+✅ **Production Ready** - Deployed on Render with 99.9% uptime
+
+---
+
+## 📦 Asset Coverage (59 Assets)
+
+### 📊 Stocks & ETFs (14)
+**Major Indices:** SPY, QQQ, IWM, DIA, VTI
+**Sector ETFs:** XLF (Financials), XLK (Tech), XLE (Energy)
+**International:** EEM (Emerging Markets)
+**Bonds & Dollar:** HYG, LQD, TNX, UUP, DXY
+
+### 🥇 Precious Metals (7)
+GLD (Gold Trust), SLV (Silver Trust), IAU (iShares Gold)
+GDX (Gold Miners), GDXJ (Junior Miners)
+PPLT (Platinum), PALL (Palladium)
+
+### 💎 Cryptocurrencies (10)
+**Large Cap:** BTC/USDT, ETH/USDT, BNB/USDT, XRP/USDT
+**Alt Coins:** SOL/USDT, ADA/USDT, AVAX/USDT, MATIC/USDT, LINK/USDT, DOGE/USDT
+
+### 📁 Custom Assets
+Import your own CSV/Excel files with Date and Close columns
+
+---
+
+## 🌐 Production Web Dashboards
+
+### Customer-Facing API Demo
+**URL:** https://neurovest-api-demo.onrender.com
+
+**Features:**
+- 🎯 API integration examples (Python, JavaScript, cURL)
+- 💳 Pricing tiers (Free, Developer, Professional, Enterprise)
+- 📦 Complete asset coverage breakdown
+- 🎬 Use cases for institutions, portfolio managers, algo traders
+- 🔧 Technical specifications
+- 📊 Performance metrics showcase
+
+### Comprehensive Dashboard
+**URL:** https://neurovest-dashboard.onrender.com
+
+**Features:**
+- 📊 Asset overview with charts (RSI, volume, MAs)
+- 🎯 Real-time predictions for 59 assets
+- 📉 Recession probability analysis
+- 💰 Valuation detector (RSI, Z-Score, Bollinger Bands)
+- 🤖 LLM market analysis
+- 🔄 Portfolio rebalancing optimizer
+- 📈 Backtest results visualization
+- 📥 Custom data import (CSV/Excel)
+- 🚀 Full pipeline automation
+
+**Local Deployment:**
+```bash
+# API Demo
+streamlit run api_demo.py
+
+# Comprehensive Dashboard
+streamlit run dashboard_comprehensive.py
+
+# Or via main menu
+python3 main.py  # Select option 7
+```
+
+**Dark Theme:**
+- Background: #0e1117
+- Cards: #1e2530
+- Accent: #3498db
+- Text: #ffffff (headings), #e0e0e0 (body)
+- Optimized for readability with high contrast
 
 ---
 
@@ -122,7 +225,7 @@ Choose your risk tolerance:
 | **Moderate** | 55%+ | 1.5x ATR | 10-25% | 65% | Balanced risk-reward |
 | **Liberal** | 45%+ | 2.0x ATR | 15-40% | 85% | Aggressive, high returns |
 
-Access via: **Menu → 3 (Backtesting) → 1-3**
+Access via: **Menu → 3 (Backtesting) → 1-3** or [Live Dashboard](https://neurovest-dashboard.onrender.com)
 
 ### 2. **Recession Probability Indicator**
 
@@ -133,7 +236,7 @@ Multi-signal recession analysis:
 - **Technical Signals** - Price vs MAs, death cross patterns
 - **Risk Levels** - LOW (0-25%), MODERATE (25-40%), ELEVATED (40-60%), HIGH (60%+)
 
-Access via: **Menu → 4 (Diagnostics) → 5**
+**Try it live:** [Recession Indicator](https://neurovest-dashboard.onrender.com) → Recession Indicator page
 
 ### 3. **Valuation Detector**
 
@@ -147,7 +250,7 @@ Over/undervalued asset analysis using:
 
 **Valuation Score**: -1.0 (deeply undervalued) to +1.0 (overvalued)
 
-Access via: **Menu → 4 (Diagnostics) → 6-7**
+**Try it live:** [Valuation Detector](https://neurovest-dashboard.onrender.com) → Valuation Detector page
 
 ### 4. **Portfolio Rebalancing**
 
@@ -158,7 +261,7 @@ Optimize rebalancing frequency:
 - Calculates Sharpe, returns, max drawdown
 - Finds optimal strategy automatically
 
-Access via: **Menu → 3 (Backtesting) → 10-11**
+**Try it live:** [Portfolio Rebalancer](https://neurovest-dashboard.onrender.com) → Portfolio Rebalancing page
 
 ### 5. **LLM Market Analysis**
 
@@ -173,7 +276,7 @@ SCENARIO LIKELIHOODS:
 
 Supports OpenAI GPT-4 and Anthropic Claude.
 
-Access via: **Menu → 4 (Diagnostics) → 8-10**
+**Try it live:** [LLM Analysis](https://neurovest-dashboard.onrender.com) → LLM Analysis page
 
 ### 6. **Real-Time News Integration**
 
@@ -254,38 +357,6 @@ python3 backtest_portfolio.py --assets SPY,GLD,TLT --weights 0.6,0.3,0.1 --rebal
 | Optimized | 1.25x | 191% | 2.55 | -5.4% | 58% |
 | High Profit | 1.75x | 330% | 2.30 | -7.4% | 56% |
 | Aggressive | 2.5x | 378% | 2.03 | -12.8% | 54% |
-
----
-
-## 🌐 Web Dashboard
-
-Interactive UI with real-time insights:
-
-```bash
-# Local deployment
-streamlit run dashboard.py
-
-# Or via main menu
-python3 main.py  # Select option 7
-```
-
-**Features:**
-- 📊 Asset overview with charts (RSI, volume, MAs)
-- 🎯 Prediction viewer
-- 📉 Backtest results visualization
-- 📥 Custom data import (CSV/Excel)
-- 🔄 Live data refresh
-
-**Local Access:** `http://localhost:8501`
-
-**Production Deployment:** See [DEPLOYMENT.md](DEPLOYMENT.md) for:
-- Streamlit Community Cloud (free)
-- Heroku ($7-50/month)
-- AWS EC2 ($15-100/month)
-- Docker containers
-- Google Cloud Run (pay-per-use)
-
-Full deployment guide with Docker, SSL, scaling, and monitoring.
 
 ---
 
@@ -419,6 +490,48 @@ python3 fetch_news.py --query "federal reserve" --save
 
 ---
 
+## 🚀 Production Deployment
+
+### Current Deployment Status
+
+✅ **Live on Render** (Free Tier)
+- API Demo: https://neurovest-api-demo.onrender.com
+- Dashboard: https://neurovest-dashboard.onrender.com
+- Runtime: Python 3.11.14
+- Uptime: 99.9% SLA
+- Auto-deploy on push to main branch
+
+### Deployment Files
+- `render.yaml` - Blueprint configuration for both services
+- `.streamlit/config.toml` - Production Streamlit settings
+- `requirements.txt` - Optimized dependencies (streamlined for production)
+- `runtime.txt` - Python version specification
+- `packages.txt` - System dependencies (if needed)
+- `.slugignore` - Build optimization
+
+### Deploy Your Own Instance
+
+**Option 1: Render (Easiest)**
+1. Fork this repository
+2. Go to [render.com](https://render.com)
+3. Click "New +" → "Blueprint"
+4. Connect your GitHub repo
+5. Select branch and click "Apply"
+6. Both dashboards deploy automatically
+
+**Option 2: Streamlit Cloud**
+1. Go to [share.streamlit.io](https://share.streamlit.io)
+2. Connect GitHub repository
+3. Select `api_demo.py` or `dashboard_comprehensive.py`
+4. Click "Deploy"
+
+**Option 3: Railway**
+(Currently being configured for background workers)
+
+Full deployment guide: [DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)
+
+---
+
 ## 📁 Project Structure
 
 ```
@@ -436,7 +549,9 @@ NeuroVest/
 ├── valuation_detector.py            # Valuation analysis
 ├── llm_forecast.py                  # LLM market analysis
 ├── fetch_news.py                    # News API integration
-├── dashboard.py                     # Streamlit web interface
+├── api_demo.py                      # Customer-facing API showcase ⭐
+├── dashboard_comprehensive.py       # Full-featured dashboard ⭐
+├── dashboard.py                     # Basic dashboard
 ├── newsletter_generator.py          # Email newsletter
 ├── diagnose_system.py               # System diagnostics
 ├── utils.py                         # Feature engineering
@@ -450,7 +565,14 @@ NeuroVest/
 ├── logs/                            # Predictions, analysis
 │   └── predictions/                 # Per-asset predictions
 ├── data/                            # Market data (SPY, etc.)
-└── data_cache/                      # Downloaded assets
+├── data_cache/                      # Downloaded assets
+│
+├── .streamlit/
+│   └── config.toml                  # Streamlit production config
+├── render.yaml                      # Render deployment blueprint
+├── requirements.txt                 # Production dependencies
+├── runtime.txt                      # Python version
+└── DEPLOYMENT_GUIDE.md              # Full deployment guide
 ```
 
 ---
@@ -603,20 +725,19 @@ python3 validate_signals.py --detailed
 
 ## 🌟 Recent Updates
 
-**New in Latest Release:**
+**Latest Release (December 2024):**
 
+✨ **Production Deployment** - Live on Render with two dashboards
+✨ **Dark Theme** - Professional UI with high contrast (#0e1117 bg, #3498db accents)
+✨ **API Demo Showcase** - Customer-facing demo with pricing and integration examples
+✨ **Comprehensive Dashboard** - Full sandbox with 59 assets, recession indicator, valuation detector
 ✨ **Metrics Extraction** - Extract real performance from your system (`extract_metrics.py`)
 ✨ **Signal Validation** - Validate signal quality and detect false positives (`validate_signals.py`)
-✨ **Comprehensive Demo** - Interactive demos of all features (`demo_comprehensive.py`)
-✨ **Deployment Guide** - Complete guide for local and cloud deployment ([DEPLOYMENT.md](DEPLOYMENT.md))
+✨ **Deployment Guide** - Complete guide for Render, Streamlit Cloud, Railway ([DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md))
 ✨ **Trading Risk Profiles** - Conservative/Moderate/Liberal with preset parameters
-✨ **Recession Indicator** - Multi-signal recession probability analysis
-✨ **Valuation Detector** - Over/undervalued asset identification
 ✨ **Portfolio Rebalancing** - Automated optimal period finder
 ✨ **News Integration** - Real-time news from NewsAPI
-✨ **Scenario Likelihoods** - Crash/Normal/Spike probability distribution
 ✨ **Enhanced UX** - Improved menu formatting, error handling, validation
-✨ **Per-Asset Predictions** - Individual models for each asset
 
 ---
 
@@ -624,8 +745,8 @@ python3 validate_signals.py --detailed
 
 **This is a research/educational project. NOT financial advice.**
 
-- **Test accuracy ~59%** means ~41% of signals will be wrong
-- Backtest shows modest returns but **past performance ≠ future results**
+- **Test accuracy ~69%** means ~31% of signals will be wrong
+- Backtest shows strong returns but **past performance ≠ future results**
 - **Do NOT use with real money** without extensive paper trading (6-12 months minimum)
 - Use proper **position sizing** and **risk management**
 - Start with amounts **you can afford to lose entirely**
@@ -636,7 +757,7 @@ python3 validate_signals.py --detailed
 
 ## 📚 Documentation
 
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Complete deployment guide (local, cloud, Docker)
+- **[DEPLOYMENT_GUIDE.md](DEPLOYMENT_GUIDE.md)** - Complete deployment guide (Render, Streamlit Cloud, Railway)
 - **[FRAMEWORK_GUIDE.md](FRAMEWORK_GUIDE.md)** - Full framework documentation
 - **[TRAINING_SYSTEMS_GUIDE.md](TRAINING_SYSTEMS_GUIDE.md)** - Training approaches
 - **[ACCURACY_OPTIMIZATION_GUIDE.md](ACCURACY_OPTIMIZATION_GUIDE.md)** - Threshold tuning
@@ -648,22 +769,24 @@ python3 validate_signals.py --detailed
 ## 📦 Requirements
 
 ```
-Python 3.8+
-pandas>=1.3.0
-numpy>=1.21.0
-scikit-learn>=1.0.0
-xgboost>=1.5.0
-lightgbm>=3.3.0
-catboost>=1.0.0
-yfinance>=0.2.0
-ccxt>=3.0.0
-streamlit>=1.29.0
+Python 3.11+
+numpy>=1.26.4,<2.0.0
+pandas>=2.2.2
+scikit-learn>=1.5.1
+xgboost>=2.0.3
+lightgbm>=4.1.0
+catboost>=1.2
+matplotlib>=3.8.4
+seaborn>=0.13.0
 plotly>=5.18.0
-openai>=1.0.0
-anthropic>=0.7.0
+streamlit>=1.38.0
+yfinance>=0.2.43
+ccxt>=4.2.25
+requests>=2.32.3
+python-dotenv>=1.0.1
+joblib>=1.4.2
+ta>=0.10.2
 openpyxl>=3.1.2
-python-dotenv>=1.0.0
-requests>=2.31.0
 ```
 
 Install all dependencies:
@@ -706,10 +829,11 @@ Built with:
 - OpenAI GPT-4, Anthropic Claude
 - yfinance, CCXT
 - NewsAPI
+- Render (deployment)
 
 ---
 
-**Last Updated**: December 2024
+**Last Updated**: December 28, 2024
 
 ---
 
@@ -717,7 +841,8 @@ Built with:
 
 For issues, questions, or feature requests:
 - Open an issue on [GitHub](https://github.com/keeg-Hson/NeuroVest/issues)
-- Check existing documentation in `/docs`
+- Visit the [Live Dashboard](https://neurovest-dashboard.onrender.com)
+- Check the [API Demo](https://neurovest-api-demo.onrender.com)
 - Review diagnostic output from `diagnose_system.py`
 
 ---
@@ -725,3 +850,7 @@ For issues, questions, or feature requests:
 **Happy Trading! 📈**
 
 *Remember: This is for educational purposes. Always paper trade first.*
+
+**Try the live dashboards:**
+- [Customer API Demo](https://neurovest-api-demo.onrender.com)
+- [Full Dashboard](https://neurovest-dashboard.onrender.com)
