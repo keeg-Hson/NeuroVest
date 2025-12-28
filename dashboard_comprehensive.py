@@ -37,6 +37,10 @@ except ImportError:
     print("  pip install streamlit plotly pandas")
     sys.exit(1)
 
+# Import DataManager for database access
+from core.data_manager import DataManager
+import os
+
 # Configure page
 st.set_page_config(
     page_title="NeuroVest Forecasting API",
@@ -164,6 +168,14 @@ CACHE_DIR = Path("data_cache")
 MODELS_DIR = Path("models")
 LOGS_DIR = Path("logs")
 
+# Initialize DataManager for database access
+DB_PATH = os.getenv('DATABASE_PATH', 'data/market_data.db')
+
+@st.cache_resource
+def get_data_manager():
+    """Get cached DataManager instance"""
+    return DataManager(DB_PATH)
+
 # All supported assets
 STOCK_ETFS = {
     'SPY': 'S&P 500', 'QQQ': 'Nasdaq 100', 'IWM': 'Russell 2000',
@@ -188,11 +200,19 @@ CRYPTO_ASSETS = {
 
 def check_asset_status(ticker):
     """Check if asset data is downloaded"""
-    # Check data/ directory
+    try:
+        dm = get_data_manager()
+        # Query database for this ticker
+        count = dm.get_record_count(ticker)
+        if count > 0:
+            return "downloaded"
+    except Exception:
+        pass
+
+    # Fallback: check CSV files (for backwards compatibility)
     if (DATA_DIR / f"{ticker}.csv").exists():
         return "downloaded"
 
-    # Check data_cache/ directory
     safe_ticker = ticker.replace('/', '_')
     if (CACHE_DIR / f"{safe_ticker}_1d.csv").exists():
         return "downloaded"
@@ -202,10 +222,41 @@ def check_asset_status(ticker):
 @st.cache_data(ttl=300)  # Cache for 5 minutes
 def load_asset_data(ticker):
     """Load asset data if available"""
-    # Try data/ first
+    # Try database first
+    try:
+        dm = get_data_manager()
+        df = dm.get_data(ticker)
+
+        if df is not None and len(df) > 0:
+            # Convert timestamp column to Date
+            if 'timestamp' in df.columns:
+                df['Date'] = pd.to_datetime(df['timestamp'])
+                df = df.drop('timestamp', axis=1)
+
+            # Ensure required columns exist
+            if 'close' in df.columns and 'Close' not in df.columns:
+                # Rename lowercase columns to titlecase
+                df = df.rename(columns={
+                    'open': 'Open',
+                    'high': 'High',
+                    'low': 'Low',
+                    'close': 'Close',
+                    'volume': 'Volume'
+                })
+
+            # Sort by date
+            if 'Date' in df.columns:
+                df = df.sort_values('Date')
+                today = pd.Timestamp.now()
+                df = df[df['Date'] <= today]
+
+            return df if len(df) > 0 else None
+    except Exception as e:
+        print(f"Database load failed for {ticker}: {e}")
+
+    # Fallback: Try CSV files
     filepath = DATA_DIR / f"{ticker}.csv"
     if not filepath.exists():
-        # Try data_cache/
         safe_ticker = ticker.replace('/', '_')
         filepath = CACHE_DIR / f"{safe_ticker}_1d.csv"
 
@@ -229,16 +280,11 @@ def load_asset_data(ticker):
                 df[col] = pd.to_numeric(df[col], errors='coerce')
 
         if 'Close' in df.columns:
-            # Drop rows where Close is NaN
             df = df.dropna(subset=['Close'])
 
-        # Ensure we have Date column
         if 'Date' in df.columns:
             df = df.sort_values('Date')
-            # Drop rows where Date is NaT
             df = df.dropna(subset=['Date'])
-
-            # Filter out future dates (data quality check)
             today = pd.Timestamp.now()
             df = df[df['Date'] <= today]
 
