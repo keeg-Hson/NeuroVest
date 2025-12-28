@@ -1,0 +1,103 @@
+# Railway Configuration for NeuroVest
+# Deploys 5 services with shared persistent storage
+
+# ============================================================================
+# SHARED VOLUME (All services access same data)
+# ============================================================================
+[build]
+builder = "NIXPACKS"
+
+# ============================================================================
+# WEB SERVICES
+# ============================================================================
+
+# Customer-facing API Demo Dashboard
+[[services]]
+name = "neurovest-api-demo"
+source = "."
+[services.build]
+buildCommand = "pip install --upgrade pip && pip install -r requirements.txt"
+startCommand = "streamlit run api_demo.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true"
+
+[services.deploy]
+numReplicas = 1
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+[[services.volumes]]
+name = "neurovest-data"
+mountPath = "/app/data"
+
+# Comprehensive Dashboard (Internal Tool)
+[[services]]
+name = "neurovest-dashboard"
+source = "."
+[services.build]
+buildCommand = "pip install --upgrade pip && pip install -r requirements.txt"
+startCommand = "streamlit run dashboard_comprehensive.py --server.port=$PORT --server.address=0.0.0.0 --server.headless=true"
+
+[services.deploy]
+numReplicas = 1
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+[[services.volumes]]
+name = "neurovest-data"
+mountPath = "/app/data"
+
+# ============================================================================
+# BACKGROUND WORKERS
+# ============================================================================
+
+# Continuous Data Scheduler Worker
+[[services]]
+name = "neurovest-data-worker"
+source = "."
+[services.build]
+buildCommand = "pip install --upgrade pip && pip install -r requirements.txt"
+startCommand = "python3 worker_data_scheduler.py"
+
+[services.deploy]
+numReplicas = 1
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+
+[[services.env]]
+UPDATE_INTERVAL = "60"
+DATABASE_PATH = "data/market_data.db"
+
+[[services.volumes]]
+name = "neurovest-data"
+mountPath = "/app/data"
+
+# ============================================================================
+# CRON JOBS
+# ============================================================================
+
+# Daily Predictions (Mon-Fri 4:30 PM EST)
+[[services]]
+name = "neurovest-daily-predictions"
+source = "."
+cron = "30 16 * * 1-5"
+
+[services.build]
+buildCommand = "pip install --upgrade pip && pip install -r requirements.txt"
+startCommand = "python3 cron_daily_predictions.py"
+
+[[services.volumes]]
+name = "neurovest-data"
+mountPath = "/app/data"
+
+# Weekly Model Retraining (Sundays 2:00 AM EST)
+[[services]]
+name = "neurovest-weekly-retrain"
+source = "."
+cron = "0 2 * * 0"
+
+[services.build]
+buildCommand = "pip install --upgrade pip && pip install -r requirements.txt"
+startCommand = "python3 cron_weekly_retrain.py"
+
+[[services.volumes]]
+name = "neurovest-data"
+mountPath = "/app/data"

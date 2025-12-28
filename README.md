@@ -11,7 +11,8 @@ Advanced ensemble ML system for predicting market opportunities through regime a
 ![Python](https://img.shields.io/badge/Python-3.11-green)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 ![Status](https://img.shields.io/badge/Status-Production-success)
-![Deploy](https://img.shields.io/badge/Deploy-Render-blueviolet)
+![Deploy](https://img.shields.io/badge/Deploy-Railway-blueviolet)
+![Deploy](https://img.shields.io/badge/Deploy-Render-lightgrey)
 
 <div align="center">
 
@@ -63,13 +64,17 @@ Advanced ensemble ML system for predicting market opportunities through regime a
 - Updates ensemble weights
 - Ensures models adapt to market changes
 
-**Deployment Stack:**
-- Platform: Render (Free Tier)
+**Deployment Options:**
+- **Railway** (Recommended): Shared volumes, full automation - **[🚂 Railway Guide](RAILWAY_DEPLOYMENT.md)**
+- **Render**: Dashboards only (free tier limitations) - **[📖 Render Guide](WORKERS_GUIDE.md)**
+- **Local**: Full control, manual operation
+
+**Production Stack:**
 - Runtime: Python 3.11.14
 - Framework: Streamlit 1.38+
-- Workers: Background + 2 Cron Jobs
-- Theme: Dark mode locked in (#0e1117 background, #3498db accents)
-- **[📖 Workers Setup Guide](WORKERS_GUIDE.md)**
+- Services: 2 Web + 1 Worker + 2 Cron Jobs
+- Storage: Shared persistent volume (10GB)
+- Theme: Dark mode (#0e1117 background, #3498db accents)
 
 ---
 
