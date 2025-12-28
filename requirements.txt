@@ -33,6 +33,10 @@ PyYAML>=6.0
 schedule>=1.2.0
 APScheduler>=3.10.4
 
+# Database - PostgreSQL support
+psycopg2-binary>=2.9.9
+sqlalchemy>=2.0.23
+
 # Technical Analysis
 ta>=0.10.2
 
