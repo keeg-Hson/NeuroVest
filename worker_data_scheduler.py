@@ -70,7 +70,8 @@ class WorkerScheduler:
             self.dm.register_asset(ticker, 'stock', 'daily')
 
             try:
-                callback = create_yfinance_callback(ticker, period='5d')
+                # Fetch 3 years of historical data for ML training
+                callback = create_yfinance_callback(ticker, period='3y')
                 self.scheduler.register_update_callback(
                     ticker, callback, interval_minutes=60
                 )
@@ -98,17 +99,18 @@ class WorkerScheduler:
 
         print("\n₿ Registering crypto assets...")
         for symbol, ticker in crypto_symbols:
-            self.dm.register_asset(ticker, 'crypto', 'hourly')
+            self.dm.register_asset(ticker, 'crypto', 'daily')
 
             try:
                 # Use Coinbase instead of Binance (Binance blocks Railway's region)
+                # Fetch 3 years of daily data for ML training (matches stock data)
                 callback = create_ccxt_callback(
-                    symbol, 'coinbase', '1h', limit=100
+                    symbol, 'coinbase', '1d', limit=1095  # 3 years of daily data
                 )
                 self.scheduler.register_update_callback(
-                    ticker, callback, interval_minutes=15
+                    ticker, callback, interval_minutes=60  # Update daily, not every 15min
                 )
-                print(f"  ✓ {ticker} (CCXT, 15min)")
+                print(f"  ✓ {ticker} (CCXT, 60min)")
             except Exception as e:
                 print(f"  ⚠️  {ticker} - Using fallback: {e}")
                 callback = create_fallback_callback(ticker, base_price=50000)
