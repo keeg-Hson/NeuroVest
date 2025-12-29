@@ -315,38 +315,42 @@ print(f"  - {labeled_path}")
 print(f"  - {daily_path}")
 print(f"  - {analysis_path}")
 
-# Interactive next steps
-print("\n💡 NEXT STEPS:")
-print("-" * 40)
-print("1. Run backtest")
-print("2. Run evaluation")
-print("3. System diagnostics")
-print("4. Retrain models")
-print("0. Exit")
+# Interactive next steps (skip in non-interactive mode)
+import sys
+if sys.stdin.isatty():
+    print("\n💡 NEXT STEPS:")
+    print("-" * 40)
+    print("1. Run backtest")
+    print("2. Run evaluation")
+    print("3. System diagnostics")
+    print("4. Retrain models")
+    print("0. Exit")
 
-try:
-    choice = input("\nSelect next step (0-4): ").strip()
+    try:
+        choice = input("\nSelect next step (0-4): ").strip()
 
-    if choice == "1":
-        print("\n▶️  Running: python3 backtest.py")
-        import subprocess
-        subprocess.run(["python3", "backtest.py"])
-    elif choice == "2":
-        print("\n▶️  Running: python3 evaluate.py")
-        import subprocess
-        subprocess.run(["python3", "evaluate.py"])
-    elif choice == "3":
-        print("\n▶️  Running: python3 diagnose_system.py")
-        import subprocess
-        subprocess.run(["python3", "diagnose_system.py"])
-    elif choice == "4":
-        print("\n▶️  Running: python3 train_multi_asset.py")
-        import subprocess
-        subprocess.run(["python3", "train_multi_asset.py"])
-    else:
+        if choice == "1":
+            print("\n▶️  Running: python3 backtest.py")
+            import subprocess
+            subprocess.run(["python3", "backtest.py"])
+        elif choice == "2":
+            print("\n▶️  Running: python3 evaluate.py")
+            import subprocess
+            subprocess.run(["python3", "evaluate.py"])
+        elif choice == "3":
+            print("\n▶️  Running: python3 diagnose_system.py")
+            import subprocess
+            subprocess.run(["python3", "diagnose_system.py"])
+        elif choice == "4":
+            print("\n▶️  Running: python3 train_multi_asset.py")
+            import subprocess
+            subprocess.run(["python3", "train_multi_asset.py"])
+        else:
+            print("\n👋 Done!")
+    except (KeyboardInterrupt, EOFError):
         print("\n👋 Done!")
-except (KeyboardInterrupt, EOFError):
-    print("\n👋 Done!")
+else:
+    print("\n✅ Predictions complete - running non-interactively")
 print("=" * 80)
 
 
