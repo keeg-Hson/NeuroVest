@@ -97,9 +97,10 @@ class DataScheduler:
             if not self._should_update(ticker):
                 return
 
-            # Check market hours for stocks
-            if asset_type == 'stock' and not self._is_market_hours('stock'):
-                return
+            # Market hours check disabled for daily data collection
+            # Daily historical data can be fetched anytime
+            # if asset_type == 'stock' and not self._is_market_hours('stock'):
+            #     return
 
             # Call update callback
             if ticker in self.update_callbacks:
