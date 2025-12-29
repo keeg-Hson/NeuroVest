@@ -298,7 +298,7 @@ def load_asset_data(ticker):
 def main():
     # Sidebar
     st.sidebar.title("NeuroVest API")
-    st.sidebar.markdown("*Market Forecasting Tool*")
+    st.sidebar.markdown("*Economic Forecasting API*")
     st.sidebar.markdown("---")
 
     # Navigation
