@@ -1,5 +1,5 @@
-# Railway Procfile - Combined Worker + Dashboard Service
-# TEMPORARY: Running bootstrap to load all data + train models
-# After bootstrap completes, change back to: bash start_combined.sh
+# Railway Procfile - Dashboard Only
+# Bootstrap and data loading should run in DataWorker2 service only
+# This service just runs the Streamlit dashboard
 
-web: bash bootstrap_all.sh && bash start_combined.sh
+web: streamlit run dashboard_comprehensive.py --server.address=0.0.0.0 --server.headless=true --server.enableCORS=false --server.enableXsrfProtection=false

@@ -240,35 +240,79 @@ class DataManager:
                 ''', (ticker, asset_type, frequency))
                 conn.commit()
 
+    def _normalize_price_df(self, df: pd.DataFrame, asset_type: str) -> pd.DataFrame:
+        """Normalize column names and data types from different sources (yfinance, CCXT)"""
+        df = df.copy()
+
+        # If timestamp is the index (common with yfinance), move it into a column
+        if "timestamp" not in df.columns:
+            if isinstance(df.index, pd.DatetimeIndex):
+                df = df.reset_index()
+                # Handle various index names
+                if df.columns[0] in ['Date', 'Datetime', 'date', 'datetime']:
+                    df = df.rename(columns={df.columns[0]: "timestamp"})
+            elif "Date" in df.columns:
+                df = df.rename(columns={"Date": "timestamp"})
+            elif "Datetime" in df.columns:
+                df = df.rename(columns={"Datetime": "timestamp"})
+            elif "date" in df.columns:
+                df = df.rename(columns={"date": "timestamp"})
+
+        # Standardize OHLCV column names (handle yfinance capitalization)
+        rename_map = {
+            "Open": "open", "High": "high", "Low": "low", "Close": "close", "Volume": "volume",
+            "Adj Close": "adjusted_close", "AdjClose": "adjusted_close", "Adjusted Close": "adjusted_close",
+        }
+        df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
+
+        # CCXT sometimes returns timestamp as milliseconds
+        if "timestamp" in df.columns:
+            # If it's numeric milliseconds, convert
+            if pd.api.types.is_numeric_dtype(df["timestamp"]):
+                # Heuristic: big numbers are ms
+                if df["timestamp"].dropna().astype("int64").max() > 10_000_000_000:
+                    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True).dt.tz_convert(None)
+                else:
+                    df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s", utc=True).dt.tz_convert(None)
+            else:
+                df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.tz_localize(None)
+
+        # Ensure required columns exist (fill missing with NaN)
+        required = ["timestamp", "open", "high", "low", "close", "volume"]
+        for c in required:
+            if c not in df.columns:
+                df[c] = pd.NA
+
+        # If adjusted_close missing, use close
+        if "adjusted_close" not in df.columns:
+            df["adjusted_close"] = df["close"]
+
+        # Keep only what we insert
+        keep = ["timestamp", "open", "high", "low", "close", "volume", "adjusted_close"]
+        return df[keep].dropna(subset=["timestamp"])
+
     def save_data(self, ticker: str, df: pd.DataFrame, asset_type: str = 'stock'):
         """Save price data with diagnostic logging"""
         if df is None or len(df) == 0:
             logger.warning(f"No data to save for {ticker}")
             return
 
-        rows_to_insert = len(df)
-        print(f"[DB] Attempting to insert {rows_to_insert} rows for {ticker}")
+        print(f"[DB] Attempting to insert {len(df)} rows for {ticker}")
+        print(f"[DB] Columns before normalize: {list(df.columns)}")
 
-        # Prepare data
-        df_clean = df.copy()
-        if 'timestamp' not in df_clean.columns and df_clean.index.name == 'Date':
-            df_clean = df_clean.reset_index()
-            df_clean = df_clean.rename(columns={'Date': 'timestamp'})
+        # Normalize column names and data types
+        df_clean = self._normalize_price_df(df, asset_type)
 
-        # Ensure timestamp is datetime
-        if 'timestamp' in df_clean.columns:
-            df_clean['timestamp'] = pd.to_datetime(df_clean['timestamp'])
+        print(f"[DB] Columns after normalize: {list(df_clean.columns)}")
+        if len(df_clean) > 0:
+            print(f"[DB] Sample row: {df_clean.head(1).to_dict('records')[0]}")
+        else:
+            print(f"[DB] WARNING: DataFrame empty after normalization!")
+            return
 
         # Add ticker and asset_type columns
         df_clean['ticker'] = ticker
         df_clean['asset_type'] = asset_type
-
-        # Select only relevant columns
-        columns = ['ticker', 'asset_type', 'timestamp', 'open', 'high', 'low', 'close', 'volume']
-        if 'adjusted_close' in df_clean.columns:
-            columns.append('adjusted_close')
-
-        df_clean = df_clean[columns]
 
         if self.backend == 'postgresql':
             self._save_data_postgres(ticker, df_clean)
