@@ -334,10 +334,13 @@ def main():
     total_assets = len(STOCK_ETFS) + len(PRECIOUS_METALS) + len(CRYPTO_ASSETS)
     st.sidebar.metric("Assets Downloaded", f"{downloaded}/{total_assets}")
 
-    # Check models
-    model_count = sum(1 for f in ['xgboost_multi_asset.pkl', 'lightgbm_multi_asset.pkl', 'catboost_multi_asset.pkl']
-                     if (MODELS_DIR / f).exists())
-    st.sidebar.metric("Models Trained", f"{model_count}/3")
+    # Check models (may not be visible if worker is in separate container)
+    try:
+        model_count = sum(1 for f in ['xgboost_multi_asset.pkl', 'lightgbm_multi_asset.pkl', 'catboost_multi_asset.pkl']
+                         if (MODELS_DIR / f).exists())
+    except Exception:
+        model_count = "?"  # Models in worker container
+    st.sidebar.metric("Models Trained", f"{model_count}/3" if isinstance(model_count, int) else "Worker")
 
     # Route to pages
     if page == "📊 Overview":
@@ -451,13 +454,19 @@ def show_overview():
         st.metric("✅ Assets Ready", downloaded, help="Data downloaded and ready for analysis")
 
     with col3:
-        pred_count = len(list(LOGS_DIR.glob("*predictions*.csv"))) if LOGS_DIR.exists() else 0
+        try:
+            pred_count = len(list(LOGS_DIR.glob("*predictions*.csv"))) if LOGS_DIR.exists() else 0
+        except Exception:
+            pred_count = "?"  # Predictions in worker container
         st.metric("🔮 Forecast Files", pred_count, help="Generated prediction files")
 
     with col4:
-        model_count = sum(1 for f in ['xgboost_multi_asset.pkl', 'lightgbm_multi_asset.pkl', 'catboost_multi_asset.pkl']
-                         if (MODELS_DIR / f).exists())
-        st.metric("🤖 Models Trained", f"{model_count}/3", help="XGBoost, LightGBM, CatBoost")
+        try:
+            model_count_main = sum(1 for f in ['xgboost_multi_asset.pkl', 'lightgbm_multi_asset.pkl', 'catboost_multi_asset.pkl']
+                             if (MODELS_DIR / f).exists())
+        except Exception:
+            model_count_main = "?"  # Models in worker container
+        st.metric("🤖 Models Trained", f"{model_count_main}/3" if isinstance(model_count_main, int) else "Worker", help="XGBoost, LightGBM, CatBoost")
 
     # Use Cases
     st.markdown("---")
