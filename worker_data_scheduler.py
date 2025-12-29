@@ -83,16 +83,14 @@ class WorkerScheduler:
                     ticker, callback, interval_minutes=60
                 )
 
-        # Register crypto assets
+        # Register crypto assets (Coinbase only - BNB and MATIC not available)
         crypto_symbols = [
             ('BTC/USDT', 'BTC_USDT'),
             ('ETH/USDT', 'ETH_USDT'),
-            ('BNB/USDT', 'BNB_USDT'),
             ('SOL/USDT', 'SOL_USDT'),
             ('XRP/USDT', 'XRP_USDT'),
             ('ADA/USDT', 'ADA_USDT'),
             ('DOGE/USDT', 'DOGE_USDT'),
-            ('MATIC/USDT', 'MATIC_USDT'),
             ('DOT/USDT', 'DOT_USDT'),
             ('AVAX/USDT', 'AVAX_USDT')
         ]
