@@ -49,7 +49,12 @@ class DataManager:
         database_url = os.environ.get("DATABASE_URL", "")
 
         if database_url and database_url.startswith("postgres"):
-            self._init_postgresql(database_url)
+            try:
+                self._init_postgresql(database_url)
+            except Exception as e:
+                logger.error(f"PostgreSQL initialization failed: {e}")
+                logger.info("Falling back to SQLite")
+                self._init_sqlite(db_path)
         else:
             self._init_sqlite(db_path)
 
@@ -63,33 +68,33 @@ class DataManager:
         if not SQLALCHEMY_AVAILABLE:
             raise ImportError("SQLAlchemy required for PostgreSQL but not installed")
 
-        # Print DB fingerprint for diagnostics
+        # Log DB fingerprint for diagnostics
         u = urlparse(database_url)
-        print("\n" + "="*70)
-        print("🔍 DATABASE CONNECTION DIAGNOSTICS")
-        print("="*70)
-        print(f"[DB] Backend: PostgreSQL")
-        print(f"[DB] Scheme: {u.scheme}")
-        print(f"[DB] Host: {u.hostname}")
-        print(f"[DB] Port: {u.port}")
-        print(f"[DB] Database: {u.path.lstrip('/')}")
-        print(f"[DB] User: {u.username}")
-        print("="*70 + "\n")
+        logger.info("="*70)
+        logger.info("🔍 DATABASE CONNECTION DIAGNOSTICS")
+        logger.info("="*70)
+        logger.info(f"[DB] Backend: PostgreSQL")
+        logger.info(f"[DB] Scheme: {u.scheme}")
+        logger.info(f"[DB] Host: {u.hostname}")
+        logger.info(f"[DB] Port: {u.port}")
+        logger.info(f"[DB] Database: {u.path.lstrip('/')}")
+        logger.info(f"[DB] User: {u.username}")
+        logger.info("="*70)
 
         self.backend = 'postgresql'
-        self.engine = create_engine(database_url, pool_pre_ping=True)
+        self.engine = create_engine(database_url, pool_pre_ping=True, connect_args={'connect_timeout': 10})
         self._create_tables_postgres()
 
         logger.info("Data Manager initialized: PostgreSQL")
 
     def _init_sqlite(self, db_path: str):
         """Initialize SQLite backend"""
-        print("\n" + "="*70)
-        print("🔍 DATABASE CONNECTION DIAGNOSTICS")
-        print("="*70)
-        print(f"[DB] Backend: SQLite")
-        print(f"[DB] Path: {db_path}")
-        print("="*70 + "\n")
+        logger.info("="*70)
+        logger.info("🔍 DATABASE CONNECTION DIAGNOSTICS")
+        logger.info("="*70)
+        logger.info(f"[DB] Backend: SQLite")
+        logger.info(f"[DB] Path: {db_path}")
+        logger.info("="*70)
 
         self.backend = 'sqlite'
         self.db_path = Path(db_path)
@@ -157,10 +162,10 @@ class DataManager:
                 )
             '''))
 
-            # Print row count for diagnostics
+            # Log row count for diagnostics
             result = conn.execute(text("SELECT COUNT(*) FROM price_data"))
             count = result.scalar()
-            print(f"[DB] Current price_data rows: {count:,}")
+            logger.info(f"[DB] Current price_data rows: {count:,}")
 
     def _create_tables_sqlite(self, conn):
         """Create SQLite schema"""
@@ -205,10 +210,10 @@ class DataManager:
 
             conn.commit()
 
-            # Print row count for diagnostics
+            # Log row count for diagnostics
             cursor.execute("SELECT COUNT(*) FROM price_data")
             count = cursor.fetchone()[0]
-            print(f"[DB] Current price_data rows: {count:,}")
+            logger.info(f"[DB] Current price_data rows: {count:,}")
 
         except sqlite3.Error as e:
             logger.error(f"Error creating SQLite tables: {e}")
