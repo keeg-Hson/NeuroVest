@@ -247,6 +247,9 @@ class DataManager:
         # If timestamp is the index (common with yfinance), move it into a column
         if "timestamp" not in df.columns:
             if isinstance(df.index, pd.DatetimeIndex):
+                # Strip timezone info if present (yfinance returns timezone-aware)
+                if df.index.tz is not None:
+                    df.index = df.index.tz_localize(None)
                 df = df.reset_index()
                 # Handle various index names
                 if df.columns[0] in ['Date', 'Datetime', 'date', 'datetime']:
@@ -275,7 +278,10 @@ class DataManager:
                 else:
                     df["timestamp"] = pd.to_datetime(df["timestamp"], unit="s", utc=True).dt.tz_convert(None)
             else:
-                df["timestamp"] = pd.to_datetime(df["timestamp"]).dt.tz_localize(None)
+                # Convert to datetime and strip timezone
+                df["timestamp"] = pd.to_datetime(df["timestamp"])
+                if hasattr(df["timestamp"].dtype, 'tz') and df["timestamp"].dt.tz is not None:
+                    df["timestamp"] = df["timestamp"].dt.tz_localize(None)
 
         # Ensure required columns exist (fill missing with NaN)
         required = ["timestamp", "open", "high", "low", "close", "volume"]
@@ -596,6 +602,11 @@ class DataManager:
         """
         # Get last timestamp in database
         last_ts = self.get_last_timestamp(ticker)
+
+        # Ensure index is timezone-naive for comparison
+        if isinstance(source_data.index, pd.DatetimeIndex) and source_data.index.tz is not None:
+            source_data = source_data.copy()
+            source_data.index = source_data.index.tz_localize(None)
 
         if last_ts is not None:
             # Only insert new data
