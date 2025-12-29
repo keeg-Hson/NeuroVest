@@ -1,4 +1,5 @@
 # Railway Procfile - Combined Worker + Dashboard Service
-# Runs both data collection and web dashboard in one container
+# TEMPORARY: Running bootstrap to load all data + train models
+# After bootstrap completes, change back to: bash start_combined.sh
 
-web: bash start_combined.sh
+web: bash bootstrap_all.sh && bash start_combined.sh
