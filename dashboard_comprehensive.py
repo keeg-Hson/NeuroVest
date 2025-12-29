@@ -38,7 +38,7 @@ except ImportError:
     sys.exit(1)
 
 # Import DataManager for database access
-from core.data_manager import DataManager
+from core.data_manager_postgres import DataManager
 import os
 
 # Configure page

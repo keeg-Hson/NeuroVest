@@ -5,7 +5,7 @@ Use this script to update data on-demand or set up automated updates
 
 import argparse
 from datetime import datetime
-from core.data_manager import DataManager
+from core.data_manager_postgres import DataManager
 from core.scheduler import (
     DataScheduler,
     create_yfinance_callback,

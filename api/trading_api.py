@@ -16,7 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.risk_manager import RiskManager, RiskProfile
-from core.data_manager import DataManager
+from core.data_manager_postgres import DataManager
 
 
 # ==============================================================================

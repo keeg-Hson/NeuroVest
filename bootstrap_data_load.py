@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from core.data_manager import DataManager
+from core.data_manager_postgres import DataManager
 from core.scheduler import create_yfinance_callback, create_ccxt_callback
 from datetime import datetime
 
