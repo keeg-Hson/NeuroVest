@@ -623,6 +623,35 @@ class DataManager:
         # Use existing save_data method
         self.save_data(ticker, new_data, asset_type)
 
+    def get_assets_needing_update(self, max_age_hours: int = 24) -> List[Tuple[str, str]]:
+        """Get list of assets that need updating based on last_update timestamp"""
+        if self.backend == 'postgresql':
+            try:
+                with self.engine.connect() as conn:
+                    # PostgreSQL interval syntax
+                    result = conn.execute(text(f'''
+                        SELECT ticker, asset_type FROM asset_metadata
+                        WHERE last_update IS NULL
+                           OR last_update < NOW() - INTERVAL '{max_age_hours} hours'
+                    '''))
+                    return [(row[0], row[1]) for row in result]
+            except Exception as e:
+                logger.error(f"Error getting assets needing update (PostgreSQL): {e}")
+                return []
+        else:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            try:
+                cursor.execute('''
+                    SELECT ticker, asset_type FROM asset_metadata
+                    WHERE last_update IS NULL
+                       OR datetime(last_update) < datetime('now', '-' || ? || ' hours')
+                ''', (max_age_hours,))
+                return cursor.fetchall()
+            except sqlite3.Error as e:
+                logger.error(f"Error getting assets needing update (SQLite): {e}")
+                return []
+
     def close(self):
         """Close database connections"""
         if self.backend == 'postgresql':
