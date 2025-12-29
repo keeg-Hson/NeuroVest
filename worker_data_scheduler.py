@@ -43,14 +43,13 @@ class WorkerScheduler:
         print("\n" + "="*70)
         print("🚀 NEUROVEST DATA WORKER - STARTING")
         print("="*70)
-        print(f"  Platform: Render")
+        print(f"  Platform: Railway")
         print(f"  Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"  Python: {sys.version.split()[0]}")
         print("="*70 + "\n")
 
-        # Initialize data manager
-        db_path = os.getenv('DATABASE_PATH', 'data/market_data.db')
-        self.dm = DataManager(db_path)
+        # Initialize data manager (auto-detects DATABASE_URL for PostgreSQL)
+        self.dm = DataManager()
 
         # Initialize scheduler
         self.scheduler = DataScheduler(self.dm)

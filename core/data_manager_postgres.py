@@ -508,6 +508,61 @@ class DataManager:
             logger.error(f"Error getting SQLite stats: {e}")
             return {'total_assets': 0, 'total_records': 0, 'cache_hit_rate': 0, 'db_size_mb': 0}
 
+    def get_last_timestamp(self, ticker: str) -> Optional[datetime]:
+        """Get the latest timestamp for an asset"""
+        if self.backend == 'postgresql':
+            try:
+                with self.engine.connect() as conn:
+                    result = conn.execute(text('''
+                        SELECT MAX(timestamp) FROM price_data WHERE ticker = :ticker
+                    '''), {"ticker": ticker})
+                    max_ts = result.scalar()
+                    return pd.to_datetime(max_ts) if max_ts else None
+            except Exception as e:
+                logger.error(f"Error getting last timestamp for {ticker}: {e}")
+                return None
+        else:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            try:
+                cursor.execute('''
+                    SELECT MAX(timestamp) FROM price_data WHERE ticker = ?
+                ''', (ticker,))
+                result = cursor.fetchone()
+                if result and result[0]:
+                    return pd.to_datetime(result[0])
+                return None
+            except sqlite3.Error as e:
+                logger.error(f"Error getting last timestamp for {ticker}: {e}")
+                return None
+
+    def update_from_source(self, ticker: str, asset_type: str, source_data: pd.DataFrame):
+        """
+        Incremental update - only adds new data that's newer than last timestamp
+
+        Args:
+            ticker: Asset ticker
+            asset_type: Type (stock, crypto, commodity)
+            source_data: New data from external source (DataFrame with timestamp index)
+        """
+        # Get last timestamp in database
+        last_ts = self.get_last_timestamp(ticker)
+
+        if last_ts is not None:
+            # Only insert new data
+            new_data = source_data[source_data.index > last_ts]
+            if new_data.empty:
+                print(f"  {ticker}: Already up to date")
+                return
+            print(f"  {ticker}: Adding {len(new_data)} new records (after {last_ts.strftime('%Y-%m-%d')})")
+        else:
+            # No data yet, insert everything
+            new_data = source_data
+            print(f"  {ticker}: First load, adding {len(new_data)} records")
+
+        # Use existing save_data method
+        self.save_data(ticker, new_data, asset_type)
+
     def close(self):
         """Close database connections"""
         if self.backend == 'postgresql':

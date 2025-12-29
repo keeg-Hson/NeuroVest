@@ -21,8 +21,8 @@ def main():
     print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*70 + "\n")
 
-    # Initialize data manager
-    dm = DataManager('data/market_data.db')
+    # Initialize data manager (auto-detects DATABASE_URL for PostgreSQL)
+    dm = DataManager()
 
     # Stock/ETF assets
     stock_tickers = [

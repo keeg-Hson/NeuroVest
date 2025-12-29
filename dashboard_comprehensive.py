@@ -168,13 +168,11 @@ CACHE_DIR = Path("data_cache")
 MODELS_DIR = Path("models")
 LOGS_DIR = Path("logs")
 
-# Initialize DataManager for database access
-DB_PATH = os.getenv('DATABASE_PATH', 'data/market_data.db')
-
+# Initialize DataManager for database access (auto-detects DATABASE_URL)
 @st.cache_resource
 def get_data_manager():
     """Get cached DataManager instance"""
-    return DataManager(DB_PATH)
+    return DataManager()
 
 # All supported assets
 STOCK_ETFS = {
