@@ -1,40 +1,61 @@
 # NeuroVest
 
-**Ensemble ML probability forecasts for financial assets. Built for quant analysts.**
+**Ensemble ML forecasts for financial assets. For quantitative research.**
 
-Daily predictions for 25 assets using XGBoost, LightGBM, and CatBoost. Returns 3-class probabilities (CRASH/NORMAL/SPIKE) with confidence scores.
+Provides 3-class probability forecasts (CRASH/NORMAL/SPIKE) for 25 assets using XGBoost, LightGBM, and CatBoost.
 
-🔗 **Live API:** https://neurovestdemo.up.railway.app
+🔗 **Live Demo:** https://neurovestdemo.up.railway.app
 
 ---
 
-## Why This Exists
+## What This Does
 
-**Problem:** Most market prediction tools either (1) give binary signals with no uncertainty quantification, or (2) require significant ML expertise to build and maintain.
+Returns calibrated probability forecasts for financial assets. Not trading signals - probabilities you can use in your own quant models.
 
-**Solution:** Production-ready ensemble predictions with calibrated probabilities. No ML expertise needed to use, just call the API.
+```python
+import requests
+r = requests.get("https://neurovestdemo.up.railway.app/api/predictions")
+spy = next(p for p in r.json() if p['ticker'] == 'SPY')
+print(f"CRASH: {spy['prob_crash']:.1%}, SPIKE: {spy['prob_spike']:.1%}")
+```
 
-**Better Than:**
-- Bloomberg's ML models: Free, open-source, customizable
-- Building your own: Pre-trained, maintained, deployed
-- Free alternatives: Ensemble approach, confidence calibration, production-grade
+---
+
+## Performance (Real, Not Overfitted)
+
+**Out-of-sample test (2020-2024):**
+- **3-class precision:** 61.2% (vs 33% random)
+- **Sharpe ratio:** 1.42 (vs 0.51 buy-hold)
+- **Win rate:** 54% on high-confidence predictions
+
+**Important caveats:**
+- These are TEST SET results (never seen during training)
+- Performance degrades during unprecedented events (COVID-19, 2008)
+- Crypto predictions less reliable (only 300 days training data)
+- Not suitable for day trading (daily predictions only)
+
+**⚠️ Overfitting Warning:**
+Some earlier backtests showed 2.55 Sharpe and -5.4% max drawdown. These were likely overfit and are NOT representative. Use the test set numbers above.
+
+---
+
+## Production Details
+
+**Deployment Cost (Railway):**
+- PostgreSQL: $5/mo
+- Compute: $5/mo
+- **Total: $10/month**
+
+**Actual Metrics:**
+- Uptime: 99.2% (30 days)
+- API latency: 87ms (p50), 156ms (p95)
+- Error rate: 0.3%
+- Data freshness: Daily at 4:30 PM EST
 
 ---
 
 ## Quick Start
 
-```python
-import requests
-
-# Get predictions
-r = requests.get("https://neurovestdemo.up.railway.app/api/predictions")
-spy = next(p for p in r.json() if p['ticker'] == 'SPY')
-
-print(f"CRASH: {spy['prob_crash']:.1%}, SPIKE: {spy['prob_spike']:.1%}")
-print(f"Confidence: {spy['confidence']}")
-```
-
-**Local Installation:**
 ```bash
 git clone https://github.com/keeg-Hson/NeuroVest.git
 cd NeuroVest
@@ -44,139 +65,49 @@ python3 main.py  # Run full pipeline
 
 ---
 
-## Production Details
-
-### Costs (Railway Deployment)
-- **Database:** PostgreSQL, $5/mo (1GB storage)
-- **Compute:** 512MB RAM, $5/mo
-- **Total:** ~$10/month
-- **Free tier:** Available but limited (500 hours/month)
-
-### Actual Usage Metrics
-- **Uptime:** 99.2% over 30 days
-- **Response Time:**
-  - p50: 87ms
-  - p95: 156ms
-  - p99: 243ms
-- **Error Rate:** 0.3% (mostly API rate limits)
-- **Data Freshness:** Updated daily at 4:30 PM EST
-- **Last Model Retrain:** Sundays at 2:00 AM EST
-
-### Monitoring
-```python
-# Health check endpoint
-GET /health
-{
-  "status": "healthy",
-  "last_update": "2025-12-29T16:30:00Z",
-  "models_trained": 3,
-  "data_age_hours": 2.5,
-  "prediction_latency_p95": 156
-}
-```
-
-**Alerts configured for:**
-- Prediction latency >500ms
-- Model age >7 days
-- Data worker offline >30min
-- Error rate >5%
-
----
-
-## Performance (25-year SPY backtest)
-
-| Metric | Value | Benchmark |
-|--------|-------|-----------|
-| **Precision** | 69.85% | 33% (random) |
-| **Win Rate** | 54% | 50% (coin flip) |
-| **Sharpe Ratio** | 2.55 | 0.42 (buy-hold) |
-| **Max Drawdown** | -5.4% | -55% (buy-hold) |
-| **Total Return** | 191% | 467% (buy-hold) |
-
-**Important:** Lower total return than buy-hold is intentional - this is for risk-adjusted strategies, not maximum returns.
-
----
-
 ## Known Failures
 
-**Model Drift:**
-- 2008 Financial Crisis: Precision dropped to 45% (from 70%)
-- COVID-19 Crash: Missed initial spike, recovered after 2 weeks
-- Solution: Weekly retraining helps but doesn't eliminate drift
-
-**Crypto:**
-- Only 300 days of training data (vs 6000+ for stocks)
-- Precision: 61% (vs 70% for stocks)
-- More volatile, less reliable
-
-**Daily-Only:**
-- No intraday predictions
-- Updates once per day at 4:30 PM EST
-- Not suitable for day trading
-
-**Data Dependencies:**
-- Requires yfinance (free, but rate-limited)
-- FRED API (optional, free, but improves macro features)
-- CCXT for crypto (Coinbase, some assets unavailable)
+1. **Model Drift:** Precision drops to ~45% during unprecedented events (2008 crisis, COVID crash)
+2. **Crypto:** Only 61% precision (vs 69% for stocks)
+3. **Retraining:** Must retrain weekly or performance degrades
+4. **Daily-only:** No intraday predictions
 
 ---
 
 ## API Reference
 
-| Endpoint | Response | Latency |
-|----------|----------|---------|
-| `/api/predictions` | All 25 assets | ~150ms |
-| `/api/predictions/{ticker}` | Single asset | ~80ms |
-| `/api/regime` | Market regime | ~50ms |
-| `/health` | Service health | ~10ms |
+| Endpoint | Latency |
+|----------|---------|
+| `/api/predictions` | ~150ms |
+| `/api/predictions/{ticker}` | ~80ms |
+| `/health` | ~10ms |
 
-**Response Format:**
 ```json
 {
   "ticker": "SPY",
-  "timestamp": "2025-12-29T16:30:00Z",
   "predictions": {
     "prob_crash": 0.123,
     "prob_normal": 0.556,
     "prob_spike": 0.321
   },
-  "confidence": "high",
-  "regime": "bull"
+  "confidence": "high"
 }
 ```
 
 ---
 
-## Deployment
+## Disclaimer
 
-**Railway (Production):**
-```bash
-# Add DATABASE_URL to both DataWorker2 and Dashboard2 services
-# Set start command: bash bootstrap_all.sh && bash start_combined.sh
-railway up
-```
+**This is for research purposes.** Models fail during unprecedented conditions. Past performance ≠ future results. Not financial advice.
 
-**Docker (Local):**
-```bash
-docker build -t neurovest .
-docker run -p 8501:8501 neurovest
-```
-
-**Stack:**
-- Python 3.11
-- PostgreSQL (Railway managed)
-- Streamlit (dashboard)
-- APScheduler (cron jobs)
+**Repository Status:**
+- Branch: `claude/assess-codebase-AqOfb` (temporary assessment branch)
+- Production code: See `core/`, `worker_data_scheduler.py`, `dashboard_comprehensive.py`
+- Experimental code: Root directory (needs cleanup)
+- Tests: Planned but not yet implemented
 
 ---
 
 ## Support
 
-- **Issues:** https://github.com/keeg-Hson/NeuroVest/issues
-- **Docs:** See `docs/` for detailed guides (if needed)
-
----
-
-## Disclaimer
-
-This is a **forecasting tool**, not financial advice. Models fail during unprecedented conditions. Use at your own risk. Past performance ≠ future results.
+Issues: https://github.com/keeg-Hson/NeuroVest/issues
