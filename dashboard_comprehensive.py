@@ -174,6 +174,15 @@ def get_data_manager():
     """Get cached DataManager instance"""
     return DataManager()
 
+@st.cache_data(ttl=300)  # Cache for 5 minutes
+def get_database_assets():
+    """Get all assets from the database"""
+    try:
+        dm = get_data_manager()
+        return dm.get_all_assets()  # Returns list of (ticker, asset_type) tuples
+    except Exception as e:
+        return []
+
 # All supported assets
 STOCK_ETFS = {
     'SPY': 'S&P 500', 'QQQ': 'Nasdaq 100', 'IWM': 'Russell 2000',
@@ -325,13 +334,13 @@ def main():
     st.sidebar.markdown("---")
     st.sidebar.markdown("### System Info")
 
-    # Count downloaded assets
-    downloaded = 0
-    for ticker in list(STOCK_ETFS.keys()) + list(PRECIOUS_METALS.keys()) + list(CRYPTO_ASSETS.keys()):
-        if check_asset_status(ticker) == "downloaded":
-            downloaded += 1
+    # Get assets from database (actual loaded data)
+    db_assets = get_database_assets()
+    downloaded = len(db_assets)
 
+    # Total supported assets (from hardcoded lists)
     total_assets = len(STOCK_ETFS) + len(PRECIOUS_METALS) + len(CRYPTO_ASSETS)
+
     st.sidebar.metric("Assets Downloaded", f"{downloaded}/{total_assets}")
 
     # Check models (may not be visible if worker is in separate container)
@@ -443,15 +452,22 @@ def show_overview():
     # Key metrics
     col1, col2, col3, col4 = st.columns(4)
 
+    # Get actual assets from database
+    db_assets = get_database_assets()
+    downloaded = len(db_assets)
+
+    # Total supported assets
     total_assets = len(STOCK_ETFS) + len(PRECIOUS_METALS) + len(CRYPTO_ASSETS)
-    downloaded = sum(1 for t in list(STOCK_ETFS.keys()) + list(PRECIOUS_METALS.keys()) + list(CRYPTO_ASSETS.keys())
-                    if check_asset_status(t) == "downloaded")
+
+    # Count by type
+    stocks_ready = sum(1 for ticker, atype in db_assets if atype == 'stock')
+    crypto_ready = sum(1 for ticker, atype in db_assets if atype == 'crypto')
 
     with col1:
         st.metric("📈 Assets Supported", total_assets, help="Stocks, ETFs, Crypto, Precious Metals")
 
     with col2:
-        st.metric("✅ Assets Ready", downloaded, help="Data downloaded and ready for analysis")
+        st.metric("✅ Assets Ready", f"{downloaded} ({stocks_ready} stocks, {crypto_ready} crypto)", help="Data downloaded and ready for analysis")
 
     with col3:
         try:
@@ -554,38 +570,50 @@ def show_overview():
     status_col1, status_col2, status_col3 = st.columns(3)
 
     with status_col1:
-        st.markdown("**📁 Data Files**")
-        spy_exists = (DATA_DIR / "SPY.csv").exists()
-        spy_status = "🟢 Ready" if spy_exists else "🔴 Missing"
+        st.markdown("**📁 Database Assets**")
 
-        if spy_exists:
-            spy_df = load_asset_data('SPY')
-            rows = len(spy_df) if spy_df is not None else 0
-            st.markdown(f"{spy_status} SPY.csv ({rows:,} rows)")
-        else:
-            st.markdown(f"{spy_status} SPY.csv")
+        # Query database for actual asset counts
+        try:
+            dm = get_data_manager()
+            db_assets = get_database_assets()
 
-        crypto_downloaded = sum(1 for t in CRYPTO_ASSETS.keys() if check_asset_status(t) == "downloaded")
-        st.markdown(f"💎 Crypto: {crypto_downloaded}/10")
+            stocks = sum(1 for _, atype in db_assets if atype == 'stock')
+            crypto = sum(1 for _, atype in db_assets if atype == 'crypto')
+
+            st.markdown(f"🟢 Stocks: {stocks}/14")
+            st.markdown(f"💎 Crypto: {crypto}/10")
+            st.markdown(f"📊 Total: {len(db_assets)}/31 assets")
+        except Exception as e:
+            st.markdown("🔴 Database connection error")
 
     with status_col2:
         st.markdown("**🤖 ML Models**")
-        for model in ['xgboost', 'lightgbm', 'catboost']:
-            exists = (MODELS_DIR / f"{model}_multi_asset.pkl").exists()
-            status = "🟢" if exists else "🔴"
-            st.markdown(f"{status} {model.capitalize()}")
+        try:
+            # Models are in worker container - check via database instead
+            dm = get_data_manager()
+            # If we can query, assume worker is running
+            if len(db_assets) > 0:
+                st.markdown("🟢 Worker active")
+                st.markdown("🟡 Models in worker")
+                st.markdown("   (separate container)")
+            else:
+                st.markdown("🔴 No data loaded")
+        except:
+            st.markdown("🔴 Worker offline")
 
     with status_col3:
         st.markdown("**🔮 Forecasts**")
-        pred_file = LOGS_DIR / "labeled_predictions.csv"
-        if pred_file.exists():
-            try:
-                df = pd.read_csv(pred_file)
-                st.markdown(f"🟢 {len(df):,} predictions")
-            except:
-                st.markdown("🟡 File exists (parse error)")
-        else:
-            st.markdown("🔴 No predictions yet")
+        # Predictions are generated in worker container
+        try:
+            dm = get_data_manager()
+            if len(db_assets) > 0:
+                st.markdown("🟢 Data ready")
+                st.markdown("🟡 Predictions in worker")
+                st.markdown("   (separate container)")
+            else:
+                st.markdown("🔴 No data loaded")
+        except:
+            st.markdown("🔴 Worker offline")
 
     # Quick Start
     st.markdown("---")

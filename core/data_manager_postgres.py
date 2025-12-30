@@ -652,6 +652,30 @@ class DataManager:
                 logger.error(f"Error getting assets needing update (SQLite): {e}")
                 return []
 
+    def get_all_assets(self) -> List[Tuple[str, str]]:
+        """Get all registered assets from the database
+
+        Returns:
+            List of tuples (ticker, asset_type)
+        """
+        if self.backend == 'postgresql':
+            try:
+                with self.engine.connect() as conn:
+                    result = conn.execute(text('SELECT ticker, asset_type FROM asset_metadata ORDER BY ticker'))
+                    return [(row[0], row[1]) for row in result]
+            except Exception as e:
+                logger.error(f"Error getting all assets (PostgreSQL): {e}")
+                return []
+        else:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            try:
+                cursor.execute('SELECT ticker, asset_type FROM asset_metadata ORDER BY ticker')
+                return cursor.fetchall()
+            except sqlite3.Error as e:
+                logger.error(f"Error getting all assets (SQLite): {e}")
+                return []
+
     def close(self):
         """Close database connections"""
         if self.backend == 'postgresql':
