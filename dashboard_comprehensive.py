@@ -43,13 +43,13 @@ import os
 
 # Configure page
 st.set_page_config(
-    page_title="NeuroVest Forecasting API",
+    page_title="NeuroVest Economic Forecasting",
     page_icon="assets/neurovest_logo.png" if Path("assets/neurovest_logo.png").exists() else "📊",
     layout="wide",
     initial_sidebar_state="expanded",
     menu_items={
         'Get Help': 'https://neurovestdemo.streamlit.app/',
-        'About': "NeuroVest Forecasting API - AI-Powered Market Intelligence"
+        'About': "NeuroVest Economic Forecasting - AI-Powered Market Intelligence"
     }
 )
 
