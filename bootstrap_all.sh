@@ -8,16 +8,33 @@ echo "======================================================================="
 echo "Started: $(date '+%Y-%m-%d %H:%M:%S')"
 echo ""
 echo "This script will:"
-echo "  1. Load all historical data (~5-10 min)"
-echo "  2. Train all models (~15-30 min)"
-echo "  3. Generate predictions (~5 min)"
+echo "  1. Run database migration (create tables)"
+echo "  2. Load all historical data (~5-10 min)"
+echo "  3. Train all models (~15-30 min)"
+echo "  4. Generate predictions (~5 min)"
 echo ""
 echo "Total time: ~30-60 minutes"
 echo "======================================================================="
 echo ""
 
+# Step 0: Database migration (create tables if needed)
+echo "STEP 0/4: Database migration..."
+echo "-----------------------------------------------------------------------"
+python3 migrations/run_migration.py
+MIGRATION_EXIT=$?
+
+if [ $MIGRATION_EXIT -ne 0 ]; then
+    echo ""
+    echo "⚠️  Migration had issues (exit code $MIGRATION_EXIT)"
+    echo "Tables may already exist - continuing..."
+fi
+
+echo ""
+echo "======================================================================="
+echo ""
+
 # Step 1: Load data
-echo "STEP 1/3: Loading historical data..."
+echo "STEP 1/4: Loading historical data..."
 echo "-----------------------------------------------------------------------"
 python3 bootstrap_data_load.py
 DATA_EXIT=$?
@@ -34,7 +51,7 @@ echo ""
 
 # Step 2: Train models
 if [ -f "train_multi_asset.py" ]; then
-    echo "STEP 2/3: Training models..."
+    echo "STEP 2/4: Training models..."
     echo "-----------------------------------------------------------------------"
     python3 train_multi_asset.py
     TRAIN_EXIT=$?
@@ -45,7 +62,7 @@ if [ -f "train_multi_asset.py" ]; then
         echo "You may need to debug this manually"
     fi
 else
-    echo "STEP 2/3: SKIPPED (train_multi_asset.py not found)"
+    echo "STEP 2/4: SKIPPED (train_multi_asset.py not found)"
     TRAIN_EXIT=1
 fi
 
@@ -55,7 +72,7 @@ echo ""
 
 # Step 3: Generate predictions
 if [ -f "predict_multi_asset_ensemble.py" ]; then
-    echo "STEP 3/3: Generating predictions..."
+    echo "STEP 3/4: Generating predictions..."
     echo "-----------------------------------------------------------------------"
     python3 predict_multi_asset_ensemble.py
     PRED_EXIT=$?
@@ -66,7 +83,7 @@ if [ -f "predict_multi_asset_ensemble.py" ]; then
         echo "You may need to debug this manually"
     fi
 else
-    echo "STEP 3/3: SKIPPED (predict_multi_asset_ensemble.py not found)"
+    echo "STEP 3/4: SKIPPED (predict_multi_asset_ensemble.py not found)"
     PRED_EXIT=1
 fi
 
