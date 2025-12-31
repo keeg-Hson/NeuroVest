@@ -274,6 +274,47 @@ analysis_path = LOGS_DIR / "ensemble_analysis.csv"
 output.to_csv(analysis_path, index=False)
 print(f"   ✓ {analysis_path}")
 
+# Save predictions to PostgreSQL (for cross-container access)
+try:
+    from core.data_manager_postgres import DataManager
+    dm = DataManager()
+
+    if dm.backend == 'postgresql':
+        # Prepare predictions for database
+        predictions_df = output[['Date', 'Proba']].copy()
+        predictions_df.columns = ['prediction_date', 'ensemble_prob']
+        predictions_df['ticker'] = 'SPY'  # These predictions are for SPY
+
+        # Add individual model probabilities
+        for model_name in ['xgboost', 'lightgbm', 'catboost']:
+            if f'{model_name}_prob' in output.columns:
+                predictions_df[f'{model_name}_prob'] = output[f'{model_name}_prob']
+
+        # Add prediction label (CRASH/NORMAL/SPIKE)
+        predictions_df['prediction_label'] = output['Prediction'].map({
+            0: 'CRASH',
+            1: 'NORMAL',
+            2: 'SPIKE'
+        })
+
+        # Add model agreement (all 3 models agree on same prediction)
+        if all(f'{m}_prob' in output.columns for m in ['xgboost', 'lightgbm', 'catboost']):
+            xgb_pred = (output['xgboost_prob'] > 0.5).astype(int)
+            lgb_pred = (output['lightgbm_prob'] > 0.5).astype(int)
+            cat_pred = (output['catboost_prob'] > 0.5).astype(int)
+            predictions_df['model_agreement'] = (xgb_pred == lgb_pred) & (lgb_pred == cat_pred)
+
+        # Add confidence score
+        predictions_df['confidence_score'] = output['Confidence']
+
+        # Insert into PostgreSQL
+        rows_saved = dm.save_predictions(predictions_df)
+        print(f"   ✓ PostgreSQL: {rows_saved} predictions saved")
+
+except Exception as e:
+    print(f"   ⚠️  PostgreSQL save failed: {e}")
+    print("      (Predictions still saved to CSV files)")
+
 # =============================================================================
 # Summary Statistics
 # =============================================================================

@@ -676,6 +676,169 @@ class DataManager:
                 logger.error(f"Error getting all assets (SQLite): {e}")
                 return []
 
+    def save_predictions(self, predictions_df: pd.DataFrame) -> int:
+        """Save predictions to PostgreSQL
+
+        Args:
+            predictions_df: DataFrame with columns:
+                - ticker, prediction_date, ensemble_prob, prediction_label
+                - Optional: xgboost_prob, lightgbm_prob, catboost_prob,
+                           model_agreement, confidence_score
+
+        Returns:
+            Number of predictions inserted/updated
+        """
+        if self.backend != 'postgresql':
+            logger.warning("save_predictions only supported for PostgreSQL")
+            return 0
+
+        if predictions_df.empty:
+            return 0
+
+        try:
+            # Ensure required columns exist
+            required = ['ticker', 'prediction_date', 'ensemble_prob', 'prediction_label']
+            for col in required:
+                if col not in predictions_df.columns:
+                    raise ValueError(f"Missing required column: {col}")
+
+            # Convert prediction_date to date type
+            predictions_df['prediction_date'] = pd.to_datetime(predictions_df['prediction_date']).dt.date
+
+            # Insert with ON CONFLICT UPDATE (upsert)
+            with self.engine.begin() as conn:
+                for _, row in predictions_df.iterrows():
+                    conn.execute(text("""
+                        INSERT INTO predictions (
+                            ticker, prediction_date, ensemble_prob, prediction_label,
+                            xgboost_prob, lightgbm_prob, catboost_prob,
+                            model_agreement, confidence_score
+                        ) VALUES (
+                            :ticker, :prediction_date, :ensemble_prob, :prediction_label,
+                            :xgboost_prob, :lightgbm_prob, :catboost_prob,
+                            :model_agreement, :confidence_score
+                        )
+                        ON CONFLICT (ticker, prediction_date)
+                        DO UPDATE SET
+                            ensemble_prob = EXCLUDED.ensemble_prob,
+                            prediction_label = EXCLUDED.prediction_label,
+                            xgboost_prob = EXCLUDED.xgboost_prob,
+                            lightgbm_prob = EXCLUDED.lightgbm_prob,
+                            catboost_prob = EXCLUDED.catboost_prob,
+                            model_agreement = EXCLUDED.model_agreement,
+                            confidence_score = EXCLUDED.confidence_score,
+                            prediction_timestamp = NOW()
+                    """), {
+                        'ticker': row['ticker'],
+                        'prediction_date': row['prediction_date'],
+                        'ensemble_prob': float(row['ensemble_prob']),
+                        'prediction_label': row['prediction_label'],
+                        'xgboost_prob': float(row.get('xgboost_prob', 0)) if pd.notna(row.get('xgboost_prob')) else None,
+                        'lightgbm_prob': float(row.get('lightgbm_prob', 0)) if pd.notna(row.get('lightgbm_prob')) else None,
+                        'catboost_prob': float(row.get('catboost_prob', 0)) if pd.notna(row.get('catboost_prob')) else None,
+                        'model_agreement': bool(row.get('model_agreement', False)) if pd.notna(row.get('model_agreement')) else None,
+                        'confidence_score': float(row.get('confidence_score', 0)) if pd.notna(row.get('confidence_score')) else None,
+                    })
+
+            logger.info(f"✅ Saved {len(predictions_df)} predictions to PostgreSQL")
+            return len(predictions_df)
+
+        except Exception as e:
+            logger.error(f"Error saving predictions: {e}")
+            raise
+
+    def get_latest_predictions(self, limit: int = 100) -> pd.DataFrame:
+        """Get latest predictions from PostgreSQL
+
+        Args:
+            limit: Maximum number of predictions to return
+
+        Returns:
+            DataFrame with latest predictions
+        """
+        if self.backend != 'postgresql':
+            return pd.DataFrame()
+
+        try:
+            with self.engine.connect() as conn:
+                result = conn.execute(text(f"""
+                    SELECT * FROM latest_predictions
+                    ORDER BY prediction_timestamp DESC
+                    LIMIT {limit}
+                """))
+                df = pd.DataFrame(result.fetchall(), columns=result.keys())
+                return df
+
+        except Exception as e:
+            logger.error(f"Error getting latest predictions: {e}")
+            return pd.DataFrame()
+
+    def save_model_metadata(self, model_name: str, model_type: str,
+                           feature_count: int = None, training_samples: int = None,
+                           assets_used: list = None, metrics: dict = None,
+                           hyperparameters: dict = None):
+        """Save trained model metadata to PostgreSQL
+
+        Args:
+            model_name: Name of the model file
+            model_type: Type (xgboost, lightgbm, catboost, ensemble)
+            feature_count: Number of features used
+            training_samples: Number of training samples
+            assets_used: List of tickers used in training
+            metrics: Performance metrics dict
+            hyperparameters: Model hyperparameters dict
+        """
+        if self.backend != 'postgresql':
+            logger.warning("save_model_metadata only supported for PostgreSQL")
+            return
+
+        try:
+            import json
+
+            with self.engine.begin() as conn:
+                conn.execute(text("""
+                    INSERT INTO model_metadata (
+                        model_name, model_type, feature_count, training_samples,
+                        assets_used, metrics, hyperparameters
+                    ) VALUES (
+                        :model_name, :model_type, :feature_count, :training_samples,
+                        :assets_used, :metrics, :hyperparameters
+                    )
+                """), {
+                    'model_name': model_name,
+                    'model_type': model_type,
+                    'feature_count': feature_count,
+                    'training_samples': training_samples,
+                    'assets_used': assets_used or [],
+                    'metrics': json.dumps(metrics) if metrics else None,
+                    'hyperparameters': json.dumps(hyperparameters) if hyperparameters else None,
+                })
+
+            logger.info(f"✅ Saved model metadata: {model_name} ({model_type})")
+
+        except Exception as e:
+            logger.error(f"Error saving model metadata: {e}")
+            raise
+
+    def get_latest_models(self) -> pd.DataFrame:
+        """Get latest trained models metadata
+
+        Returns:
+            DataFrame with latest models for each type
+        """
+        if self.backend != 'postgresql':
+            return pd.DataFrame()
+
+        try:
+            with self.engine.connect() as conn:
+                result = conn.execute(text("SELECT * FROM latest_models"))
+                df = pd.DataFrame(result.fetchall(), columns=result.keys())
+                return df
+
+        except Exception as e:
+            logger.error(f"Error getting latest models: {e}")
+            return pd.DataFrame()
+
     def close(self):
         """Close database connections"""
         if self.backend == 'postgresql':

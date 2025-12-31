@@ -549,6 +549,37 @@ results_path = MODELS_DIR / "multi_asset_results.csv"
 results_df.to_csv(results_path, index=False)
 print(f"   ✓ {results_path}")
 
+# Save model metadata to PostgreSQL (for cross-container access)
+try:
+    from core.data_manager_postgres import DataManager
+    dm = DataManager()
+
+    if dm.backend == 'postgresql':
+        # Get tickers from data
+        tickers = train_df['ticker'].unique().tolist() if 'ticker' in train_df.columns else ['SPY']
+
+        # Save metadata for each model
+        for model_name, model in models.items():
+            # Extract metrics for this model from results
+            model_metrics = results_df[results_df['Model'] == model_name.capitalize()].to_dict('records')
+            metrics_dict = model_metrics[0] if model_metrics else {}
+
+            dm.save_model_metadata(
+                model_name=f"{model_name}_multi_asset.pkl",
+                model_type=model_name,
+                feature_count=len(feature_cols),
+                training_samples=len(train_df),
+                assets_used=tickers,
+                metrics=metrics_dict,
+                hyperparameters=None  # Could extract from model if needed
+            )
+
+        print(f"   ✓ PostgreSQL: {len(models)} model records saved")
+
+except Exception as e:
+    print(f"   ⚠️  PostgreSQL metadata save failed: {e}")
+    print("      (Models still saved to disk)")
+
 # =============================================================================
 # 8. COMPARISON WITH SINGLE-ASSET
 # =============================================================================

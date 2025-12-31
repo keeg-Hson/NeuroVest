@@ -343,13 +343,15 @@ def main():
 
     st.sidebar.metric("Assets Downloaded", f"{downloaded}/{total_assets}")
 
-    # Check models (may not be visible if worker is in separate container)
+    # Check models from PostgreSQL metadata
     try:
-        model_count = sum(1 for f in ['xgboost_multi_asset.pkl', 'lightgbm_multi_asset.pkl', 'catboost_multi_asset.pkl']
-                         if (MODELS_DIR / f).exists())
+        dm = get_data_manager()
+        models_df = dm.get_latest_models()
+        model_count = len(models_df)
     except Exception:
-        model_count = "?"  # Models in worker container
-    st.sidebar.metric("Models Trained", f"{model_count}/3" if isinstance(model_count, int) else "Worker")
+        model_count = 0
+
+    st.sidebar.metric("Models Trained", f"{model_count}/3")
 
     # Route to pages
     if page == "📊 Overview":
@@ -471,18 +473,21 @@ def show_overview():
 
     with col3:
         try:
-            pred_count = len(list(LOGS_DIR.glob("*predictions*.csv"))) if LOGS_DIR.exists() else 0
+            dm = get_data_manager()
+            predictions_df = dm.get_latest_predictions(limit=100)
+            pred_count = len(predictions_df)
         except Exception:
-            pred_count = "?"  # Predictions in worker container
-        st.metric("🔮 Forecast Files", pred_count, help="Generated prediction files")
+            pred_count = 0
+        st.metric("🔮 Predictions", pred_count, help="Latest forecast records in database")
 
     with col4:
         try:
-            model_count_main = sum(1 for f in ['xgboost_multi_asset.pkl', 'lightgbm_multi_asset.pkl', 'catboost_multi_asset.pkl']
-                             if (MODELS_DIR / f).exists())
+            dm = get_data_manager()
+            models_df = dm.get_latest_models()
+            model_count_main = len(models_df)
         except Exception:
-            model_count_main = "?"  # Models in worker container
-        st.metric("🤖 Models Trained", f"{model_count_main}/3" if isinstance(model_count_main, int) else "Worker", help="XGBoost, LightGBM, CatBoost")
+            model_count_main = 0
+        st.metric("🤖 Models Trained", f"{model_count_main}/3", help="XGBoost, LightGBM, CatBoost")
 
     # Use Cases
     st.markdown("---")
@@ -589,31 +594,40 @@ def show_overview():
     with status_col2:
         st.markdown("**🤖 ML Models**")
         try:
-            # Models are in worker container - check via database instead
             dm = get_data_manager()
-            # If we can query, assume worker is running
-            if len(db_assets) > 0:
-                st.markdown("🟢 Worker active")
-                st.markdown("🟡 Models in worker")
-                st.markdown("   (separate container)")
+            models_df = dm.get_latest_models()
+
+            if len(models_df) > 0:
+                st.markdown(f"🟢 {len(models_df)}/3 models trained")
+                for _, model in models_df.iterrows():
+                    trained_at = pd.to_datetime(model['trained_at'])
+                    age = (pd.Timestamp.now() - trained_at).days
+                    st.markdown(f"   • {model['model_type']} ({age}d ago)")
             else:
-                st.markdown("🔴 No data loaded")
-        except:
-            st.markdown("🔴 Worker offline")
+                st.markdown("🟡 No models yet")
+                st.markdown("   (training scheduled)")
+        except Exception as e:
+            st.markdown("🔴 Database error")
 
     with status_col3:
         st.markdown("**🔮 Forecasts**")
-        # Predictions are generated in worker container
         try:
             dm = get_data_manager()
-            if len(db_assets) > 0:
-                st.markdown("🟢 Data ready")
-                st.markdown("🟡 Predictions in worker")
-                st.markdown("   (separate container)")
+            predictions_df = dm.get_latest_predictions(limit=1)
+
+            if len(predictions_df) > 0:
+                latest_pred = predictions_df.iloc[0]
+                pred_date = pd.to_datetime(latest_pred['prediction_date'])
+                age_hours = (pd.Timestamp.now() - pd.to_datetime(latest_pred['prediction_timestamp'])).total_seconds() / 3600
+
+                st.markdown(f"🟢 Latest: {pred_date.strftime('%Y-%m-%d')}")
+                st.markdown(f"   {latest_pred['prediction_label']}")
+                st.markdown(f"   ({age_hours:.1f}h ago)")
             else:
-                st.markdown("🔴 No data loaded")
-        except:
-            st.markdown("🔴 Worker offline")
+                st.markdown("🟡 No predictions yet")
+                st.markdown("   (daily @ 4:30pm)")
+        except Exception as e:
+            st.markdown("🔴 Database error")
 
     # Quick Start
     st.markdown("---")
