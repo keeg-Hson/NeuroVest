@@ -24,24 +24,32 @@ def main():
     # Initialize data manager (auto-detects DATABASE_URL for PostgreSQL)
     dm = DataManager()
 
-    # Stock/ETF assets
+    # Stock/ETF assets - matches dashboard expectations
     stock_tickers = [
-        'SPY', 'QQQ', 'IWM', 'DIA',  # Major indices
-        'TLT', 'IEF', 'SHY',  # Bonds
-        'GLD', 'SLV', 'GDX',  # Precious metals
-        'PPLT', 'PALL',  # Platinum/Palladium
-        'USO', 'UNG',  # Energy
-        'DBA', 'CORN', 'WEAT'  # Agriculture
+        # Dashboard's STOCK_ETFS (14 assets)
+        'SPY', 'QQQ', 'IWM', 'DIA', 'VTI', 'EEM',  # Major indices
+        'XLF', 'XLK', 'XLE',  # Sector ETFs
+        'DXY', 'HYG', 'LQD', 'TNX', 'UUP',  # Dollar, Bonds, Treasury
     ]
 
-    print("📈 Loading Stock/ETF Data (3 years)...")
-    print(f"Assets: {len(stock_tickers)}")
+    # Dashboard's PRECIOUS_METALS (7 assets)
+    precious_metals = [
+        'GLD', 'SLV', 'GDX', 'GDXJ', 'IAU', 'PPLT', 'PALL'
+    ]
+
+    # Combine for loading
+    all_stock_assets = stock_tickers + precious_metals
+
+    print("📈 Loading Stock/ETF/Metals Data (3 years)...")
+    print(f"Stocks & ETFs: {len(stock_tickers)}")
+    print(f"Precious Metals: {len(precious_metals)}")
+    print(f"Total: {len(all_stock_assets)}")
     print()
 
     stock_success = 0
     stock_records = 0
 
-    for ticker in stock_tickers:
+    for ticker in all_stock_assets:
         try:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] {ticker}...", end=' ', flush=True)
 
@@ -63,16 +71,19 @@ def main():
         except Exception as e:
             print(f"❌ Error: {e}")
 
-    # Crypto assets (Coinbase only - BNB and MATIC not available)
+    # Dashboard's CRYPTO_ASSETS (10 assets)
+    # Note: Using Coinbase - BNB not available (Binance-specific), try others
     crypto_symbols = [
         ('BTC/USDT', 'BTC_USDT'),
         ('ETH/USDT', 'ETH_USDT'),
         ('SOL/USDT', 'SOL_USDT'),
+        ('BNB/USDT', 'BNB_USDT'),      # Try Binance exchange instead
         ('XRP/USDT', 'XRP_USDT'),
         ('ADA/USDT', 'ADA_USDT'),
         ('DOGE/USDT', 'DOGE_USDT'),
-        ('DOT/USDT', 'DOT_USDT'),
-        ('AVAX/USDT', 'AVAX_USDT')
+        ('AVAX/USDT', 'AVAX_USDT'),
+        ('MATIC/USDT', 'MATIC_USDT'),
+        ('LINK/USDT', 'LINK_USDT')
     ]
 
     print(f"\n₿ Loading Crypto Data (daily, max available)...")
@@ -89,13 +100,23 @@ def main():
             # Register asset
             dm.register_asset(ticker, 'crypto', 'daily')
 
-            # Fetch data - Coinbase limits to 300, so fetch multiple times
-            callback = create_ccxt_callback(symbol, 'coinbase', '1d', limit=300)
-            data = callback()
+            # Try Coinbase first, fallback to Binance for BNB/MATIC
+            data = None
+            exchange = 'coinbase'
+
+            try:
+                callback = create_ccxt_callback(symbol, exchange, '1d', limit=300)
+                data = callback()
+            except:
+                # If Coinbase fails (BNB/MATIC not available), try Binance
+                if ticker in ['BNB_USDT', 'MATIC_USDT']:
+                    exchange = 'binance'
+                    callback = create_ccxt_callback(symbol, exchange, '1d', limit=300)
+                    data = callback()
 
             if data is not None and not data.empty:
                 dm.update_from_source(ticker, 'crypto', data)
-                print(f"✅ {len(data)} records")
+                print(f"✅ {len(data)} records ({exchange})")
                 crypto_success += 1
                 crypto_records += len(data)
             else:
