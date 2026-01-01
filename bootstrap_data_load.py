@@ -40,7 +40,7 @@ def main():
     # Combine for loading
     all_stock_assets = stock_tickers + precious_metals
 
-    print("📈 Loading Stock/ETF/Metals Data (3 years)...")
+    print("📈 Loading Stock/ETF/Metals Data (MAX HISTORY)...")
     print(f"Stocks & ETFs: {len(stock_tickers)}")
     print(f"Precious Metals: {len(precious_metals)}")
     print(f"Total: {len(all_stock_assets)}")
@@ -56,8 +56,8 @@ def main():
             # Register asset
             dm.register_asset(ticker, 'stock', 'daily')
 
-            # Fetch data
-            callback = create_yfinance_callback(ticker, period='3y')
+            # Fetch data - use 'max' for all available history
+            callback = create_yfinance_callback(ticker, period='max')
             data = callback()
 
             if data is not None and not data.empty:
@@ -86,7 +86,7 @@ def main():
         ('LINK/USDT', 'LINK_USDT')
     ]
 
-    print(f"\n₿ Loading Crypto Data (daily, max available)...")
+    print(f"\n₿ Loading Crypto Data (3000 days = ~8 years)...")
     print(f"Assets: {len(crypto_symbols)}")
     print()
 
@@ -105,13 +105,13 @@ def main():
             exchange = 'coinbase'
 
             try:
-                callback = create_ccxt_callback(symbol, exchange, '1d', limit=300)
+                callback = create_ccxt_callback(symbol, exchange, '1d', limit=3000)
                 data = callback()
             except:
                 # If Coinbase fails (BNB/MATIC not available), try Binance
                 if ticker in ['BNB_USDT', 'MATIC_USDT']:
                     exchange = 'binance'
-                    callback = create_ccxt_callback(symbol, exchange, '1d', limit=300)
+                    callback = create_ccxt_callback(symbol, exchange, '1d', limit=3000)
                     data = callback()
 
             if data is not None and not data.empty:
