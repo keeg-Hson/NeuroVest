@@ -209,10 +209,18 @@ def check_asset_status(ticker):
     """Check if asset data is downloaded"""
     try:
         dm = get_data_manager()
-        # Query database for this ticker
+
+        # Try original ticker format (e.g., BTC/USDT)
         df = dm.get_data(ticker)
         if len(df) > 0:
             return "downloaded"
+
+        # Try underscore format for crypto (e.g., BTC_USDT)
+        if '/' in ticker:
+            ticker_underscore = ticker.replace('/', '_')
+            df = dm.get_data(ticker_underscore)
+            if len(df) > 0:
+                return "downloaded"
     except Exception as e:
         # Silently continue to CSV fallback
         pass
@@ -233,7 +241,14 @@ def load_asset_data(ticker):
     # Try database first
     try:
         dm = get_data_manager()
+
+        # Try original ticker format
         df = dm.get_data(ticker)
+
+        # Try underscore format for crypto if original didn't work
+        if (df is None or len(df) == 0) and '/' in ticker:
+            ticker_underscore = ticker.replace('/', '_')
+            df = dm.get_data(ticker_underscore)
 
         if df is not None and len(df) > 0:
             # Convert timestamp column to Date
