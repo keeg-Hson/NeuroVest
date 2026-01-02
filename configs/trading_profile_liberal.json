@@ -1,0 +1,48 @@
+{
+  "profile_name": "Liberal (Aggressive)",
+  "description": "Higher-risk trading with lower confidence requirements and aggressive position sizing",
+
+  "signal_thresholds": {
+    "min_confidence": 0.45,
+    "crash_threshold": 0.50,
+    "spike_threshold": 0.50,
+    "description": "Trade signals with 45%+ confidence"
+  },
+
+  "position_sizing": {
+    "base_position_pct": 0.15,
+    "max_position_pct": 0.40,
+    "scaling_method": "kelly",
+    "description": "15% base position, up to 40% per trade using Kelly criterion"
+  },
+
+  "risk_management": {
+    "stop_loss_atr_multiplier": 2.0,
+    "take_profit_atr_multiplier": 4.0,
+    "max_drawdown_limit": 0.25,
+    "trailing_stop": false,
+    "description": "Wider stops (2.0x ATR), 4:1 reward-risk ratio for big wins"
+  },
+
+  "portfolio_allocation": {
+    "max_equity_exposure": 0.85,
+    "min_cash_reserve": 0.05,
+    "max_single_asset": 0.40,
+    "diversification_requirement": 3,
+    "description": "Max 85% equity, min 5% cash, concentrate in 3+ assets"
+  },
+
+  "market_conditions": {
+    "avoid_high_volatility": false,
+    "volatility_threshold": 50.0,
+    "require_trend_confirmation": false,
+    "description": "Trade in all conditions, avoid extreme volatility >50%"
+  },
+
+  "rebalancing": {
+    "frequency": "quarterly",
+    "threshold_pct": 0.15,
+    "method": "threshold",
+    "description": "Rebalance quarterly or when allocations drift 15%"
+  }
+}

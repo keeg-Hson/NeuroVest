@@ -1,0 +1,43 @@
+{
+  "_comment": "Optimized backtest configuration with risk management features",
+
+  "window_days": null,
+
+  "lookahead": 5,
+  "tp_atr": 1.25,
+  "sl_atr": 0.75,
+
+  "allow_overlap": false,
+  "ambig_policy": "close_dir",
+
+  "confidence_thresh": null,
+  "crash_thresh": null,
+  "spike_thresh": null,
+
+  "margin": 0.05,
+
+  "fee_bps": 2.0,
+  "slip_bps": 3.0,
+
+  "atr_len": 14,
+  "trend_len": 50,
+
+  "target_ann_vol": 0.15,
+  "vol_lookback": 20,
+  "size_cap": 2.0,
+
+  "conf_size_bounds": [0.5, 1.5],
+
+  "trail_trigger": 0.5,
+  "trail_k": 0.5,
+
+  "cooldown_days": 0,
+  "cooldown_long_days": 1,
+  "cooldown_short_days": 2,
+
+  "use_conf_size": true,
+  "use_opposite_exit": true,
+  "use_weekly_trend": true,
+  "use_regime_filter": true,
+  "use_atr_band": false
+}

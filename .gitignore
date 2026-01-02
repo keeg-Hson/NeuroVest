@@ -1,0 +1,36 @@
+.env
+prediction_log.txt
+*.log
+/logs/
+/backups/
+
+models/
+
+
+# local env
+.venv/
+__pycache__/
+*.pyc
+
+# databases
+*.duckdb
+
+# env & caches
+.venv/
+__pycache__/
+*.pyc
+
+# data & outputs
+outputs/
+logs/
+data/_archive/
+data/features/
+data_cache/
+*.parquet
+*.feather
+*.duckdb
+*.csv.zip
+
+# os/editor
+.DS_Store
+catboost_info/

@@ -1,0 +1,11 @@
+# System-level dependencies for Render deployment
+# Only needed if using libraries that require system packages
+
+# For matplotlib (already included in Python buildpack, but explicit for safety)
+# libfreetype6-dev
+# libpng-dev
+
+# Uncomment if using additional system packages
+# build-essential
+# libatlas-base-dev
+# gfortran

@@ -1,0 +1,48 @@
+{
+  "profile_name": "Moderate (Balanced)",
+  "description": "Balanced risk-reward with moderate confidence requirements",
+
+  "signal_thresholds": {
+    "min_confidence": 0.55,
+    "crash_threshold": 0.60,
+    "spike_threshold": 0.60,
+    "description": "Trade signals with 55%+ confidence"
+  },
+
+  "position_sizing": {
+    "base_position_pct": 0.10,
+    "max_position_pct": 0.25,
+    "scaling_method": "confidence",
+    "description": "10% base position, max 25% per trade"
+  },
+
+  "risk_management": {
+    "stop_loss_atr_multiplier": 1.5,
+    "take_profit_atr_multiplier": 3.0,
+    "max_drawdown_limit": 0.15,
+    "trailing_stop": true,
+    "description": "Moderate stops (1.5x ATR), 3:1 reward-risk ratio"
+  },
+
+  "portfolio_allocation": {
+    "max_equity_exposure": 0.65,
+    "min_cash_reserve": 0.15,
+    "max_single_asset": 0.25,
+    "diversification_requirement": 4,
+    "description": "Max 65% equity, min 15% cash, diversify across 4+ assets"
+  },
+
+  "market_conditions": {
+    "avoid_high_volatility": false,
+    "volatility_threshold": 40.0,
+    "require_trend_confirmation": false,
+    "description": "Reduce exposure when volatility >40%"
+  },
+
+  "rebalancing": {
+    "frequency": "monthly",
+    "threshold_pct": 0.10,
+    "method": "hybrid",
+    "description": "Rebalance monthly or when allocations drift 10%"
+  }
+}

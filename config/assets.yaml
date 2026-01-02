@@ -1,0 +1,409 @@
+# NeuroVest Asset Configuration
+# Add/remove assets here to automatically include them in training and prediction
+
+# EQUITY ETFs - Major Indices
+# Thresholds calibrated to ~0.5x daily volatility for meaningful signals
+equity_major_indices:
+  SPY:
+    name: "S&P 500"
+    category: "Large Cap Blend"
+    threshold: 0.006  # 0.6% (~0.5x daily vol of 1.2%)
+    enabled: true
+  QQQ:
+    name: "Nasdaq 100"
+    category: "Large Cap Growth (Tech-heavy)"
+    threshold: 0.007  # Higher vol than SPY
+    enabled: true
+  IWM:
+    name: "Russell 2000"
+    category: "Small Cap Blend"
+    threshold: 0.009  # High volatility small caps
+    enabled: true
+  DIA:
+    name: "Dow Jones Industrial"
+    category: "Large Cap Value"
+    threshold: 0.006
+    enabled: true
+  VTI:
+    name: "Total US Stock Market"
+    category: "All Cap Blend"
+    threshold: 0.006
+    enabled: true
+
+# EQUITY ETFs - International
+equity_international:
+  EFA:
+    name: "EAFE (Developed Markets ex-US)"
+    category: "International Developed"
+    threshold: 0.006
+    enabled: true
+  EEM:
+    name: "Emerging Markets"
+    category: "International Emerging"
+    threshold: 0.008
+    enabled: true
+  VEA:
+    name: "Developed Markets ex-US"
+    category: "International Developed"
+    threshold: 0.006
+    enabled: true
+  VWO:
+    name: "Emerging Markets"
+    category: "International Emerging"
+    threshold: 0.008
+    enabled: true
+  IEFA:
+    name: "Core MSCI EAFE"
+    category: "International Developed"
+    threshold: 0.006
+    enabled: true
+
+# EQUITY ETFs - Sectors (SPDR Select Sector)
+equity_sectors:
+  XLF:
+    name: "Financial Sector"
+    category: "Financials"
+    threshold: 0.006
+    enabled: true
+  XLK:
+    name: "Technology Sector"
+    category: "Technology"
+    threshold: 0.007
+    enabled: true
+  XLE:
+    name: "Energy Sector"
+    category: "Energy"
+    threshold: 0.010  # High volatility
+    enabled: true
+  XLV:
+    name: "Health Care Sector"
+    category: "Healthcare"
+    threshold: 0.005
+    enabled: true
+  XLI:
+    name: "Industrial Sector"
+    category: "Industrials"
+    threshold: 0.006
+    enabled: true
+  XLY:
+    name: "Consumer Discretionary"
+    category: "Consumer Cyclical"
+    threshold: 0.006
+    enabled: true
+  XLP:
+    name: "Consumer Staples"
+    category: "Consumer Defensive"
+    threshold: 0.004  # Low volatility
+    enabled: true
+  XLU:
+    name: "Utilities Sector"
+    category: "Utilities"
+    threshold: 0.004  # Low volatility
+    enabled: true
+  XLB:
+    name: "Materials Sector"
+    category: "Materials"
+    threshold: 0.006
+    enabled: true
+  XLRE:
+    name: "Real Estate Sector"
+    category: "Real Estate"
+    threshold: 0.006
+    enabled: true
+  XLC:
+    name: "Communication Services"
+    category: "Communication"
+    threshold: 0.006
+    enabled: true
+
+# EQUITY ETFs - Growth/Value/Size
+equity_style:
+  VUG:
+    name: "Growth ETF"
+    category: "Large Cap Growth"
+    threshold: 0.006
+    enabled: true
+  VTV:
+    name: "Value ETF"
+    category: "Large Cap Value"
+    threshold: 0.005
+    enabled: true
+  VO:
+    name: "Mid-Cap ETF"
+    category: "Mid Cap Blend"
+    threshold: 0.006
+    enabled: true
+  VB:
+    name: "Small-Cap ETF"
+    category: "Small Cap Blend"
+    threshold: 0.007
+    enabled: true
+  IJH:
+    name: "Mid-Cap S&P 400"
+    category: "Mid Cap Blend"
+    threshold: 0.006
+    enabled: true
+  IJR:
+    name: "Small-Cap S&P 600"
+    category: "Small Cap Blend"
+    threshold: 0.007
+    enabled: true
+
+# EQUITY ETFs - Thematic/Smart Beta
+equity_thematic:
+  ARKK:
+    name: "ARK Innovation"
+    category: "Disruptive Innovation"
+    threshold: 0.015  # Very high volatility
+    enabled: true
+  SOXX:
+    name: "Semiconductor"
+    category: "Technology - Semiconductors"
+    threshold: 0.010
+    enabled: true
+  SMH:
+    name: "Semiconductor (VanEck)"
+    category: "Technology - Semiconductors"
+    threshold: 0.010
+    enabled: true
+  XBI:
+    name: "Biotech"
+    category: "Healthcare - Biotech"
+    threshold: 0.012
+    enabled: true
+  TAN:
+    name: "Solar Energy"
+    category: "Clean Energy"
+    threshold: 0.012
+    enabled: true
+  ICLN:
+    name: "Global Clean Energy"
+    category: "Clean Energy"
+    threshold: 0.012
+    enabled: true
+
+# BOND ETFs
+bonds:
+  AGG:
+    name: "Core US Aggregate Bond"
+    category: "Investment Grade Bonds"
+    threshold: 0.003  # Very low volatility
+    enabled: true
+  BND:
+    name: "Total Bond Market"
+    category: "Investment Grade Bonds"
+    threshold: 0.003
+    enabled: true
+  TLT:
+    name: "20+ Year Treasury"
+    category: "Long-Term Government"
+    threshold: 0.008  # Interest rate sensitive
+    enabled: true
+  IEF:
+    name: "7-10 Year Treasury"
+    category: "Medium-Term Government"
+    threshold: 0.005
+    enabled: true
+  SHY:
+    name: "1-3 Year Treasury"
+    category: "Short-Term Government"
+    threshold: 0.002  # Very low volatility
+    enabled: true
+  LQD:
+    name: "Investment Grade Corporate"
+    category: "Corporate Bonds"
+    threshold: 0.004
+    enabled: true
+  HYG:
+    name: "High Yield Corporate"
+    category: "High Yield Bonds"
+    threshold: 0.006
+    enabled: true
+  JNK:
+    name: "High Yield Corporate (SPDR)"
+    category: "High Yield Bonds"
+    threshold: 0.006
+    enabled: true
+  MUB:
+    name: "Municipal Bonds"
+    category: "Tax-Exempt Municipal"
+    threshold: 0.003
+    enabled: true
+  EMB:
+    name: "Emerging Markets Bonds"
+    category: "Emerging Market Debt"
+    threshold: 0.007
+    enabled: true
+
+# COMMODITY ETFs
+commodities:
+  GLD:
+    name: "Gold"
+    category: "Precious Metals"
+    threshold: 0.008
+    enabled: true
+  SLV:
+    name: "Silver"
+    category: "Precious Metals"
+    threshold: 0.012
+    enabled: true
+  USO:
+    name: "US Oil Fund"
+    category: "Energy Commodities"
+    threshold: 0.015  # Very high volatility
+    enabled: true
+  UNG:
+    name: "Natural Gas"
+    category: "Energy Commodities"
+    threshold: 0.020  # Extremely high volatility
+    enabled: true
+  DBC:
+    name: "Commodity Tracking"
+    category: "Broad Commodities"
+    threshold: 0.010
+    enabled: true
+  GDX:
+    name: "Gold Miners"
+    category: "Mining - Gold"
+    threshold: 0.015
+    enabled: true
+
+# CRYPTOCURRENCY (via CCXT)
+# Thresholds calibrated to ~0.5x daily volatility
+crypto:
+  BTC/USDT:
+    name: "Bitcoin"
+    category: "Cryptocurrency - Layer 1"
+    threshold: 0.022  # 2.2% (~0.5x daily vol of 4.4%)
+    exchange: "binance"
+    enabled: true
+  ETH/USDT:
+    name: "Ethereum"
+    category: "Cryptocurrency - Layer 1"
+    threshold: 0.028  # 2.8% (~0.5x daily vol of 5.7%)
+    exchange: "binance"
+    enabled: true
+  BNB/USDT:
+    name: "Binance Coin"
+    category: "Cryptocurrency - Exchange"
+    threshold: 0.030
+    exchange: "binance"
+    enabled: true
+  SOL/USDT:
+    name: "Solana"
+    category: "Cryptocurrency - Layer 1"
+    threshold: 0.040  # 4.0% (~0.5x daily vol of 8.0%)
+    exchange: "binance"
+    enabled: true
+  XRP/USDT:
+    name: "Ripple"
+    category: "Cryptocurrency - Payments"
+    threshold: 0.035
+    exchange: "binance"
+    enabled: true
+  ADA/USDT:
+    name: "Cardano"
+    category: "Cryptocurrency - Layer 1"
+    threshold: 0.038
+    exchange: "binance"
+    enabled: true
+  AVAX/USDT:
+    name: "Avalanche"
+    category: "Cryptocurrency - Layer 1"
+    threshold: 0.040
+    exchange: "binance"
+    enabled: true
+  DOT/USDT:
+    name: "Polkadot"
+    category: "Cryptocurrency - Layer 0"
+    threshold: 0.038
+    exchange: "binance"
+    enabled: true
+  MATIC/USDT:
+    name: "Polygon"
+    category: "Cryptocurrency - Layer 2"
+    threshold: 0.040
+    exchange: "binance"
+    enabled: true
+  LINK/USDT:
+    name: "Chainlink"
+    category: "Cryptocurrency - Oracle"
+    threshold: 0.035
+    exchange: "binance"
+    enabled: true
+
+# MACRO MODEL GROUPS
+# These define which assets to combine for macro models
+macro_groups:
+  all_equities:
+    name: "All Equity ETFs Combined"
+    includes: ["equity_major_indices", "equity_international", "equity_sectors", "equity_style", "equity_thematic"]
+    enabled: true
+
+  all_crypto:
+    name: "All Cryptocurrencies Combined"
+    includes: ["crypto"]
+    enabled: true
+
+  us_equities_only:
+    name: "US Equity ETFs Only"
+    includes: ["equity_major_indices", "equity_sectors", "equity_style", "equity_thematic"]
+    enabled: true
+
+  bonds_only:
+    name: "All Bonds Combined"
+    includes: ["bonds"]
+    enabled: true
+
+  commodities_only:
+    name: "All Commodities Combined"
+    includes: ["commodities"]
+    enabled: true
+
+  diversified_portfolio:
+    name: "Diversified Multi-Asset"
+    includes: ["equity_major_indices", "bonds", "commodities"]
+    enabled: true
+
+# GLOBAL SETTINGS
+settings:
+  # Data download
+  start_date: "2000-01-01"
+  refresh_schedule: "daily"  # daily, weekly, manual
+
+  # Training
+  train_test_split: 0.8
+  horizon: 1  # prediction horizon in days
+  fee_bps: 2.0
+  slippage_bps: 3.0
+
+  # Threshold settings
+  # auto_threshold: if true, calculates threshold as vol_multiplier * daily_volatility
+  # This overrides the per-asset threshold values above
+  auto_threshold: false
+  vol_multiplier: 0.5  # threshold = vol_multiplier * rolling_volatility
+
+  # Labeling method
+  # "fixed_threshold" - label 1 if return > threshold (current method)
+  # "triple_barrier" - label based on TP/SL hit within time horizon
+  # "return_tercile" - label based on return percentile (0=bottom, 1=middle, 2=top)
+  labeling_method: "fixed_threshold"
+
+  # Triple-barrier settings (only used if labeling_method = "triple_barrier")
+  triple_barrier:
+    tp_multiplier: 2.0  # take profit at tp_multiplier * volatility
+    sl_multiplier: 1.0  # stop loss at sl_multiplier * volatility
+    max_holding_days: 5  # max days before time exit
+
+  # Model ensemble
+  models: ["xgboost", "lightgbm", "catboost"]
+
+  # API
+  api_enabled: true
+  api_port: 8000
+  api_host: "0.0.0.0"
+
+  # Results storage
+  results_dir: "results"
+  models_dir: "models"
+  logs_dir: "logs"

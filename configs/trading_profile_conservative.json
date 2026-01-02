@@ -1,0 +1,48 @@
+{
+  "profile_name": "Conservative",
+  "description": "Low-risk trading with high confidence requirements and tight risk management",
+
+  "signal_thresholds": {
+    "min_confidence": 0.7,
+    "crash_threshold": 0.7,
+    "spike_threshold": 0.7,
+    "description": "Only trade signals with 70%+ confidence"
+  },
+
+  "position_sizing": {
+    "base_position_pct": 0.05,
+    "max_position_pct": 0.15,
+    "scaling_method": "confidence",
+    "description": "5% base position, max 15% per trade"
+  },
+
+  "risk_management": {
+    "stop_loss_atr_multiplier": 1.0,
+    "take_profit_atr_multiplier": 2.0,
+    "max_drawdown_limit": 0.10,
+    "trailing_stop": true,
+    "description": "Tight stops (1.0x ATR), 2:1 reward-risk ratio"
+  },
+
+  "portfolio_allocation": {
+    "max_equity_exposure": 0.40,
+    "min_cash_reserve": 0.30,
+    "max_single_asset": 0.15,
+    "diversification_requirement": 5,
+    "description": "Max 40% equity, min 30% cash, diversify across 5+ assets"
+  },
+
+  "market_conditions": {
+    "avoid_high_volatility": true,
+    "volatility_threshold": 30.0,
+    "require_trend_confirmation": true,
+    "description": "Avoid trading when volatility >30%"
+  },
+
+  "rebalancing": {
+    "frequency": "monthly",
+    "threshold_pct": 0.05,
+    "method": "calendar",
+    "description": "Rebalance monthly or when allocations drift 5%"
+  }
+}
