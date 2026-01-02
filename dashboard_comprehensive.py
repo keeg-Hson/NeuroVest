@@ -600,9 +600,10 @@ def show_overview():
             stocks = sum(1 for _, atype in db_assets if atype == 'stock')
             crypto = sum(1 for _, atype in db_assets if atype == 'crypto')
 
-            st.markdown(f"🟢 Stocks: {stocks}/14")
-            st.markdown(f"💎 Crypto: {crypto}/10")
-            st.markdown(f"📊 Total: {len(db_assets)}/31 assets")
+            # Show actual counts from database (not hardcoded denominators)
+            st.markdown(f"🟢 Stocks: {stocks} assets")
+            st.markdown(f"💎 Crypto: {crypto} assets")
+            st.markdown(f"📊 Total: {len(db_assets)} assets")
         except Exception as e:
             st.markdown("🔴 Database connection error")
 
