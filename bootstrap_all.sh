@@ -65,6 +65,22 @@ echo ""
 echo "======================================================================="
 echo ""
 
+# Step 1.5: Reload crypto with maximum history (3000 days)
+echo "STEP 1.5/4: Reloading crypto with max history (3000 days)..."
+echo "-----------------------------------------------------------------------"
+python3 reload_crypto_max_history.py
+CRYPTO_RELOAD_EXIT=$?
+
+if [ $CRYPTO_RELOAD_EXIT -ne 0 ]; then
+    echo ""
+    echo "⚠️  Crypto reload had issues (exit code $CRYPTO_RELOAD_EXIT)"
+    echo "Continuing anyway..."
+fi
+
+echo ""
+echo "======================================================================="
+echo ""
+
 # Step 2: Train models
 if [ -f "train_multi_asset.py" ]; then
     echo "STEP 2/4: Training models..."
