@@ -636,7 +636,18 @@ def show_overview():
                 pred_date = pd.to_datetime(latest_pred['prediction_date'])
                 age_hours = (pd.Timestamp.now() - pd.to_datetime(latest_pred['prediction_timestamp'])).total_seconds() / 3600
 
-                st.markdown(f"🟢 Latest: {pred_date.strftime('%Y-%m-%d')}")
+                # Show status based on prediction age
+                if age_hours < 48:
+                    status_icon = "🟢"
+                    status_text = "Fresh"
+                elif age_hours < 168:  # 1 week
+                    status_icon = "🟡"
+                    status_text = "Stale"
+                else:
+                    status_icon = "🔴"
+                    status_text = "VERY OLD"
+
+                st.markdown(f"{status_icon} {status_text}: {pred_date.strftime('%Y-%m-%d')}")
                 st.markdown(f"   {latest_pred['prediction_label']}")
                 st.markdown(f"   ({age_hours:.1f}h ago)")
             else:
