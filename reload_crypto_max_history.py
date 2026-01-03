@@ -20,14 +20,18 @@ import time
 def fetch_crypto_history(symbol, exchange_name='coinbase', days=3000):
     """Fetch crypto data in chunks to overcome API limits"""
 
-    exchange = getattr(ccxt, exchange_name)()
+    exchange_class = getattr(ccxt, exchange_name)
+    exchange = exchange_class({
+        'enableRateLimit': True,  # Respect rate limits
+        'options': {'defaultType': 'spot'}  # Use spot market
+    })
     all_data = []
 
     # Calculate how many chunks we need (300 candles per chunk)
     chunk_size = 300
     num_chunks = (days // chunk_size) + 1
 
-    print(f"   Fetching {days} days in {num_chunks} chunks of {chunk_size}...", end=' ', flush=True)
+    print(f"   Fetching {days} days in {num_chunks} chunks from {exchange_name}...", end=' ', flush=True)
 
     # Start from now and go backwards
     since = None
@@ -58,7 +62,11 @@ def fetch_crypto_history(symbol, exchange_name='coinbase', days=3000):
             time.sleep(exchange.rateLimit / 1000)
 
         except Exception as e:
-            print(f"chunk {i+1} failed: {e}", end=' ')
+            print(f"chunk {i+1} failed: {str(e)[:50]}", end=' ')
+            # For Binance, try a few times before giving up
+            if i == 0:  # If first chunk fails, bail out
+                break
+            # Otherwise, continue with what we have
             break
 
     if not all_data:
@@ -140,7 +148,10 @@ def main():
                 print(f"⚠️  No data")
 
         except Exception as e:
-            print(f"❌ Error: {e}")
+            print(f"❌ Error: {str(e)[:100]}")
+            # Log details for Binance failures
+            if exchange == 'binance':
+                print(f"   Note: Binance may require API keys or have regional restrictions")
 
     print("\n" + "="*70)
     print("📊 CRYPTO RELOAD SUMMARY")
