@@ -212,18 +212,20 @@ def check_asset_status(ticker):
 
         # Try original ticker format (e.g., BTC/USDT)
         df = dm.get_data(ticker)
-        if len(df) > 0:
+        if df is not None and len(df) > 0:
             return "downloaded"
 
         # Try underscore format for crypto (e.g., BTC_USDT)
         if '/' in ticker:
             ticker_underscore = ticker.replace('/', '_')
             df = dm.get_data(ticker_underscore)
-            if len(df) > 0:
+            if df is not None and len(df) > 0:
                 return "downloaded"
     except Exception as e:
-        # Silently continue to CSV fallback
-        pass
+        # If database fails, continue to CSV fallback
+        # (Don't silently hide errors - but don't crash either)
+        import sys
+        print(f"⚠️  Database check failed for {ticker}: {e}", file=sys.stderr)
 
     # Fallback: check CSV files (for backwards compatibility)
     if (DATA_DIR / f"{ticker}.csv").exists():
