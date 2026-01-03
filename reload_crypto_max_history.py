@@ -96,24 +96,26 @@ def main():
         return 1
 
     # Crypto assets to reload
+    # Crypto configs: (symbol, ticker, primary_exchange, fallback_exchanges)
     crypto_configs = [
-        ('BTC/USDT', 'BTC_USDT', 'coinbase'),
-        ('ETH/USDT', 'ETH_USDT', 'coinbase'),
-        ('SOL/USDT', 'SOL_USDT', 'coinbase'),
-        ('BNB/USDT', 'BNB_USDT', 'binance'),  # Not on Coinbase
-        ('XRP/USDT', 'XRP_USDT', 'coinbase'),
-        ('ADA/USDT', 'ADA_USDT', 'coinbase'),
-        ('DOGE/USDT', 'DOGE_USDT', 'coinbase'),
-        ('AVAX/USDT', 'AVAX_USDT', 'coinbase'),
-        ('MATIC/USDT', 'MATIC_USDT', 'binance'),  # Not on Coinbase
-        ('LINK/USDT', 'LINK_USDT', 'coinbase')
+        ('BTC/USDT', 'BTC_USDT', 'coinbase', []),
+        ('ETH/USDT', 'ETH_USDT', 'coinbase', []),
+        ('SOL/USDT', 'SOL_USDT', 'coinbase', []),
+        ('BNB/USDT', 'BNB_USDT', 'kucoin', ['okx', 'bybit', 'binance']),  # Try KuCoin first, fallback to others
+        ('XRP/USDT', 'XRP_USDT', 'coinbase', []),
+        ('ADA/USDT', 'ADA_USDT', 'coinbase', []),
+        ('DOGE/USDT', 'DOGE_USDT', 'coinbase', []),
+        ('AVAX/USDT', 'AVAX_USDT', 'coinbase', []),
+        ('MATIC/USDT', 'MATIC_USDT', 'okx', ['kucoin', 'binance']),  # Try OKX first, fallback to others
+        ('LINK/USDT', 'LINK_USDT', 'coinbase', [])
     ]
 
     print("🗑️  Clearing old crypto data...")
 
     # Delete old crypto data
     with dm.engine.begin() as conn:
-        for _, ticker, _ in crypto_configs:
+        for config in crypto_configs:
+            ticker = config[1]  # Extract ticker from config tuple
             conn.execute(text("DELETE FROM price_data WHERE ticker = :ticker"), {"ticker": ticker})
             conn.execute(text("""
                 UPDATE asset_metadata
@@ -129,29 +131,44 @@ def main():
     crypto_success = 0
     crypto_records = 0
 
-    for symbol, ticker, exchange in crypto_configs:
-        try:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] {ticker}...", end=' ', flush=True)
+    for config in crypto_configs:
+        symbol, ticker, primary_exchange = config[0], config[1], config[2]
+        fallback_exchanges = config[3] if len(config) > 3 else []
+        exchanges_to_try = [primary_exchange] + fallback_exchanges
 
-            # Register asset
-            dm.register_asset(ticker, 'crypto', 'daily')
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] {ticker}...", end=' ', flush=True)
 
-            # Fetch data in chunks
-            data = fetch_crypto_history(symbol, exchange, days=3000)
+        # Register asset
+        dm.register_asset(ticker, 'crypto', 'daily')
 
-            if data is not None and not data.empty:
+        # Try exchanges in order until one works
+        data = None
+        successful_exchange = None
+
+        for exchange in exchanges_to_try:
+            try:
+                data = fetch_crypto_history(symbol, exchange, days=3000)
+                if data is not None and not data.empty:
+                    successful_exchange = exchange
+                    break
+                else:
+                    if exchange == exchanges_to_try[-1]:  # Last exchange
+                        print(f"⚠️  No data from any exchange")
+            except Exception as e:
+                error_msg = str(e)[:50]
+                if exchange != exchanges_to_try[-1]:  # Not last exchange, try next
+                    print(f"({exchange} failed: {error_msg}, trying next)...", end=' ', flush=True)
+                else:  # Last exchange failed
+                    print(f"❌ All exchanges failed. Last error: {error_msg}")
+
+        if data is not None and not data.empty:
+            try:
                 dm.update_from_source(ticker, 'crypto', data)
-                print(f"✅ {len(data)} records ({exchange})")
+                print(f"✅ {len(data)} records ({successful_exchange})")
                 crypto_success += 1
                 crypto_records += len(data)
-            else:
-                print(f"⚠️  No data")
-
-        except Exception as e:
-            print(f"❌ Error: {str(e)[:100]}")
-            # Log details for Binance failures
-            if exchange == 'binance':
-                print(f"   Note: Binance may require API keys or have regional restrictions")
+            except Exception as e:
+                print(f"❌ Database update failed: {str(e)[:100]}")
 
     print("\n" + "="*70)
     print("📊 CRYPTO RELOAD SUMMARY")
