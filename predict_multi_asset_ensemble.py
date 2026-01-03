@@ -70,10 +70,43 @@ else:
 # =============================================================================
 
 print("\n📥 Loading SPY data...")
-raw = pd.read_csv(SPY_DAILY_CSV, low_memory=False)
+# Load from PostgreSQL (has fresh data) instead of CSV (stale)
+try:
+    from core.data_manager_postgres import DataManager
+    dm = DataManager()
+    raw = dm.get_data('SPY')
+    dm.close()
+
+    if raw is not None and len(raw) > 0:
+        # Convert timestamp to Date if needed
+        if 'timestamp' in raw.columns:
+            raw['Date'] = pd.to_datetime(raw['timestamp'])
+            raw = raw.drop('timestamp', axis=1)
+        elif 'Date' not in raw.columns and raw.index.name == 'timestamp':
+            raw = raw.reset_index()
+            raw['Date'] = pd.to_datetime(raw['timestamp'])
+            raw = raw.drop('timestamp', axis=1)
+
+        # Rename columns to match expected format
+        if 'close' in raw.columns:
+            raw = raw.rename(columns={
+                'open': 'Open', 'high': 'High', 'low': 'Low',
+                'close': 'Close', 'volume': 'Volume'
+            })
+
+        print(f"   ✓ Loaded from PostgreSQL: {len(raw)} rows")
+        print(f"   Date range: {raw['Date'].min()} to {raw['Date'].max()}")
+    else:
+        raise Exception("No data returned from PostgreSQL")
+except Exception as e:
+    print(f"   ⚠️  PostgreSQL failed ({e}), falling back to CSV")
+    raw = pd.read_csv(SPY_DAILY_CSV, low_memory=False)
+    raw["Date"] = pd.to_datetime(raw["Date"], errors="coerce")
+    print(f"   Loaded from CSV: {len(raw)} rows (may be stale!)")
+
 raw["Date"] = pd.to_datetime(raw["Date"], errors="coerce")
 raw = raw.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
-print(f"   Rows: {len(raw)}")
+print(f"   Final rows: {len(raw)}")
 
 print("\n🔧 Building features...")
 df_feat, all_cols = add_features(raw)
@@ -254,8 +287,8 @@ print(f"   ✓ {labeled_path}")
 # Save to daily_predictions.csv (used by backtest.py)
 daily_path = LOGS_DIR / "daily_predictions.csv"
 
-# Load SPY OHLCV for backtest
-spy_data = pd.read_csv(SPY_DAILY_CSV)
+# Use SPY OHLCV from PostgreSQL (already loaded as 'raw')
+spy_data = raw.copy()
 spy_data['Date'] = pd.to_datetime(spy_data['Date'])
 output['Date'] = pd.to_datetime(output['Date'])
 
