@@ -28,6 +28,9 @@ import time
 import pandas as pd
 import numpy as np
 
+# Authentication and custom asset management
+from auth_middleware import AuthManager, save_custom_asset_to_db
+
 try:
     import streamlit as st
     import plotly.graph_objects as go
@@ -369,6 +372,9 @@ def main():
         model_count = 0
 
     st.sidebar.metric("Models Trained", f"{model_count}/3")
+
+    # Authentication (for custom asset uploads)
+    user_id = AuthManager.get_session_user()
 
     # Route to pages
     if page == "📊 Overview":
@@ -1783,22 +1789,30 @@ def show_custom_imports():
                 asset_type = st.selectbox("Asset Type", ["Stock", "ETF", "Crypto", "Other"])
 
             if st.button("✅ Import Data", type="primary"):
-                CACHE_DIR.mkdir(exist_ok=True)
-                safe_ticker = ticker.replace('/', '_')
-                save_path = CACHE_DIR / f"{safe_ticker}_1d.csv"
+                # Get current user (create demo user if not exists)
+                current_user_id = AuthManager.get_session_user()
 
-                df.to_csv(save_path, index=False)
+                # Save to PostgreSQL with user isolation
+                success, result = save_custom_asset_to_db(
+                    ticker=ticker,
+                    asset_type=asset_type.lower(),
+                    df=df,
+                    user_id=current_user_id
+                )
 
-                st.success(f"✅ Successfully imported as {ticker}")
-                st.info(f"📁 Saved to: {save_path}")
-                st.markdown("**Next Steps:**")
-                st.code(f"""
-# Train model for this asset
-python3 train_per_asset.py --asset {ticker}
-
-# Generate predictions
-python3 predict_per_asset.py --asset {ticker}
-                """)
+                if success:
+                    st.success(f"✅ Successfully imported {ticker} ({result} records)")
+                    st.info("💾 Saved to PostgreSQL - persists across restarts")
+                    st.info(f"👤 User-specific asset (only visible to you)")
+                    st.markdown("**Next Steps:**")
+                    st.markdown(f"""
+- Navigate to **Market Forecast** to generate predictions for `{ticker}`
+- Your custom asset is now available for analysis
+- Data will persist even if the server restarts
+                    """)
+                else:
+                    st.error(f"❌ Import failed: {result}")
+                    st.info("Check that your CSV has 'Date' and 'Close' columns")
 
         except Exception as e:
             st.error(f"❌ Error reading file: {e}")
