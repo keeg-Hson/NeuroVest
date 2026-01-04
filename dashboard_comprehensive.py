@@ -572,14 +572,23 @@ def show_overview():
         """, unsafe_allow_html=True)
 
     with feat_col2:
-        st.markdown("""
+        # Get actual counts from database
+        try:
+            db_assets = get_database_assets()
+            db_stocks = sum(1 for _, atype in db_assets if atype == 'stock')
+            db_crypto = sum(1 for _, atype in db_assets if atype == 'crypto')
+            db_total = len(db_assets)
+        except:
+            db_stocks, db_crypto, db_total = 29, 11, 40  # Fallback to known counts
+
+        st.markdown(f"""
         <div class="feature-box">
             <h4>📦 Asset Coverage</h4>
             <ul>
-                <li><b>14 Stock/ETF Assets:</b> SPY, QQQ, IWM, DIA, VTI, sector ETFs</li>
+                <li><b>{db_stocks} Stock/ETF Assets:</b> SPY, QQQ, IWM, DIA, VTI, sector ETFs, macro indicators</li>
                 <li><b>7 Precious Metals:</b> Gold, Silver, GDX, GDXJ, Platinum, Palladium</li>
-                <li><b>10 Cryptocurrencies:</b> BTC, ETH, SOL, BNB, XRP, ADA, DOGE, AVAX, MATIC, LINK</li>
-                <li><b>Custom Data Imports:</b> Upload your own CSV files</li>
+                <li><b>{db_crypto} Cryptocurrencies:</b> BTC, ETH, SOL, BNB, XRP, ADA, DOGE, AVAX, MATIC, LINK</li>
+                <li><b>Custom Data Imports:</b> Upload your own CSV files (feature available)</li>
                 <li><b>Portfolio Analysis:</b> Rebalancing frequency optimization</li>
             </ul>
         </div>
