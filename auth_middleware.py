@@ -3,6 +3,7 @@ Simple API Key Authentication Middleware
 """
 import streamlit as st
 import secrets
+import pandas as pd
 from core.data_manager_postgres import DataManager
 
 class AuthManager:
