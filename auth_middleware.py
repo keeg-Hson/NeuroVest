@@ -4,6 +4,7 @@ Simple API Key Authentication Middleware
 import streamlit as st
 import secrets
 import pandas as pd
+from sqlalchemy import text
 from core.data_manager_postgres import DataManager
 
 class AuthManager:
@@ -22,12 +23,12 @@ class AuthManager:
 
         with dm.engine.begin() as conn:
             result = conn.execute(
-                """
+                text("""
                 INSERT INTO users (api_key, username)
-                VALUES (%s, %s)
+                VALUES (:api_key, :username)
                 RETURNING id, api_key
-                """,
-                (api_key, username or "Anonymous")
+                """),
+                {"api_key": api_key, "username": username or "Anonymous"}
             )
             user = result.fetchone()
 
@@ -41,8 +42,8 @@ class AuthManager:
 
         with dm.engine.begin() as conn:
             result = conn.execute(
-                "SELECT id, username FROM users WHERE api_key = %s",
-                (api_key,)
+                text("SELECT id, username FROM users WHERE api_key = :api_key"),
+                {"api_key": api_key}
             )
             user = result.fetchone()
 
@@ -62,7 +63,7 @@ class AuthManager:
                 dm = DataManager()
                 with dm.engine.begin() as conn:
                     result = conn.execute(
-                        "SELECT id, api_key FROM users WHERE username = 'demo' LIMIT 1"
+                        text("SELECT id, api_key FROM users WHERE username = 'demo' LIMIT 1")
                     )
                     user = result.fetchone()
 
@@ -139,16 +140,16 @@ def save_custom_asset_to_db(ticker, asset_type, df, user_id):
         # Register asset as custom
         with dm.engine.begin() as conn:
             conn.execute(
-                """
+                text("""
                 INSERT INTO asset_metadata
                 (ticker, asset_type, frequency, user_id, is_custom, last_update)
-                VALUES (%s, %s, 'daily', %s, TRUE, CURRENT_TIMESTAMP)
+                VALUES (:ticker, :asset_type, 'daily', :user_id, TRUE, CURRENT_TIMESTAMP)
                 ON CONFLICT (ticker) DO UPDATE SET
                     user_id = EXCLUDED.user_id,
                     is_custom = TRUE,
                     last_update = CURRENT_TIMESTAMP
-                """,
-                (ticker, asset_type.lower(), user_id)
+                """),
+                {"ticker": ticker, "asset_type": asset_type.lower(), "user_id": user_id}
             )
 
         # Prepare data
@@ -199,29 +200,29 @@ def save_custom_asset_to_db(ticker, asset_type, df, user_id):
         with dm.engine.begin() as conn:
             # Delete existing data for this user+ticker
             conn.execute(
-                "DELETE FROM price_data WHERE ticker = %s AND user_id = %s",
-                (ticker, user_id)
+                text("DELETE FROM price_data WHERE ticker = :ticker AND user_id = :user_id"),
+                {"ticker": ticker, "user_id": user_id}
             )
 
             # Insert new data
             for record in records:
                 conn.execute(
-                    """
+                    text("""
                     INSERT INTO price_data
                     (ticker, timestamp, open, high, low, close, volume, user_id)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (:ticker, :timestamp, :open, :high, :low, :close, :volume, :user_id)
                     ON CONFLICT (ticker, timestamp) DO NOTHING
-                    """,
-                    (
-                        record['ticker'],
-                        record['timestamp'],
-                        record['open'],
-                        record['high'],
-                        record['low'],
-                        record['close'],
-                        record['volume'],
-                        record['user_id']
-                    )
+                    """),
+                    {
+                        "ticker": record['ticker'],
+                        "timestamp": record['timestamp'],
+                        "open": record['open'],
+                        "high": record['high'],
+                        "low": record['low'],
+                        "close": record['close'],
+                        "volume": record['volume'],
+                        "user_id": record['user_id']
+                    }
                 )
 
         dm.close()
