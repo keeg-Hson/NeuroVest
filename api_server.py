@@ -472,6 +472,271 @@ def register_user(username: str = Query(..., min_length=3, max_length=50)):
         raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
 
 # ============================================================================
+# Advanced Endpoints
+# ============================================================================
+
+@app.get(
+    "/api/predictions/{ticker}/history",
+    response_model=List[PredictionResponse],
+    tags=["Predictions"],
+    summary="Get Historical Predictions",
+    description="""
+    Get historical predictions for a specific asset.
+
+    **Parameters:**
+    - `ticker`: Asset symbol
+    - `days`: Number of days of history (default 30, max 365)
+
+    **Example:**
+    ```
+    curl -H "X-API-Key: YOUR_KEY" \
+      "https://api.neurovest.com/api/predictions/SPY/history?days=90"
+    ```
+    """
+)
+def get_prediction_history(
+    ticker: str,
+    days: int = Query(30, le=365, description="Days of history to return"),
+    user: dict = Depends(verify_api_key)
+):
+    """
+    Get historical predictions for backtesting and analysis
+
+    Args:
+        ticker: Asset ticker symbol
+        days: Number of days (max 365)
+        user: Authenticated user
+
+    Returns:
+        List of historical predictions
+    """
+    try:
+        ticker_upper = ticker.upper()
+        logger.info(f"User {user['user_id']} requesting {days} days history for {ticker_upper}")
+
+        dm = DataManager()
+
+        # Query predictions table directly with date filter
+        from datetime import timedelta
+        cutoff_date = datetime.now() - timedelta(days=days)
+
+        with dm.engine.connect() as conn:
+            from sqlalchemy import text
+            result = conn.execute(
+                text("""
+                    SELECT * FROM predictions
+                    WHERE ticker = :ticker
+                      AND prediction_date >= :cutoff_date
+                    ORDER BY prediction_date DESC
+                """),
+                {"ticker": ticker_upper, "cutoff_date": cutoff_date.date()}
+            )
+            df = pd.DataFrame(result.fetchall(), columns=result.keys())
+
+        dm.close()
+
+        if len(df) == 0:
+            return []
+
+        # Convert to API format
+        predictions = []
+        for _, row in df.iterrows():
+            ensemble_prob = float(row['ensemble_prob'])
+            label = row['prediction_label']
+
+            remaining = 1.0 - ensemble_prob
+            other_prob = remaining / 2.0
+
+            if label == 'CRASH':
+                prob_crash, prob_normal, prob_spike = ensemble_prob, other_prob, other_prob
+            elif label == 'SPIKE':
+                prob_crash, prob_normal, prob_spike = other_prob, other_prob, ensemble_prob
+            else:
+                prob_crash, prob_normal, prob_spike = other_prob, ensemble_prob, other_prob
+
+            conf_score = float(row.get('confidence_score', 0.5))
+            confidence = 'high' if conf_score >= 0.7 else ('medium' if conf_score >= 0.5 else 'low')
+
+            predictions.append({
+                "ticker": row['ticker'],
+                "prediction_date": str(row['prediction_date']),
+                "prediction_label": label,
+                "prob_crash": round(prob_crash, 3),
+                "prob_normal": round(prob_normal, 3),
+                "prob_spike": round(prob_spike, 3),
+                "confidence": confidence,
+                "timestamp": str(row['prediction_timestamp'])
+            })
+
+        logger.info(f"Returning {len(predictions)} historical predictions")
+        return predictions
+
+    except Exception as e:
+        logger.error(f"Error fetching history for {ticker}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch history: {str(e)}")
+
+@app.post(
+    "/api/predictions/batch",
+    response_model=List[PredictionResponse],
+    tags=["Predictions"],
+    summary="Get Batch Predictions",
+    description="""
+    Get predictions for multiple assets in a single request.
+
+    **Body:**
+    ```json
+    {
+      "tickers": ["SPY", "QQQ", "BTC_USDT", "ETH_USDT"]
+    }
+    ```
+
+    **Example:**
+    ```
+    curl -X POST -H "X-API-Key: YOUR_KEY" \
+      -H "Content-Type: application/json" \
+      -d '{"tickers":["SPY","QQQ","GLD"]}' \
+      "https://api.neurovest.com/api/predictions/batch"
+    ```
+    """
+)
+def get_batch_predictions(
+    tickers: List[str],
+    user: dict = Depends(verify_api_key)
+):
+    """
+    Get predictions for multiple assets at once
+
+    Args:
+        tickers: List of asset tickers
+        user: Authenticated user
+
+    Returns:
+        List of predictions
+    """
+    try:
+        logger.info(f"User {user['user_id']} requesting batch predictions for {len(tickers)} assets")
+
+        dm = DataManager()
+        df = dm.get_latest_predictions(limit=1000)
+        dm.close()
+
+        # Filter for requested tickers
+        tickers_upper = [t.upper() for t in tickers]
+        filtered = df[df['ticker'].str.upper().isin(tickers_upper)]
+
+        predictions = []
+        for _, row in filtered.iterrows():
+            ensemble_prob = float(row['ensemble_prob'])
+            label = row['prediction_label']
+
+            remaining = 1.0 - ensemble_prob
+            other_prob = remaining / 2.0
+
+            if label == 'CRASH':
+                prob_crash, prob_normal, prob_spike = ensemble_prob, other_prob, other_prob
+            elif label == 'SPIKE':
+                prob_crash, prob_normal, prob_spike = other_prob, other_prob, ensemble_prob
+            else:
+                prob_crash, prob_normal, prob_spike = other_prob, ensemble_prob, other_prob
+
+            conf_score = float(row.get('confidence_score', 0.5))
+            confidence = 'high' if conf_score >= 0.7 else ('medium' if conf_score >= 0.5 else 'low')
+
+            predictions.append({
+                "ticker": row['ticker'],
+                "prediction_date": str(row['prediction_date']),
+                "prediction_label": label,
+                "prob_crash": round(prob_crash, 3),
+                "prob_normal": round(prob_normal, 3),
+                "prob_spike": round(prob_spike, 3),
+                "confidence": confidence,
+                "timestamp": datetime.now().isoformat()
+            })
+
+        logger.info(f"Returning {len(predictions)} batch predictions")
+        return predictions
+
+    except Exception as e:
+        logger.error(f"Error fetching batch predictions: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to fetch batch: {str(e)}")
+
+@app.post(
+    "/api/custom/upload",
+    tags=["Custom Assets"],
+    summary="Upload Custom Asset Data",
+    description="""
+    Upload custom asset price data and get instant prediction.
+
+    **File Format:** CSV with columns: Date, Open, High, Low, Close, Volume
+
+    **Example:**
+    ```bash
+    curl -X POST -H "X-API-Key: YOUR_KEY" \
+      -F "file=@myasset.csv" \
+      -F "ticker=CUSTOM1" \
+      "https://api.neurovest.com/api/custom/upload"
+    ```
+    """
+)
+async def upload_custom_asset(
+    file: bytes,
+    ticker: str = Query(..., description="Asset ticker symbol"),
+    user: dict = Depends(verify_api_key)
+):
+    """
+    Upload custom asset and get prediction
+
+    Args:
+        file: CSV file with OHLCV data
+        ticker: Asset ticker
+        user: Authenticated user
+
+    Returns:
+        Prediction for uploaded asset
+    """
+    try:
+        logger.info(f"User {user['user_id']} uploading custom asset: {ticker}")
+
+        # Parse CSV
+        from io import StringIO
+        df = pd.read_csv(StringIO(file.decode('utf-8')))
+
+        # Validate format
+        required = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
+        if not all(col in df.columns for col in required):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Missing columns. Required: {required}"
+            )
+
+        # Save to database
+        from auth_middleware import save_custom_asset_to_db
+        success, count = save_custom_asset_to_db(
+            ticker=ticker,
+            asset_type='custom',
+            df=df,
+            user_id=user['user_id']
+        )
+
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to save custom asset")
+
+        logger.info(f"Custom asset {ticker} uploaded: {count} records")
+
+        return {
+            "message": "Custom asset uploaded successfully",
+            "ticker": ticker,
+            "records": count,
+            "note": "Prediction will be available after next prediction run (4:30 PM EST)"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading custom asset: {e}")
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
+
+# ============================================================================
 # Error Handlers
 # ============================================================================
 
