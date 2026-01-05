@@ -13,7 +13,7 @@ Endpoints:
 Authentication: X-API-Key header required for protected endpoints
 """
 
-from fastapi import FastAPI, HTTPException, Header, Query, Depends, Request
+from fastapi import FastAPI, HTTPException, Header, Query, Depends, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
@@ -29,6 +29,9 @@ from slowapi.errors import RateLimitExceeded
 from core.data_manager_postgres import DataManager
 from auth_middleware import AuthManager
 from cache_manager import cache
+from request_logger import RequestLoggerMiddleware
+from analytics_api import router as analytics_router
+from websocket_streaming import websocket_endpoint, get_websocket_stats
 
 # Configure logging
 logging.basicConfig(
@@ -66,6 +69,12 @@ app = FastAPI(
 # Add rate limiter to app state
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# Include analytics router
+app.include_router(analytics_router)
+
+# Add request logging middleware
+app.add_middleware(RequestLoggerMiddleware)
 
 # CORS middleware (restrict in production)
 app.add_middleware(
@@ -219,6 +228,39 @@ def cache_stats():
     Returns hit rate, total operations, and cache status
     """
     return cache.get_stats()
+
+@app.get(
+    "/ws/stats",
+    tags=["Info"],
+    summary="WebSocket Statistics",
+    description="View active WebSocket connections and subscriptions"
+)
+def websocket_stats():
+    """
+    Get WebSocket connection statistics
+
+    Returns active connections, tier distribution, and subscriptions
+    """
+    return get_websocket_stats()
+
+@app.websocket("/ws/predictions")
+async def predictions_stream(
+    websocket: WebSocket,
+    api_key: str = Query(..., description="Your API key"),
+    tickers: Optional[str] = Query(None, description="Comma-separated tickers")
+):
+    """
+    WebSocket endpoint for real-time prediction streaming
+
+    Connect via:
+        ws://api.neurovest.com/ws/predictions?api_key=YOUR_KEY&tickers=SPY,QQQ
+
+    Message Types:
+        - connected: Initial connection
+        - prediction: New prediction
+        - heartbeat: Keep-alive (every 30s)
+    """
+    await websocket_endpoint(websocket, api_key, tickers)
 
 @app.get(
     "/health",
