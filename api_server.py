@@ -13,17 +13,22 @@ Endpoints:
 Authentication: X-API-Key header required for protected endpoints
 """
 
-from fastapi import FastAPI, HTTPException, Header, Query, Depends
+from fastapi import FastAPI, HTTPException, Header, Query, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
+import pandas as pd
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 from core.data_manager_postgres import DataManager
 from auth_middleware import AuthManager
+from cache_manager import cache
 
 # Configure logging
 logging.basicConfig(
@@ -31,6 +36,17 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
+
+# Tier-based rate limits
+RATE_LIMITS = {
+    'free': "10/minute",
+    'individual': "60/minute",
+    'pro': "300/minute",
+    'enterprise': "10000/minute"
+}
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -46,6 +62,10 @@ app = FastAPI(
         {"name": "Auth", "description": "User authentication"}
     ]
 )
+
+# Add rate limiter to app state
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS middleware (restrict in production)
 app.add_middleware(
@@ -115,16 +135,49 @@ class ErrorResponse(BaseModel):
 # ============================================================================
 
 async def verify_api_key(x_api_key: str = Header(..., description="Your API key")):
-    """Validate API key from header"""
-    user = AuthManager.validate_api_key(x_api_key)
-    if not user:
-        logger.warning(f"Invalid API key attempted: {x_api_key[:8]}...")
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid API key. Register at /api/auth/register to get a key."
-        )
-    logger.info(f"Authenticated user: {user['user_id']}")
-    return user
+    """Validate API key from header and return user with tier"""
+    dm = DataManager()
+
+    try:
+        with dm.engine.connect() as conn:
+            from sqlalchemy import text
+            result = conn.execute(
+                text("SELECT id, username, tier FROM users WHERE api_key = :api_key"),
+                {"api_key": x_api_key}
+            )
+            user = result.fetchone()
+
+        dm.close()
+
+        if not user:
+            logger.warning(f"Invalid API key attempted: {x_api_key[:8]}...")
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid API key. Register at /api/auth/register to get a key."
+            )
+
+        user_dict = {
+            'user_id': user[0],
+            'username': user[1],
+            'tier': user[2] if len(user) > 2 and user[2] else 'free'
+        }
+
+        logger.info(f"Authenticated user: {user_dict['user_id']} (tier: {user_dict['tier']})")
+        return user_dict
+
+    except Exception as e:
+        dm.close()
+        logger.error(f"Auth error: {e}")
+        raise HTTPException(status_code=401, detail="Authentication failed")
+
+# ============================================================================
+# Rate Limiting Helper
+# ============================================================================
+
+def get_user_rate_limit(user: dict) -> str:
+    """Get rate limit string for user's tier"""
+    tier = user.get('tier', 'free')
+    return RATE_LIMITS.get(tier, RATE_LIMITS['free'])
 
 # ============================================================================
 # API Endpoints
@@ -152,6 +205,20 @@ def root():
             "register": "/api/auth/register"
         }
     }
+
+@app.get(
+    "/cache/stats",
+    tags=["Info"],
+    summary="Cache Statistics",
+    description="View Redis cache performance metrics"
+)
+def cache_stats():
+    """
+    Get cache statistics and performance metrics
+
+    Returns hit rate, total operations, and cache status
+    """
+    return cache.get_stats()
 
 @app.get(
     "/health",
@@ -211,13 +278,21 @@ def health_check():
     Returns one prediction per asset (most recent).
     Requires authentication via X-API-Key header.
 
+    **Rate Limits by Tier:**
+    - Free: 10 requests/minute
+    - Individual: 60 requests/minute
+    - Pro: 300 requests/minute
+    - Enterprise: 10,000 requests/minute
+
     **Example:**
     ```
     curl -H "X-API-Key: YOUR_KEY" https://api.neurovest.com/api/predictions
     ```
     """
 )
+@limiter.limit("300/minute")  # Max for non-enterprise
 def get_all_predictions(
+    request: Request,
     limit: int = Query(100, le=1000, description="Maximum predictions to return"),
     user: dict = Depends(verify_api_key)
 ):
@@ -233,6 +308,13 @@ def get_all_predictions(
     """
     try:
         logger.info(f"User {user['user_id']} requesting all predictions (limit={limit})")
+
+        # Try cache first
+        cache_key = f"predictions:all:{limit}"
+        cached = cache.get(cache_key)
+        if cached:
+            logger.info("Returning cached predictions")
+            return cached
 
         dm = DataManager()
         df = dm.get_latest_predictions(limit=limit)
@@ -279,6 +361,10 @@ def get_all_predictions(
             })
 
         logger.info(f"Returning {len(predictions)} predictions")
+
+        # Cache for 5 minutes
+        cache.set(cache_key, predictions, ttl=300)
+
         return predictions
 
     except Exception as e:
@@ -303,13 +389,21 @@ def get_all_predictions(
     - **NORMAL**: Range-bound movement
     - **SPIKE**: Expect >0.6% gain (stocks) or >2% (crypto)
 
+    **Rate Limits by Tier:**
+    - Free: 10 requests/minute
+    - Individual: 60 requests/minute
+    - Pro: 300 requests/minute
+    - Enterprise: 10,000 requests/minute
+
     **Example:**
     ```
     curl -H "X-API-Key: YOUR_KEY" https://api.neurovest.com/api/predictions/SPY
     ```
     """
 )
+@limiter.limit("300/minute")
 def get_prediction(
+    request: Request,
     ticker: str,
     user: dict = Depends(verify_api_key)
 ):
@@ -326,6 +420,13 @@ def get_prediction(
     try:
         ticker_upper = ticker.upper()
         logger.info(f"User {user['user_id']} requesting prediction for {ticker_upper}")
+
+        # Try cache first
+        cache_key = f"prediction:{ticker_upper}"
+        cached = cache.get(cache_key)
+        if cached:
+            logger.info(f"Returning cached prediction for {ticker_upper}")
+            return cached
 
         dm = DataManager()
         df = dm.get_latest_predictions(limit=1000)
@@ -375,6 +476,10 @@ def get_prediction(
         }
 
         logger.info(f"Returning prediction for {ticker_upper}: {label}")
+
+        # Cache for 5 minutes
+        cache.set(cache_key, response, ttl=300)
+
         return response
 
     except HTTPException:
@@ -487,6 +592,8 @@ def register_user(username: str = Query(..., min_length=3, max_length=50)):
     - `ticker`: Asset symbol
     - `days`: Number of days of history (default 30, max 365)
 
+    **Rate Limits:** Same as other prediction endpoints
+
     **Example:**
     ```
     curl -H "X-API-Key: YOUR_KEY" \
@@ -494,7 +601,9 @@ def register_user(username: str = Query(..., min_length=3, max_length=50)):
     ```
     """
 )
+@limiter.limit("300/minute")
 def get_prediction_history(
+    request: Request,
     ticker: str,
     days: int = Query(30, le=365, description="Days of history to return"),
     user: dict = Depends(verify_api_key)
@@ -590,6 +699,8 @@ def get_prediction_history(
     }
     ```
 
+    **Rate Limits:** Same as other prediction endpoints (counts as 1 request regardless of ticker count)
+
     **Example:**
     ```
     curl -X POST -H "X-API-Key: YOUR_KEY" \
@@ -599,7 +710,9 @@ def get_prediction_history(
     ```
     """
 )
+@limiter.limit("300/minute")
 def get_batch_predictions(
+    request: Request,
     tickers: List[str],
     user: dict = Depends(verify_api_key)
 ):
