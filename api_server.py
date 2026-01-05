@@ -248,14 +248,33 @@ def get_all_predictions(
 
         predictions = []
         for _, row in latest.iterrows():
+            # Derive 3-class probabilities from ensemble_prob and prediction_label
+            ensemble_prob = float(row['ensemble_prob'])
+            label = row['prediction_label']
+
+            # Distribute remaining probability across other classes
+            remaining = 1.0 - ensemble_prob
+            other_prob = remaining / 2.0
+
+            if label == 'CRASH':
+                prob_crash, prob_normal, prob_spike = ensemble_prob, other_prob, other_prob
+            elif label == 'SPIKE':
+                prob_crash, prob_normal, prob_spike = other_prob, other_prob, ensemble_prob
+            else:  # NORMAL
+                prob_crash, prob_normal, prob_spike = other_prob, ensemble_prob, other_prob
+
+            # Derive confidence from confidence_score
+            conf_score = float(row.get('confidence_score', 0.5))
+            confidence = 'high' if conf_score >= 0.7 else ('medium' if conf_score >= 0.5 else 'low')
+
             predictions.append({
                 "ticker": row['ticker'],
                 "prediction_date": str(row['prediction_date']),
-                "prediction_label": row['prediction_label'],
-                "prob_crash": float(row['prob_crash']),
-                "prob_normal": float(row['prob_normal']),
-                "prob_spike": float(row['prob_spike']),
-                "confidence": row['confidence'],
+                "prediction_label": label,
+                "prob_crash": round(prob_crash, 3),
+                "prob_normal": round(prob_normal, 3),
+                "prob_spike": round(prob_spike, 3),
+                "confidence": confidence,
                 "timestamp": datetime.now().isoformat()
             })
 
@@ -325,18 +344,37 @@ def get_prediction(
         # Get most recent prediction
         row = ticker_df.sort_values('prediction_date', ascending=False).iloc[0]
 
+        # Derive 3-class probabilities from ensemble_prob and prediction_label
+        ensemble_prob = float(row['ensemble_prob'])
+        label = row['prediction_label']
+
+        # Distribute remaining probability across other classes
+        remaining = 1.0 - ensemble_prob
+        other_prob = remaining / 2.0
+
+        if label == 'CRASH':
+            prob_crash, prob_normal, prob_spike = ensemble_prob, other_prob, other_prob
+        elif label == 'SPIKE':
+            prob_crash, prob_normal, prob_spike = other_prob, other_prob, ensemble_prob
+        else:  # NORMAL
+            prob_crash, prob_normal, prob_spike = other_prob, ensemble_prob, other_prob
+
+        # Derive confidence from confidence_score
+        conf_score = float(row.get('confidence_score', 0.5))
+        confidence = 'high' if conf_score >= 0.7 else ('medium' if conf_score >= 0.5 else 'low')
+
         response = {
             "ticker": row['ticker'],
             "prediction_date": str(row['prediction_date']),
-            "prediction_label": row['prediction_label'],
-            "prob_crash": float(row['prob_crash']),
-            "prob_normal": float(row['prob_normal']),
-            "prob_spike": float(row['prob_spike']),
-            "confidence": row['confidence'],
+            "prediction_label": label,
+            "prob_crash": round(prob_crash, 3),
+            "prob_normal": round(prob_normal, 3),
+            "prob_spike": round(prob_spike, 3),
+            "confidence": confidence,
             "timestamp": datetime.now().isoformat()
         }
 
-        logger.info(f"Returning prediction for {ticker_upper}: {row['prediction_label']}")
+        logger.info(f"Returning prediction for {ticker_upper}: {label}")
         return response
 
     except HTTPException:
