@@ -53,8 +53,8 @@ def get_usage_stats(
         dm = DataManager()
 
         # Build WHERE clause
-        where_parts = ["created_at >= CURRENT_TIMESTAMP - INTERVAL :days DAY"]
-        params = {"days": days}
+        where_parts = [f"created_at >= CURRENT_TIMESTAMP - INTERVAL '{days} days'"]
+        params = {}
 
         if user_id:
             where_parts.append("user_id = :user_id")
@@ -146,7 +146,7 @@ def get_popular_assets(
     try:
         dm = DataManager()
 
-        query = """
+        query = f"""
             SELECT
                 SUBSTRING(endpoint FROM '/api/predictions/([^/]+)') as ticker,
                 COUNT(*) as request_count,
@@ -155,7 +155,7 @@ def get_popular_assets(
             WHERE endpoint LIKE '/api/predictions/%'
               AND endpoint NOT LIKE '%/history'
               AND endpoint NOT LIKE '%/batch'
-              AND created_at >= CURRENT_TIMESTAMP - INTERVAL :days DAY
+              AND created_at >= CURRENT_TIMESTAMP - INTERVAL '{days} days'
             GROUP BY ticker
             HAVING ticker IS NOT NULL
             ORDER BY request_count DESC
@@ -163,7 +163,7 @@ def get_popular_assets(
         """
 
         with dm.engine.connect() as conn:
-            result = conn.execute(text(query), {"days": days, "limit": limit})
+            result = conn.execute(text(query), {"limit": limit})
             assets = [
                 {
                     "ticker": row[0],
@@ -203,35 +203,35 @@ def get_error_analysis(
 
         with dm.engine.connect() as conn:
             # Errors by status code
-            status_query = """
+            status_query = f"""
                 SELECT status_code, COUNT(*) as count
                 FROM request_logs
                 WHERE status_code >= 400
-                  AND created_at >= CURRENT_TIMESTAMP - INTERVAL :days DAY
+                  AND created_at >= CURRENT_TIMESTAMP - INTERVAL '{days} days'
                 GROUP BY status_code
                 ORDER BY count DESC
             """
-            status_result = conn.execute(text(status_query), {"days": days})
+            status_result = conn.execute(text(status_query))
             by_status = [
                 {"status_code": row[0], "count": row[1]}
                 for row in status_result
             ]
 
             # Error-prone endpoints
-            endpoint_query = """
+            endpoint_query = f"""
                 SELECT
                     endpoint,
                     COUNT(*) as total_requests,
                     COUNT(CASE WHEN status_code >= 400 THEN 1 END) as errors,
                     ROUND(COUNT(CASE WHEN status_code >= 400 THEN 1 END)::numeric / COUNT(*)::numeric * 100, 2) as error_rate
                 FROM request_logs
-                WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL :days DAY
+                WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '{days} days'
                 GROUP BY endpoint
                 HAVING COUNT(CASE WHEN status_code >= 400 THEN 1 END) > 0
                 ORDER BY error_rate DESC
                 LIMIT 10
             """
-            endpoint_result = conn.execute(text(endpoint_query), {"days": days})
+            endpoint_result = conn.execute(text(endpoint_query))
             by_endpoint = [
                 {
                     "endpoint": row[0],
@@ -243,17 +243,17 @@ def get_error_analysis(
             ]
 
             # Daily error trend
-            trend_query = """
+            trend_query = f"""
                 SELECT
                     DATE(created_at) as date,
                     COUNT(*) as total,
                     COUNT(CASE WHEN status_code >= 400 THEN 1 END) as errors
                 FROM request_logs
-                WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL :days DAY
+                WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '{days} days'
                 GROUP BY DATE(created_at)
                 ORDER BY date DESC
             """
-            trend_result = conn.execute(text(trend_query), {"days": days})
+            trend_result = conn.execute(text(trend_query))
             trend = [
                 {
                     "date": str(row[0]),
@@ -292,7 +292,7 @@ def get_performance_metrics(
 
         with dm.engine.connect() as conn:
             # Overall performance
-            overall_query = """
+            overall_query = f"""
                 SELECT
                     AVG(response_time_ms) as avg,
                     MIN(response_time_ms) as min,
@@ -301,27 +301,27 @@ def get_performance_metrics(
                     PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY response_time_ms) as p95,
                     PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY response_time_ms) as p99
                 FROM request_logs
-                WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL :days DAY
+                WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '{days} days'
                   AND status_code = 200
             """
-            overall_result = conn.execute(text(overall_query), {"days": days})
+            overall_result = conn.execute(text(overall_query))
             overall = overall_result.fetchone()
 
             # Performance by endpoint
-            endpoint_query = """
+            endpoint_query = f"""
                 SELECT
                     endpoint,
                     COUNT(*) as requests,
                     AVG(response_time_ms) as avg_time,
                     MAX(response_time_ms) as max_time
                 FROM request_logs
-                WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL :days DAY
+                WHERE created_at >= CURRENT_TIMESTAMP - INTERVAL '{days} days'
                   AND status_code = 200
                 GROUP BY endpoint
                 ORDER BY avg_time DESC
                 LIMIT 10
             """
-            endpoint_result = conn.execute(text(endpoint_query), {"days": days})
+            endpoint_result = conn.execute(text(endpoint_query))
             by_endpoint = [
                 {
                     "endpoint": row[0],
