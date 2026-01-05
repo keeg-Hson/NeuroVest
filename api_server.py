@@ -174,7 +174,7 @@ def health_check():
         dm = DataManager()
 
         # Check database connectivity
-        assets = dm.get_all_tickers()
+        assets = dm.get_all_assets()  # Returns list of (ticker, asset_type) tuples
 
         # Get latest prediction
         latest = dm.get_latest_predictions(limit=1)
@@ -374,14 +374,17 @@ def get_assets(user: dict = Depends(verify_api_key)):
         logger.info(f"User {user['user_id']} requesting assets list")
 
         dm = DataManager()
-        assets = dm.get_all_tickers()
+        assets = dm.get_all_assets()  # Returns list of (ticker, asset_type) tuples
         dm.close()
 
-        logger.info(f"Returning {len(assets)} assets")
+        # Extract just the ticker names
+        tickers = [ticker for ticker, asset_type in assets]
+
+        logger.info(f"Returning {len(tickers)} assets")
 
         return {
-            "total": len(assets),
-            "assets": sorted(assets)
+            "total": len(tickers),
+            "assets": sorted(tickers)
         }
     except Exception as e:
         logger.error(f"Error fetching assets: {e}")
