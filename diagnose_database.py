@@ -89,6 +89,12 @@ try:
             count = result.scalar()
             print(f"\n✓ request_logs table exists with {count} rows")
 
+        # Check price_data
+        if 'price_data' in tables:
+            result = conn.execute(text("SELECT COUNT(*) FROM price_data"))
+            count = result.scalar()
+            print(f"✓ price_data table exists with {count:,} rows")
+
     print("\n" + "="*70)
     print("✅ ALL CHECKS PASSED - Database is working correctly")
     print("="*70)
