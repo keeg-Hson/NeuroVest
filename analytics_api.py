@@ -56,11 +56,11 @@ def get_usage_stats(
         where_parts = [f"created_at >= CURRENT_TIMESTAMP - INTERVAL '{days} days'"]
         params = {}
 
-        if user_id:
+        if user_id is not None:
             where_parts.append("user_id = :user_id")
             params["user_id"] = user_id
 
-        if tier:
+        if tier is not None:
             where_parts.append("tier = :tier")
             params["tier"] = tier
 
