@@ -156,8 +156,8 @@ def get_popular_assets(
               AND endpoint NOT LIKE '%/history'
               AND endpoint NOT LIKE '%/batch'
               AND created_at >= CURRENT_TIMESTAMP - INTERVAL '{days} days'
-            GROUP BY ticker
-            HAVING ticker IS NOT NULL
+            GROUP BY SUBSTRING(endpoint FROM '/api/predictions/([^/]+)')
+            HAVING SUBSTRING(endpoint FROM '/api/predictions/([^/]+)') IS NOT NULL
             ORDER BY request_count DESC
             LIMIT :limit
         """
