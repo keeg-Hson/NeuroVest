@@ -37,8 +37,8 @@ def require_admin_or_self(user_id: Optional[int] = None):
 @router.get("/usage")
 def get_usage_stats(
     days: int = Query(7, ge=1, le=90, description="Days to analyze"),
-    user_id: Optional[int] = Query(None, description="Filter by user ID"),
-    tier: Optional[str] = Query(None, description="Filter by tier")
+    user_id: Optional[int] = None,
+    tier: Optional[str] = None
 ):
     """
     Get API usage statistics
