@@ -102,11 +102,11 @@ echo ""
 echo "======================================================================="
 echo ""
 
-# Step 3: Generate predictions
-if [ -f "predict_multi_asset_ensemble.py" ]; then
-    echo "STEP 3/4: Generating predictions..."
+# Step 3: Generate predictions for ALL assets
+if [ -f "predict_all_assets.py" ]; then
+    echo "STEP 3/4: Generating predictions for all 40 assets..."
     echo "-----------------------------------------------------------------------"
-    python3 predict_multi_asset_ensemble.py
+    python3 predict_all_assets.py
     PRED_EXIT=$?
 
     if [ $PRED_EXIT -ne 0 ]; then
@@ -115,7 +115,7 @@ if [ -f "predict_multi_asset_ensemble.py" ]; then
         echo "You may need to debug this manually"
     fi
 else
-    echo "STEP 3/4: SKIPPED (predict_multi_asset_ensemble.py not found)"
+    echo "STEP 3/4: SKIPPED (predict_all_assets.py not found)"
     PRED_EXIT=1
 fi
 
