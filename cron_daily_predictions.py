@@ -71,23 +71,22 @@ def main():
     ):
         log("⚠️  Data update had errors, continuing anyway...")
 
-    # Step 3: Generate predictions
-    log("\nSTEP 3/3: Generating ensemble predictions")
+    # Step 3: Generate predictions for ALL assets
+    log("\nSTEP 3/3: Generating predictions for all 40 assets")
 
-    # Check if ensemble predictor exists
-    ensemble_script = Path("predict_multi_asset_ensemble.py")
-    if ensemble_script.exists():
+    # Use predict_all_assets to generate predictions for every asset
+    all_assets_script = Path("predict_all_assets.py")
+    if all_assets_script.exists():
+        if not run_command(
+            ["python3", "predict_all_assets.py"],
+            "Generate predictions for all assets"
+        ):
+            log("❌ All-assets prediction failed")
+    else:
+        log("⚠️  predict_all_assets.py not found, falling back to SPY only")
         if not run_command(
             ["python3", "predict_multi_asset_ensemble.py"],
-            "Generate ensemble predictions"
-        ):
-            log("❌ Ensemble prediction failed")
-    else:
-        # Fallback to per-asset predictor
-        log("⚠️  Ensemble script not found, using per-asset predictor")
-        if not run_command(
-            ["python3", "predict_per_asset.py"],
-            "Generate per-asset predictions"
+            "Generate SPY prediction"
         ):
             log("❌ Prediction generation failed")
 
