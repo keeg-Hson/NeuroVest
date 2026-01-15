@@ -88,6 +88,14 @@ spy_df = add_forward_returns_and_labels(
     slippage_bps=TRAIN_CFG.get("slippage_bps", 2.0),
 )
 
+# ENHANCEMENT: Convert binary labels (0/1) to 3-class (0=CRASH, 1=NORMAL, 2=SPIKE)
+# This provides more granular predictions and better captures market regimes
+print(f"   Converting to 3-class labels (CRASH/NORMAL/SPIKE)...")
+spy_df['y_3class'] = 1  # Start with NORMAL
+spy_df.loc[spy_df['fwd_ret_net'] >= spy_threshold, 'y_3class'] = 2  # SPIKE
+spy_df.loc[spy_df['fwd_ret_net'] <= -spy_threshold, 'y_3class'] = 0  # CRASH
+print(f"   Class distribution: CRASH={len(spy_df[spy_df['y_3class']==0])}, NORMAL={len(spy_df[spy_df['y_3class']==1])}, SPIKE={len(spy_df[spy_df['y_3class']==2])}")
+
 # =============================================================================
 # 2. LOAD AND PREPARE EQUITY ETF DATA (RECOMMENDED FOR SPY TRAINING)
 # =============================================================================
@@ -125,6 +133,11 @@ for asset in equity_assets:
         fee_bps=TRAIN_CFG.get("fee_bps", 1.5),
         slippage_bps=TRAIN_CFG.get("slippage_bps", 2.0),
     )
+
+    # Convert to 3-class labels
+    df['y_3class'] = 1  # NORMAL
+    df.loc[df['fwd_ret_net'] >= equity_threshold, 'y_3class'] = 2  # SPIKE
+    df.loc[df['fwd_ret_net'] <= -equity_threshold, 'y_3class'] = 0  # CRASH
 
     equity_dfs.append(df)
     print(f"   {asset:12s}: {len(df)} rows")
@@ -171,6 +184,11 @@ for asset in crypto_assets:
         slippage_bps=5.0,  # Higher slippage for crypto
     )
 
+    # Convert to 3-class labels
+    df['y_3class'] = 1  # NORMAL
+    df.loc[df['fwd_ret_net'] >= threshold, 'y_3class'] = 2  # SPIKE
+    df.loc[df['fwd_ret_net'] <= -threshold, 'y_3class'] = 0  # CRASH
+
     crypto_dfs.append(df)
     print(f"   {asset:12s}: {len(df)} rows (threshold: {threshold*100:.1f}%)")
 
@@ -200,9 +218,10 @@ if leaky_features:
     feature_cols = [c for c in feature_cols if c not in leakage_cols and not c.startswith('fwd_')]
 
 # Select features and target
-all_cols = feature_cols + ['y', 'fwd_ret_net']
+# Use y_3class for 3-class classification (0=CRASH, 1=NORMAL, 2=SPIKE)
+all_cols = feature_cols + ['y', 'y_3class', 'fwd_ret_net']
 combined_df = combined_df[all_cols].copy()
-combined_df = combined_df.dropna(subset=['y'])
+combined_df = combined_df.dropna(subset=['y_3class'])
 
 # Fill NaN
 if combined_df.isnull().any().any():
@@ -230,12 +249,19 @@ train_df = combined_df.iloc[:-test_size]
 test_df = combined_df.iloc[-test_size:]
 
 X_train = train_df[feature_cols].values
-y_train = train_df['y'].values
+y_train = train_df['y_3class'].values  # Use 3-class labels
 X_test = test_df[feature_cols].values
-y_test = test_df['y'].values
+y_test = test_df['y_3class'].values  # Use 3-class labels
 
-print(f"\nTrain: {len(train_df):,} samples ({y_train.sum():,} positive)")
-print(f"Test:  {len(test_df):,} samples ({y_test.sum():,} positive)")
+# Print class distribution
+print(f"\nTrain: {len(train_df):,} samples")
+print(f"  CRASH (0):  {np.sum(y_train == 0):,} ({100*np.sum(y_train == 0)/len(y_train):.1f}%)")
+print(f"  NORMAL (1): {np.sum(y_train == 1):,} ({100*np.sum(y_train == 1)/len(y_train):.1f}%)")
+print(f"  SPIKE (2):  {np.sum(y_train == 2):,} ({100*np.sum(y_train == 2)/len(y_train):.1f}%)")
+print(f"\nTest:  {len(test_df):,} samples")
+print(f"  CRASH (0):  {np.sum(y_test == 0):,} ({100*np.sum(y_test == 0)/len(y_test):.1f}%)")
+print(f"  NORMAL (1): {np.sum(y_test == 1):,} ({100*np.sum(y_test == 1)/len(y_test):.1f}%)")
+print(f"  SPIKE (2):  {np.sum(y_test == 2):,} ({100*np.sum(y_test == 2)/len(y_test):.1f}%)")
 
 # Calculate sample weights (same as single-asset training)
 fwd_rets = train_df['fwd_ret_net'].abs()
@@ -313,7 +339,9 @@ else:
         xgb_params = best_params.get('xgboost', {}).get('params', {})
         xgb_model = xgb.XGBClassifier(
             random_state=42,
-            eval_metric='logloss',
+            eval_metric='mlogloss',  # Use mlogloss for multi-class
+            objective='multi:softprob',  # 3-class classification
+            num_class=3,
             **xgb_params
         )
         xgb_model.fit(X_train, y_train, sample_weight=weights, verbose=False)
@@ -327,6 +355,8 @@ else:
         lgb_model = lgb.LGBMClassifier(
             random_state=42,
             verbose=-1,
+            objective='multiclass',  # 3-class classification
+            num_class=3,
             **lgb_params
         )
         lgb_model.fit(X_train, y_train, sample_weight=weights)
@@ -360,7 +390,9 @@ else:
             subsample=0.8,
             colsample_bytree=0.8,
             random_state=42,
-            eval_metric='logloss'
+            eval_metric='mlogloss',  # Multi-class log loss
+            objective='multi:softprob',  # 3-class classification
+            num_class=3
         )
         xgb_model.fit(X_train, y_train, sample_weight=weights, verbose=False)
         models['xgboost'] = xgb_model
@@ -376,7 +408,9 @@ else:
             subsample=0.8,
             colsample_bytree=0.8,
             random_state=42,
-            verbose=-1
+            verbose=-1,
+            objective='multiclass',  # 3-class classification
+            num_class=3
         )
         lgb_model.fit(X_train, y_train, sample_weight=weights)
         models['lightgbm'] = lgb_model
@@ -390,7 +424,8 @@ else:
             depth=5,
             learning_rate=0.05,
             random_state=42,
-            verbose=False
+            verbose=False,
+            loss_function='MultiClass'  # 3-class classification
         )
         cat_model.fit(X_train, y_train, sample_weight=weights)
         models['catboost'] = cat_model

@@ -153,41 +153,94 @@ for ticker, asset_type in assets_to_predict:
         print(f"   🗳️  Ensemble voting...")
 
         all_preds = np.array([p['pred'] for p in predictions.values()])
-        ensemble_pred = np.apply_along_axis(
-            lambda x: np.bincount(x.astype(int)).argmax(),
-            axis=0,
-            arr=all_preds
-        )
 
-        # Ensemble probabilities (average)
+        # Ensemble probabilities (average across models)
         all_probs = np.array([p['prob'] for p in predictions.values()])
         ensemble_prob = all_probs.mean(axis=0)
+
+        # FIX: Convert binary model outputs (0/1) to 3-class (0=CRASH, 1=NORMAL, 2=SPIKE)
+        # Strategy: Use percentile-based thresholds on probability distribution
+        # This ensures balanced class distribution regardless of model calibration
+
+        # Check if models are binary (2 classes) or ternary (3 classes)
+        n_classes = ensemble_prob.shape[1] if len(ensemble_prob.shape) > 1 else 1
+
+        if n_classes == 2:
+            # Binary models: Use probability of positive class (class 1)
+            prob_positive = ensemble_prob[:, 1]
+
+            # Use percentile-based thresholds (same as predict_multi_asset_ensemble.py)
+            crash_threshold = np.percentile(prob_positive, 30)   # Bottom 30% = CRASH
+            spike_threshold = np.percentile(prob_positive, 70)   # Top 30% = SPIKE
+
+            # Convert to 3-class predictions
+            ensemble_pred_3class = np.where(
+                prob_positive >= spike_threshold, 2,  # SPIKE
+                np.where(prob_positive < crash_threshold, 0, 1)  # CRASH or NORMAL
+            )
+
+            # Calculate confidence based on distance from thresholds
+            spike_conf = np.clip((prob_positive - spike_threshold) / (1 - spike_threshold + 0.001), 0, 1)
+            crash_conf = np.clip((crash_threshold - prob_positive) / (crash_threshold + 0.001), 0, 1)
+            confidence_array = np.maximum(spike_conf, crash_conf)
+
+            print(f"   Binary models detected - using percentile conversion")
+            print(f"   Crash threshold (30th): {crash_threshold:.3f}")
+            print(f"   Spike threshold (70th): {spike_threshold:.3f}")
+
+        else:
+            # Ternary models: Use direct predictions
+            ensemble_pred_3class = np.apply_along_axis(
+                lambda x: np.bincount(x.astype(int)).argmax(),
+                axis=0,
+                arr=all_preds
+            )
+            # Confidence is max probability
+            confidence_array = ensemble_prob.max(axis=1)
+
+            print(f"   Ternary models detected - using direct predictions")
 
         # Get most recent prediction
         latest_idx = -1
         latest_date = dates[latest_idx]
-        latest_pred = ensemble_pred[latest_idx]
-        latest_prob = ensemble_prob[latest_idx]
+        latest_pred = ensemble_pred_3class[latest_idx]
 
         # Map prediction to label
         label_map = {0: 'CRASH', 1: 'NORMAL', 2: 'SPIKE'}
         label = label_map[latest_pred]
 
-        # Confidence score (probability of predicted class)
-        confidence_score = latest_prob[latest_pred]
+        # Confidence score
+        if n_classes == 2:
+            confidence_score = confidence_array[latest_idx]
+            latest_prob_value = prob_positive[latest_idx]
+        else:
+            confidence_score = confidence_array[latest_idx]
+            latest_prob_value = ensemble_prob[latest_idx, latest_pred]
 
         print(f"   ✓ Prediction: {label} (confidence: {confidence_score:.2%})")
 
         # Save to database
+        # Extract individual model probabilities
+        if n_classes == 2:
+            # Binary models: use probability of positive class
+            xgb_prob = predictions.get('xgboost', {}).get('prob', [[0, 0]])[latest_idx][1]
+            lgb_prob = predictions.get('lightgbm', {}).get('prob', [[0, 0]])[latest_idx][1]
+            cat_prob = predictions.get('catboost', {}).get('prob', [[0, 0]])[latest_idx][1]
+        else:
+            # Ternary models: use probability of predicted class
+            xgb_prob = predictions.get('xgboost', {}).get('prob', [[0,0,0]])[latest_idx][latest_pred]
+            lgb_prob = predictions.get('lightgbm', {}).get('prob', [[0,0,0]])[latest_idx][latest_pred]
+            cat_prob = predictions.get('catboost', {}).get('prob', [[0,0,0]])[latest_idx][latest_pred]
+
         pred_df = pd.DataFrame([{
             'ticker': ticker,
             'prediction_date': pd.to_datetime(latest_date).date(),
-            'ensemble_prob': latest_prob[latest_pred],
+            'ensemble_prob': latest_prob_value,
             'prediction_label': label,
-            'xgboost_prob': predictions.get('xgboost', {}).get('prob', [[0,0,0]])[latest_idx][latest_pred],
-            'lightgbm_prob': predictions.get('lightgbm', {}).get('prob', [[0,0,0]])[latest_idx][latest_pred],
-            'catboost_prob': predictions.get('catboost', {}).get('prob', [[0,0,0]])[latest_idx][latest_pred],
-            'model_agreement': len(set(all_preds[:, latest_idx])) == 1,
+            'xgboost_prob': xgb_prob,
+            'lightgbm_prob': lgb_prob,
+            'catboost_prob': cat_prob,
+            'model_agreement': len(set(all_preds[:, latest_idx])) == 1 if n_classes > 2 else True,
             'confidence_score': confidence_score
         }])
 
