@@ -70,6 +70,7 @@ def main():
     log("\nSTEP 2/3: Selecting training script")
 
     train_scripts = [
+        ("train_multi_asset.py", "Multi-asset 3-class training"),
         ("framework/train_unified.py", "Unified training framework"),
         ("train_improved.py", "Improved training script"),
         ("train.py", "Standard training script")
@@ -97,15 +98,24 @@ def main():
     if not success:
         log("❌ Model training failed - using existing models")
 
-    # Step 4: Generate fresh predictions with new models
-    log("\nSTEP 4/3 (BONUS): Generating predictions with retrained models")
+    # Step 4: Generate fresh predictions for all assets with new models
+    log("\nSTEP 4/3 (BONUS): Generating predictions for all assets with retrained models")
 
-    ensemble_script = Path("predict_multi_asset_ensemble.py")
-    if ensemble_script.exists():
+    predict_script = Path("predict_all_assets.py")
+    if predict_script.exists():
         run_command(
-            ["python3", "predict_multi_asset_ensemble.py"],
-            "Generate predictions with new models"
+            ["python3", "predict_all_assets.py"],
+            "Generate predictions for all 40 assets"
         )
+    else:
+        # Fallback to SPY-only predictions
+        ensemble_script = Path("predict_multi_asset_ensemble.py")
+        if ensemble_script.exists():
+            log("  ⚠️  Using fallback SPY-only predictions")
+            run_command(
+                ["python3", "predict_multi_asset_ensemble.py"],
+                "Generate SPY predictions (fallback)"
+            )
 
     # Summary
     print("\n" + "="*70)
