@@ -33,21 +33,9 @@ echo ""
 echo "======================================================================="
 echo ""
 
-# Step 0.5: Clear old price data to allow full reload
-echo "STEP 0.5/4: Clearing old price data for full reload..."
-echo "-----------------------------------------------------------------------"
-python3 clear_price_data.py
-CLEAR_EXIT=$?
-
-if [ $CLEAR_EXIT -ne 0 ]; then
-    echo ""
-    echo "⚠️  Data clearing had issues (exit code $CLEAR_EXIT)"
-    echo "Continuing anyway - might be first run..."
-fi
-
-echo ""
-echo "======================================================================="
-echo ""
+# Step 0.5: Skip data clearing - scripts handle incremental updates
+# (clear_price_data.py is too aggressive and wipes everything)
+# echo "STEP 0.5/4: SKIPPED - Using incremental updates instead"
 
 # Step 1: Load data
 echo "STEP 1/4: Loading historical data (MAX HISTORY)..."
