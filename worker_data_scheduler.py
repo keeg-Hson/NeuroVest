@@ -154,11 +154,11 @@ class WorkerScheduler:
         print(f"{'='*70}\n")
 
         try:
-            # Check if prediction script exists
-            pred_script = Path("predict_multi_asset_ensemble.py")
+            # Check if prediction script exists (use predict_all_assets.py for all 40 assets)
+            pred_script = Path("predict_all_assets.py")
             if pred_script.exists():
                 result = subprocess.run(
-                    [sys.executable, "predict_multi_asset_ensemble.py"],
+                    [sys.executable, "predict_all_assets.py"],
                     capture_output=True,
                     text=True,
                     timeout=1800  # 30 minute timeout
@@ -169,7 +169,19 @@ class WorkerScheduler:
                 else:
                     print(f"⚠️  Prediction generation had errors:\n{result.stderr}\n")
             else:
-                print("⚠️  predict_multi_asset_ensemble.py not found, skipping predictions\n")
+                # Fallback to SPY-only predictions
+                fallback_script = Path("predict_multi_asset_ensemble.py")
+                if fallback_script.exists():
+                    print("⚠️  predict_all_assets.py not found, using SPY-only fallback\n")
+                    result = subprocess.run(
+                        [sys.executable, "predict_multi_asset_ensemble.py"],
+                        capture_output=True,
+                        text=True,
+                        timeout=1800
+                    )
+                    print(result.stdout)
+                else:
+                    print("⚠️  No prediction scripts found, skipping predictions\n")
         except subprocess.TimeoutExpired:
             print("⚠️  Prediction generation timed out after 30 minutes\n")
         except Exception as e:
