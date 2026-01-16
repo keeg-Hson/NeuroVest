@@ -82,37 +82,41 @@ class WorkerScheduler:
                     ticker, callback, interval_minutes=60
                 )
 
-        # Register crypto assets (Coinbase only - BNB and MATIC not available)
+        # Register crypto assets - MUST MATCH reload_crypto_max_history.py asset list!
+        # Using multiple exchanges to cover all 10 cryptos
         crypto_symbols = [
-            ('BTC/USDT', 'BTC_USDT'),
-            ('ETH/USDT', 'ETH_USDT'),
-            ('SOL/USDT', 'SOL_USDT'),
-            ('XRP/USDT', 'XRP_USDT'),
-            ('ADA/USDT', 'ADA_USDT'),
-            ('DOGE/USDT', 'DOGE_USDT'),
-            ('DOT/USDT', 'DOT_USDT'),
-            ('AVAX/USDT', 'AVAX_USDT')
+            ('BTC/USDT', 'BTC_USDT', 'coinbase'),
+            ('ETH/USDT', 'ETH_USDT', 'coinbase'),
+            ('SOL/USDT', 'SOL_USDT', 'coinbase'),
+            ('BNB/USDT', 'BNB_USDT', 'kucoin'),      # Not on Coinbase, use KuCoin
+            ('XRP/USDT', 'XRP_USDT', 'coinbase'),
+            ('ADA/USDT', 'ADA_USDT', 'coinbase'),
+            ('DOGE/USDT', 'DOGE_USDT', 'coinbase'),
+            ('AVAX/USDT', 'AVAX_USDT', 'coinbase'),
+            ('MATIC/USDT', 'MATIC_USDT', 'okx'),     # Not on Coinbase, use OKX
+            ('LINK/USDT', 'LINK_USDT', 'coinbase')
         ]
 
         print("\n₿ Registering crypto assets...")
-        for symbol, ticker in crypto_symbols:
+        for config in crypto_symbols:
+            symbol, ticker, exchange = config
             self.dm.register_asset(ticker, 'crypto', 'daily')
 
             try:
-                # Use Coinbase instead of Binance (Binance blocks Railway's region)
+                # Use specified exchange for each crypto
                 # Fetch 3 years of daily data for ML training (matches stock data)
                 callback = create_ccxt_callback(
-                    symbol, 'coinbase', '1d', limit=1095  # 3 years of daily data
+                    symbol, exchange, '1d', limit=1095  # 3 years of daily data
                 )
                 self.scheduler.register_update_callback(
                     ticker, callback, interval_minutes=60  # Update daily, not every 15min
                 )
-                print(f"  ✓ {ticker} (CCXT, 60min)")
+                print(f"  ✓ {ticker} ({exchange}, 60min)")
             except Exception as e:
                 print(f"  ⚠️  {ticker} - Using fallback: {e}")
                 callback = create_fallback_callback(ticker, base_price=50000)
                 self.scheduler.register_update_callback(
-                    ticker, callback, interval_minutes=15
+                    ticker, callback, interval_minutes=60
                 )
 
         print("\n✅ Worker setup complete!\n")
