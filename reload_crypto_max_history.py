@@ -4,6 +4,10 @@ Reload crypto data with 3000 days by fetching in chunks
 
 Coinbase limits responses to 300 candles, so we need to fetch
 multiple batches going backwards in time.
+
+Usage:
+  python3 reload_crypto_max_history.py         # Normal mode (clears data first)
+  python3 reload_crypto_max_history.py --safe  # Safe mode (incremental only, no delete)
 """
 
 import sys
@@ -16,6 +20,7 @@ import pandas as pd
 from sqlalchemy import text
 from datetime import datetime, timedelta
 import time
+import argparse
 
 def fetch_crypto_history(symbol, exchange_name='coinbase', days=3000):
     """Fetch crypto data in chunks to overcome API limits"""
@@ -82,10 +87,16 @@ def fetch_crypto_history(symbol, exchange_name='coinbase', days=3000):
 
     return combined_df
 
-def main():
+def main(safe_mode=False):
     print("\n" + "="*70)
-    print("₿ RELOADING CRYPTO WITH MAX HISTORY (3000 DAYS IN CHUNKS)")
-    print("="*70)
+    if safe_mode:
+        print("₿ RELOADING CRYPTO - SAFE MODE (INCREMENTAL ONLY)")
+        print("="*70)
+        print("⚠️  SAFE MODE: Will NOT delete existing data")
+    else:
+        print("₿ RELOADING CRYPTO WITH MAX HISTORY (3000 DAYS IN CHUNKS)")
+        print("="*70)
+        print("⚠️  WARNING: Will DELETE and reload all crypto data")
     print(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print("="*70 + "\n")
 
@@ -97,6 +108,7 @@ def main():
 
     # Crypto assets to reload
     # Crypto configs: (symbol, ticker, primary_exchange, fallback_exchanges)
+    # IMPORTANT: This list MUST match worker_data_scheduler.py crypto_symbols!
     crypto_configs = [
         ('BTC/USDT', 'BTC_USDT', 'coinbase', []),
         ('ETH/USDT', 'ETH_USDT', 'coinbase', []),
@@ -110,20 +122,24 @@ def main():
         ('LINK/USDT', 'LINK_USDT', 'coinbase', [])
     ]
 
-    print("🗑️  Clearing old crypto data...")
+    # Only clear data if NOT in safe mode
+    if not safe_mode:
+        print("🗑️  Clearing old crypto data...")
 
-    # Delete old crypto data
-    with dm.engine.begin() as conn:
-        for config in crypto_configs:
-            ticker = config[1]  # Extract ticker from config tuple
-            conn.execute(text("DELETE FROM price_data WHERE ticker = :ticker"), {"ticker": ticker})
-            conn.execute(text("""
-                UPDATE asset_metadata
-                SET last_update = NULL, last_timestamp = NULL, total_records = 0
-                WHERE ticker = :ticker
-            """), {"ticker": ticker})
+        # Delete old crypto data
+        with dm.engine.begin() as conn:
+            for config in crypto_configs:
+                ticker = config[1]  # Extract ticker from config tuple
+                conn.execute(text("DELETE FROM price_data WHERE ticker = :ticker"), {"ticker": ticker})
+                conn.execute(text("""
+                    UPDATE asset_metadata
+                    SET last_update = NULL, last_timestamp = NULL, total_records = 0
+                    WHERE ticker = :ticker
+                """), {"ticker": ticker})
 
-    print("✅ Old crypto data cleared\n")
+        print("✅ Old crypto data cleared\n")
+    else:
+        print("✅ Skipping data deletion (safe mode)\n")
 
     print(f"₿ Loading Crypto Data (3000 days in chunks)...")
     print(f"Assets: {len(crypto_configs)}\n")
@@ -189,4 +205,10 @@ def main():
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    # Parse command-line arguments
+    parser = argparse.ArgumentParser(description='Reload crypto data with max history')
+    parser.add_argument('--safe', action='store_true',
+                       help='Safe mode: incremental updates only, no data deletion')
+    args = parser.parse_args()
+
+    sys.exit(main(safe_mode=args.safe))
