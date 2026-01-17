@@ -93,7 +93,7 @@ class WorkerScheduler:
             ('ADA/USDT', 'ADA_USDT', 'coinbase'),
             ('DOGE/USDT', 'DOGE_USDT', 'coinbase'),
             ('AVAX/USDT', 'AVAX_USDT', 'coinbase'),
-            ('MATIC/USDT', 'MATIC_USDT', 'okx'),     # Not on Coinbase, use OKX
+            ('POL/USDT', 'POL_USDT', 'coinbase'),    # Polygon (formerly MATIC, rebranded Sept 2024)
             ('LINK/USDT', 'LINK_USDT', 'coinbase')
         ]
 

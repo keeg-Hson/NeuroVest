@@ -118,7 +118,8 @@ def main(safe_mode=False):
         ('ADA/USDT', 'ADA_USDT', 'coinbase', []),
         ('DOGE/USDT', 'DOGE_USDT', 'coinbase', []),
         ('AVAX/USDT', 'AVAX_USDT', 'coinbase', []),
-        ('MATIC/USDT', 'MATIC_USDT', 'okx', ['kucoin', 'binance']),  # Try OKX first, fallback to others
+        # NOTE: MATIC was rebranded to POL in Sept 2024 - using POL/USDT instead
+        ('POL/USDT', 'POL_USDT', 'coinbase', ['okx', 'kucoin']),  # Polygon (formerly MATIC)
         ('LINK/USDT', 'LINK_USDT', 'coinbase', [])
     ]
 
