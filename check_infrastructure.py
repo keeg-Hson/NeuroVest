@@ -15,10 +15,11 @@ print("\n1. CHECKING ASSET LIST SYNCHRONIZATION")
 print("-"*80)
 
 # Expected crypto list (from reload_crypto_max_history.py)
+# NOTE: MATIC was rebranded to POL in Sept 2024
 expected_cryptos = [
     'BTC_USDT', 'ETH_USDT', 'SOL_USDT', 'BNB_USDT',
     'XRP_USDT', 'ADA_USDT', 'DOGE_USDT', 'AVAX_USDT',
-    'MATIC_USDT', 'LINK_USDT'
+    'POL_USDT', 'LINK_USDT'  # POL (formerly MATIC)
 ]
 
 print(f"Expected crypto assets (reload script): {len(expected_cryptos)}")

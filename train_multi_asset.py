@@ -595,9 +595,9 @@ print("=" * 80)
 results = []
 for name, pred in predictions.items():
     acc = accuracy_score(y_test, pred)
-    prec = precision_score(y_test, pred, zero_division=0)
-    rec = recall_score(y_test, pred, zero_division=0)
-    f1 = f1_score(y_test, pred, zero_division=0)
+    prec = precision_score(y_test, pred, average='weighted', zero_division=0)
+    rec = recall_score(y_test, pred, average='weighted', zero_division=0)
+    f1 = f1_score(y_test, pred, average='weighted', zero_division=0)
 
     results.append({
         'Model': name.capitalize(),
