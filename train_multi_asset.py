@@ -27,6 +27,7 @@ Usage:
 import warnings
 warnings.filterwarnings('ignore')
 
+import sys
 import numpy as np
 import pandas as pd
 import joblib
@@ -36,6 +37,10 @@ from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_sc
 import lightgbm as lgb
 from catboost import CatBoostClassifier
 import xgboost as xgb
+
+# Add parent directory to path for database imports
+sys.path.insert(0, str(Path(__file__).parent))
+from core.data_manager_postgres import DataManager
 
 from utils import add_features, finalize_features, add_forward_returns_and_labels
 from config import TRAIN_CFG
@@ -59,14 +64,32 @@ CACHE_DIR = Path("data_cache")
 MODELS_DIR = Path("models")
 MODELS_DIR.mkdir(exist_ok=True)
 
+# Initialize DataManager for PostgreSQL access
+dm = DataManager()
+print(f"📊 Data backend: {dm.backend}")
+
 # =============================================================================
 # 1. LOAD AND PREPARE STOCK DATA (SPY)
 # =============================================================================
 
 print("\n📥 Loading SPY data...")
-spy_df = pd.read_csv(DATA_DIR / "SPY.csv")
-spy_df['Date'] = pd.to_datetime(spy_df['Date'])
-spy_df.set_index('Date', inplace=True)
+
+# Try PostgreSQL first, fallback to CSV
+spy_df = dm.get_data('SPY')
+if spy_df is None or len(spy_df) == 0:
+    print("   ⚠️  SPY not in database, trying CSV...")
+    spy_df = pd.read_csv(DATA_DIR / "SPY.csv")
+    spy_df['Date'] = pd.to_datetime(spy_df['Date'])
+    spy_df.set_index('Date', inplace=True)
+else:
+    # Data from PostgreSQL - convert columns
+    spy_df['Date'] = pd.to_datetime(spy_df['timestamp'])
+    spy_df = spy_df.rename(columns={
+        'open': 'Open', 'high': 'High', 'low': 'Low',
+        'close': 'Close', 'volume': 'Volume'
+    })
+    spy_df.set_index('Date', inplace=True)
+    print(f"   ✓ Loaded from PostgreSQL")
 
 # Add features
 spy_df, spy_features = add_features(spy_df)
@@ -105,14 +128,27 @@ equity_assets = ['QQQ', 'IWM', 'DIA', 'VTI', 'EEM', 'XLF', 'XLK', 'XLE']
 equity_dfs = []
 
 for asset in equity_assets:
-    filepath = CACHE_DIR / f"{asset}_1d.csv"
-    if not filepath.exists():
-        print(f"   ⚠️  {asset} not found, skipping")
-        continue
+    # Try PostgreSQL first, fallback to CSV
+    df = dm.get_data(asset)
 
-    df = pd.read_csv(filepath)
-    df['Date'] = pd.to_datetime(df['Date'])
-    df.set_index('Date', inplace=True)
+    if df is None or len(df) == 0:
+        # Fallback to CSV
+        filepath = CACHE_DIR / f"{asset}_1d.csv"
+        if not filepath.exists():
+            print(f"   ⚠️  {asset} not found in database or CSV, skipping")
+            continue
+
+        df = pd.read_csv(filepath)
+        df['Date'] = pd.to_datetime(df['Date'])
+        df.set_index('Date', inplace=True)
+    else:
+        # Data from PostgreSQL - convert columns
+        df['Date'] = pd.to_datetime(df['timestamp'])
+        df = df.rename(columns={
+            'open': 'Open', 'high': 'High', 'low': 'Low',
+            'close': 'Close', 'volume': 'Volume'
+        })
+        df.set_index('Date', inplace=True)
 
     # Add features
     df, _ = add_features(df)
@@ -157,14 +193,27 @@ crypto_assets = list(crypto_thresholds.keys())
 crypto_dfs = []
 
 for asset in crypto_assets:
-    filepath = CACHE_DIR / f"{asset}_1d.csv"
-    if not filepath.exists():
-        print(f"   ⚠️  {asset} not found, skipping")
-        continue
+    # Try PostgreSQL first, fallback to CSV
+    df = dm.get_data(asset)
 
-    df = pd.read_csv(filepath)
-    df['Date'] = pd.to_datetime(df['Date'])
-    df.set_index('Date', inplace=True)
+    if df is None or len(df) == 0:
+        # Fallback to CSV
+        filepath = CACHE_DIR / f"{asset}_1d.csv"
+        if not filepath.exists():
+            print(f"   ⚠️  {asset} not found in database or CSV, skipping")
+            continue
+
+        df = pd.read_csv(filepath)
+        df['Date'] = pd.to_datetime(df['Date'])
+        df.set_index('Date', inplace=True)
+    else:
+        # Data from PostgreSQL - convert columns
+        df['Date'] = pd.to_datetime(df['timestamp'])
+        df = df.rename(columns={
+            'open': 'Open', 'high': 'High', 'low': 'Low',
+            'close': 'Close', 'volume': 'Volume'
+        })
+        df.set_index('Date', inplace=True)
 
     # Add features
     df, _ = add_features(df)
@@ -644,6 +693,9 @@ if comparison_path.exists():
 print("\n" + "=" * 80)
 print("✅ MULTI-ASSET TRAINING COMPLETE!")
 print("=" * 80)
+
+# Close data manager
+dm.close()
 
 # Interactive next steps (skip in non-interactive mode)
 import sys
