@@ -224,17 +224,21 @@ def check_asset_status(ticker):
             df = dm.get_data(ticker_underscore)
             if df is not None and len(df) > 0:
                 return "downloaded"
-    except Exception as e:
-        # If database fails, continue to CSV fallback
-        # (Don't silently hide errors - but don't crash either)
-        import sys
-        print(f"Database check failed for {ticker}: {e}", file=sys.stderr)
+    except Exception:
+        pass  # Fall through to CSV check
 
-    # Fallback: check CSV files (for backwards compatibility)
+    # Check CSV files in multiple locations
+    safe_ticker = ticker.replace('/', '_')
+
+    # Check main data directory
     if (DATA_DIR / f"{ticker}.csv").exists():
         return "downloaded"
 
-    safe_ticker = ticker.replace('/', '_')
+    # Check etfs subdirectory
+    if (DATA_DIR / "etfs" / f"{ticker}.csv").exists():
+        return "downloaded"
+
+    # Check data_cache for crypto
     if (CACHE_DIR / f"{safe_ticker}_1d.csv").exists():
         return "downloaded"
 
@@ -282,13 +286,21 @@ def load_asset_data(ticker):
     except Exception as e:
         print(f"Database load failed for {ticker}: {e}")
 
-    # Fallback: Try CSV files
-    filepath = DATA_DIR / f"{ticker}.csv"
-    if not filepath.exists():
-        safe_ticker = ticker.replace('/', '_')
+    # Fallback: Try CSV files in multiple locations
+    safe_ticker = ticker.replace('/', '_')
+    filepath = None
+
+    # Check main data directory
+    if (DATA_DIR / f"{ticker}.csv").exists():
+        filepath = DATA_DIR / f"{ticker}.csv"
+    # Check etfs subdirectory
+    elif (DATA_DIR / "etfs" / f"{ticker}.csv").exists():
+        filepath = DATA_DIR / "etfs" / f"{ticker}.csv"
+    # Check data_cache for crypto
+    elif (CACHE_DIR / f"{safe_ticker}_1d.csv").exists():
         filepath = CACHE_DIR / f"{safe_ticker}_1d.csv"
 
-    if not filepath.exists():
+    if filepath is None:
         return None
 
     try:
@@ -891,43 +903,6 @@ def show_asset_manager():
     # Progress bar
     st.progress(downloaded_count / total_assets if total_assets > 0 else 0)
     st.caption(f"{downloaded_count} of {total_assets} assets downloaded")
-
-    # ==================== QUICK ACTIONS ====================
-
-    st.markdown("---")
-    st.subheader("Quick Actions")
-
-    action_col1, action_col2, action_col3 = st.columns(3)
-
-    with action_col1:
-        if st.button("Download All Assets", key="download_all", use_container_width=True):
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-
-            status_text.text("Downloading SPY data...")
-            subprocess.run(["python3", "update_spy_data.py"], capture_output=True)
-            progress_bar.progress(33)
-
-            status_text.text("Downloading ETFs & Bonds...")
-            subprocess.run(["python3", "download_equity_etfs.py"], capture_output=True)
-            progress_bar.progress(66)
-
-            status_text.text("Downloading Crypto...")
-            subprocess.run(["python3", "download_crypto_enhanced.py"], capture_output=True)
-            progress_bar.progress(100)
-
-            status_text.text("Complete!")
-            st.cache_data.clear()
-            st.success("All assets downloaded successfully!")
-
-    with action_col2:
-        if st.button("Refresh Data Cache", key="refresh_cache", use_container_width=True):
-            st.cache_data.clear()
-            st.success("Cache cleared - data will reload on next access")
-
-    with action_col3:
-        if st.button("Check Data Status", key="check_status", use_container_width=True):
-            st.rerun()
 
     # ==================== ASSET CATEGORIES ====================
 
@@ -2458,66 +2433,157 @@ def show_forecast_results():
             st.warning("No forecast results available. Predictions generate daily at 4:30 PM EST.")
             return
 
-        # Map database columns to display format
         df = predictions_df.copy()
-
-        # Map prediction labels to numbers for signal distribution
-        label_map = {'CRASH': 0, 'NORMAL': 1, 'SPIKE': 2}
-        df['Prediction'] = df['prediction_label'].map(label_map)
-
-        # Rename columns for display
-        df['Date'] = pd.to_datetime(df['prediction_date'])
-        df['Proba'] = df['ensemble_prob']
-        df['Confidence'] = df['confidence_score']
 
     except Exception as e:
         st.error(f"Error loading predictions from database: {e}")
         return
 
-    # Signal distribution
+    # ==================== SUMMARY METRICS ====================
+
+    st.markdown("---")
+
+    # Get latest prediction date
+    latest_date = pd.to_datetime(df['prediction_date']).max()
+    latest_predictions = df[pd.to_datetime(df['prediction_date']) == latest_date]
+
+    total_predictions = len(df)
+    unique_assets = df['ticker'].nunique() if 'ticker' in df.columns else 0
+    latest_count = len(latest_predictions)
+
+    # Count by signal type
+    crash_count = len(df[df['prediction_label'] == 'CRASH'])
+    normal_count = len(df[df['prediction_label'] == 'NORMAL'])
+    spike_count = len(df[df['prediction_label'] == 'SPIKE'])
+
+    # Model agreement stats
+    agreement_count = df['model_agreement'].sum() if 'model_agreement' in df.columns else 0
+    agreement_pct = (agreement_count / total_predictions * 100) if total_predictions > 0 else 0
+
+    # Average confidence
+    avg_confidence = df['confidence_score'].mean() if 'confidence_score' in df.columns else 0
+
+    # Summary cards
+    m1, m2, m3, m4 = st.columns(4)
+    with m1:
+        st.metric("Total Predictions", f"{total_predictions:,}")
+    with m2:
+        st.metric("Assets Covered", unique_assets)
+    with m3:
+        st.metric("Model Agreement", f"{agreement_pct:.0f}%")
+    with m4:
+        st.metric("Avg Confidence", f"{avg_confidence:.1%}" if avg_confidence else "-")
+
+    # ==================== SIGNAL DISTRIBUTION ====================
+
+    st.markdown("---")
     st.subheader("Signal Distribution")
 
-    if 'Prediction' in df.columns:
-        signal_counts = df['Prediction'].value_counts().sort_index()
+    dist_col1, dist_col2 = st.columns([1, 1.5])
 
-        col1, col2, col3 = st.columns(3)
+    with dist_col1:
+        # Signal counts with colored indicators
+        st.markdown(f"<span style='color:#ef4444; font-size:20px;'>●</span> **CRASH:** {crash_count:,} ({crash_count/total_predictions*100:.1f}%)", unsafe_allow_html=True)
+        st.markdown(f"<span style='color:#fbbf24; font-size:20px;'>●</span> **NORMAL:** {normal_count:,} ({normal_count/total_predictions*100:.1f}%)", unsafe_allow_html=True)
+        st.markdown(f"<span style='color:#22c55e; font-size:20px;'>●</span> **SPIKE:** {spike_count:,} ({spike_count/total_predictions*100:.1f}%)", unsafe_allow_html=True)
 
-        total = len(df)
-        crash_count = signal_counts.get(0, 0)
-        normal_count = signal_counts.get(1, 0)
-        spike_count = signal_counts.get(2, 0)
+        st.markdown("---")
+        st.caption(f"Latest predictions: {latest_date.strftime('%Y-%m-%d') if pd.notna(latest_date) else 'N/A'}")
 
-        with col1:
-            st.metric("CRASH Signals", f"{crash_count:,}", delta=f"{(crash_count/total)*100:.1f}%")
-
-        with col2:
-            st.metric("NORMAL Signals", f"{normal_count:,}", delta=f"{(normal_count/total)*100:.1f}%")
-
-        with col3:
-            st.metric("SPIKE Signals", f"{spike_count:,}", delta=f"{(spike_count/total)*100:.1f}%")
-
+    with dist_col2:
         # Pie chart
         fig = go.Figure(data=[go.Pie(
             labels=['CRASH', 'NORMAL', 'SPIKE'],
             values=[crash_count, normal_count, spike_count],
-            marker=dict(colors=['red', 'yellow', 'green'])
+            marker=dict(colors=['#ef4444', '#fbbf24', '#22c55e']),
+            hole=0.4,
+            textinfo='percent+label'
         )])
-        fig.update_layout(title="Signal Distribution", height=400)
+        fig.update_layout(height=280, margin=dict(l=20, r=20, t=30, b=20), showlegend=False)
         st.plotly_chart(fig, use_container_width=True)
 
-    # Recent predictions
+    # ==================== LATEST PREDICTIONS BY ASSET ====================
+
     st.markdown("---")
-    st.subheader("Recent Forecasts (Last 20)")
+    st.subheader("Latest Predictions by Asset")
 
-    recent = df.tail(20).copy()
-    if 'Prediction' in recent.columns:
-        recent['Signal'] = recent['Prediction'].map({0: 'CRASH', 1: 'NORMAL', 2: 'SPIKE'})
+    if 'ticker' in df.columns:
+        # Get most recent prediction for each asset
+        latest_by_asset = df.loc[df.groupby('ticker')['prediction_date'].idxmax()]
 
-    display_cols = ['Date', 'Signal', 'Proba', 'Confidence']
-    available_cols = [col for col in display_cols if col in recent.columns]
+        # Build display table
+        asset_predictions = []
+        for _, row in latest_by_asset.iterrows():
+            signal = row['prediction_label']
+            if signal == 'CRASH':
+                signal_indicator = '🔴'
+            elif signal == 'SPIKE':
+                signal_indicator = '🟢'
+            else:
+                signal_indicator = '🟡'
 
-    if available_cols:
-        st.dataframe(recent[available_cols].sort_values('Date', ascending=False), use_container_width=True)
+            asset_predictions.append({
+                '': signal_indicator,
+                'Asset': row['ticker'],
+                'Signal': signal,
+                'Probability': f"{row['ensemble_prob']:.1%}" if pd.notna(row.get('ensemble_prob')) else '-',
+                'Confidence': f"{row['confidence_score']:.1%}" if pd.notna(row.get('confidence_score')) else '-',
+                'Agreement': 'Yes' if row.get('model_agreement') else 'No',
+                'Date': pd.to_datetime(row['prediction_date']).strftime('%Y-%m-%d')
+            })
+
+        asset_df = pd.DataFrame(asset_predictions)
+        st.dataframe(asset_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("No ticker information available in predictions.")
+
+    # ==================== PREDICTION HISTORY ====================
+
+    st.markdown("---")
+    st.subheader("Prediction History")
+
+    # Asset filter
+    if 'ticker' in df.columns:
+        assets = ['All'] + sorted(df['ticker'].unique().tolist())
+        selected_asset = st.selectbox("Filter by Asset", assets)
+
+        if selected_asset != 'All':
+            history_df = df[df['ticker'] == selected_asset].copy()
+        else:
+            history_df = df.copy()
+    else:
+        history_df = df.copy()
+
+    # Sort by date descending
+    history_df['Date'] = pd.to_datetime(history_df['prediction_date'])
+    history_df = history_df.sort_values('Date', ascending=False)
+
+    # Build display dataframe
+    display_data = []
+    for _, row in history_df.head(50).iterrows():
+        signal = row['prediction_label']
+        if signal == 'CRASH':
+            indicator = '🔴'
+        elif signal == 'SPIKE':
+            indicator = '🟢'
+        else:
+            indicator = '🟡'
+
+        display_data.append({
+            '': indicator,
+            'Date': row['Date'].strftime('%Y-%m-%d'),
+            'Asset': row.get('ticker', '-'),
+            'Signal': signal,
+            'Probability': f"{row['ensemble_prob']:.1%}" if pd.notna(row.get('ensemble_prob')) else '-',
+            'Confidence': f"{row['confidence_score']:.1%}" if pd.notna(row.get('confidence_score')) else '-',
+            'Agreement': 'Yes' if row.get('model_agreement') else 'No'
+        })
+
+    if display_data:
+        st.dataframe(pd.DataFrame(display_data), use_container_width=True, hide_index=True)
+        st.caption(f"Showing {len(display_data)} of {len(history_df)} predictions")
+    else:
+        st.info("No prediction history available.")
 
 
 def show_automation():
