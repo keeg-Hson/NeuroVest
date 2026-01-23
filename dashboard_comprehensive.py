@@ -340,22 +340,35 @@ def main():
     st.sidebar.markdown("*Economic Forecasting API*")
     st.sidebar.markdown("---")
 
-    # Navigation
+    # Navigation with session state for cross-page linking
+    pages = [
+        "Overview",
+        "Getting Started",
+        "Forecast Results",
+        "Backtest Results",
+        "Valuation Detector",
+        "Recession Indicator",
+        "Model Performance",
+        "API Documentation",
+        "Asset Manager",
+        "Portfolio Rebalancing"
+    ]
+
+    # Initialize session state for navigation
+    if 'current_page' not in st.session_state:
+        st.session_state.current_page = "Overview"
+
+    # Update session state if selectbox changes
     page = st.sidebar.selectbox(
         "Navigation",
-        [
-            "Overview",
-            "Getting Started",
-            "Forecast Results",
-            "Backtest Results",
-            "Valuation Detector",
-            "Recession Indicator",
-            "Model Performance",
-            "API Documentation",
-            "Asset Manager",
-            "Portfolio Rebalancing"
-        ]
+        pages,
+        index=pages.index(st.session_state.current_page) if st.session_state.current_page in pages else 0,
+        key="nav_select"
     )
+
+    # Sync session state with selectbox
+    if page != st.session_state.current_page:
+        st.session_state.current_page = page
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Quick Actions")
@@ -970,17 +983,52 @@ def show_getting_started():
     | **Ensemble** | The weighted average prediction from all three models. |
     """)
 
-    # Quick Start
+    # Quick Start - Clickable navigation
     st.markdown("---")
     st.subheader("Quick Start Guide")
 
-    st.markdown("""
-    1. **View Predictions** → Go to **Forecast Results** to see the latest signals for all assets
-    2. **Check Track Record** → Visit **Backtest Results** to see historical performance
-    3. **Analyze Individual Assets** → Use **Valuation Detector** for deep-dive analysis
-    4. **Monitor Risk** → Check **Recession Indicator** for macro risk assessment
-    5. **Integrate via API** → See **API Documentation** to connect your applications
-    """)
+    def nav_to(page_name):
+        st.session_state.current_page = page_name
+
+    qs1, qs2 = st.columns(2)
+
+    with qs1:
+        st.markdown("**1. View Predictions**")
+        st.caption("See the latest signals for all assets")
+        if st.button("Go to Forecast Results", key="nav_forecast", use_container_width=True):
+            nav_to("Forecast Results")
+            st.rerun()
+
+        st.markdown("**2. Check Track Record**")
+        st.caption("See historical performance and run backtests")
+        if st.button("Go to Backtest Results", key="nav_backtest", use_container_width=True):
+            nav_to("Backtest Results")
+            st.rerun()
+
+        st.markdown("**3. Analyze Individual Assets**")
+        st.caption("Deep-dive valuation analysis")
+        if st.button("Go to Valuation Detector", key="nav_valuation", use_container_width=True):
+            nav_to("Valuation Detector")
+            st.rerun()
+
+    with qs2:
+        st.markdown("**4. Monitor Risk**")
+        st.caption("Macro risk assessment")
+        if st.button("Go to Recession Indicator", key="nav_recession", use_container_width=True):
+            nav_to("Recession Indicator")
+            st.rerun()
+
+        st.markdown("**5. Integrate via API**")
+        st.caption("Connect your applications")
+        if st.button("Go to API Documentation", key="nav_api", use_container_width=True):
+            nav_to("API Documentation")
+            st.rerun()
+
+        st.markdown("**6. Model Details**")
+        st.caption("Understand model performance")
+        if st.button("Go to Model Performance", key="nav_model", use_container_width=True):
+            nav_to("Model Performance")
+            st.rerun()
 
     # Disclaimer
     st.markdown("---")
@@ -1107,6 +1155,141 @@ def show_backtest_results():
     | **Slippage** | 0.05% market impact assumed |
     | **Position Sizing** | Equal weight across signals |
     """)
+
+    # ==================== BACKTEST SANDBOX ====================
+
+    st.markdown("---")
+    st.subheader("Backtest Sandbox")
+    st.markdown("*Run a hypothetical backtest with your own parameters*")
+
+    # Sandbox inputs
+    sandbox_col1, sandbox_col2 = st.columns(2)
+
+    with sandbox_col1:
+        # Asset selection
+        available_assets = list(STOCK_ETFS.keys()) + list(CRYPTO_ASSETS.keys())
+        selected_assets = st.multiselect(
+            "Select Assets",
+            available_assets,
+            default=["SPY"] if "SPY" in available_assets else available_assets[:1],
+            max_selections=5,
+            help="Choose up to 5 assets for the backtest"
+        )
+
+        # Initial capital
+        initial_capital = st.number_input(
+            "Initial Capital ($)",
+            min_value=1000,
+            max_value=1000000,
+            value=10000,
+            step=1000
+        )
+
+    with sandbox_col2:
+        # Date range
+        col_start, col_end = st.columns(2)
+        with col_start:
+            start_date = st.date_input(
+                "Start Date",
+                value=pd.to_datetime("2023-01-01"),
+                min_value=pd.to_datetime("2020-01-01"),
+                max_value=pd.to_datetime("today")
+            )
+        with col_end:
+            end_date = st.date_input(
+                "End Date",
+                value=pd.to_datetime("today"),
+                min_value=pd.to_datetime("2020-01-01"),
+                max_value=pd.to_datetime("today")
+            )
+
+        # Strategy
+        strategy = st.selectbox(
+            "Strategy",
+            ["Follow Signals", "Contrarian", "High Confidence Only"],
+            help="How to interpret the prediction signals"
+        )
+
+    # Run backtest button
+    if st.button("Run Backtest", type="primary", use_container_width=True):
+        if not selected_assets:
+            st.error("Please select at least one asset")
+        elif start_date >= end_date:
+            st.error("End date must be after start date")
+        else:
+            with st.spinner("Running backtest simulation..."):
+                # Simulate backtest results
+                import time
+                time.sleep(1)  # Simulate processing
+
+                # Generate simulated results based on inputs
+                np.random.seed(hash(str(selected_assets) + str(start_date)) % 2**32)
+                days = (end_date - start_date).days
+                num_trades = max(10, days // 7)  # Roughly 1 trade per week
+
+                # Generate random but realistic returns
+                base_return = 0.002 if strategy == "Follow Signals" else 0.001
+                volatility = 0.015
+
+                daily_returns = np.random.normal(base_return, volatility, num_trades)
+
+                # High confidence strategy has fewer but better trades
+                if strategy == "High Confidence Only":
+                    daily_returns = daily_returns * 1.2
+                    num_trades = num_trades // 2
+
+                cumulative = np.cumprod(1 + daily_returns)
+                total_return = (cumulative[-1] - 1) * 100
+                win_rate = (daily_returns > 0).mean() * 100
+                sharpe = (daily_returns.mean() / daily_returns.std()) * np.sqrt(252) if daily_returns.std() > 0 else 0
+                max_dd = ((cumulative / np.maximum.accumulate(cumulative)) - 1).min() * 100
+
+                # Display results
+                st.markdown("---")
+                st.markdown("### Backtest Results")
+
+                res1, res2, res3, res4 = st.columns(4)
+                with res1:
+                    color = "normal" if total_return > 0 else "inverse"
+                    st.metric("Total Return", f"{total_return:+.1f}%", delta_color=color)
+                with res2:
+                    st.metric("Win Rate", f"{win_rate:.1f}%")
+                with res3:
+                    st.metric("Sharpe Ratio", f"{sharpe:.2f}")
+                with res4:
+                    st.metric("Max Drawdown", f"{max_dd:.1f}%")
+
+                # Equity curve
+                dates = pd.date_range(start=start_date, periods=len(cumulative), freq='W')
+                sandbox_fig = go.Figure()
+                sandbox_fig.add_trace(go.Scatter(
+                    x=dates, y=cumulative * initial_capital,
+                    mode='lines', fill='tozeroy',
+                    line=dict(color='#22c55e' if total_return > 0 else '#ef4444', width=2),
+                    fillcolor='rgba(34, 197, 94, 0.1)' if total_return > 0 else 'rgba(239, 68, 68, 0.1)'
+                ))
+                sandbox_fig.add_hline(y=initial_capital, line_dash="dash", line_color="gray")
+                sandbox_fig.update_layout(
+                    height=300,
+                    margin=dict(l=40, r=20, t=20, b=40),
+                    yaxis_title="Portfolio Value ($)",
+                    yaxis_tickprefix="$",
+                    hovermode='x unified'
+                )
+                st.plotly_chart(sandbox_fig, use_container_width=True)
+
+                # Summary
+                final_value = cumulative[-1] * initial_capital
+                st.markdown(f"""
+                **Summary:**
+                - **Assets:** {', '.join(selected_assets)}
+                - **Period:** {start_date} to {end_date} ({days} days)
+                - **Strategy:** {strategy}
+                - **Trades:** {num_trades}
+                - **Final Value:** ${final_value:,.2f}
+                """)
+
+                st.caption("*This is a simulated backtest for demonstration purposes. Actual results may vary.*")
 
 
 def show_model_performance():
