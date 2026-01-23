@@ -407,7 +407,7 @@ def show_overview():
             st.image(str(logo_path), width=250)
 
     # Clean header
-    st.markdown("# 🧠 NeuroVest Forecasting API")
+    st.markdown("# NeuroVest Forecasting API")
     st.markdown("### AI-Powered Market Predictions & Economic Analysis")
     st.markdown("---")
 
@@ -855,159 +855,281 @@ curl "http://localhost:8000/assets?asset_type=crypto"
 
 
 def show_asset_manager():
-    """Asset download manager"""
-    st.title("📁 Asset Manager")
-    st.markdown("*Download and manage data for all 41 supported assets*")
+    """Asset download and data management"""
+    st.title("Asset Manager")
+    st.markdown("*Download and manage market data for all supported assets*")
 
-    # Asset category tabs
-    tab1, tab2, tab3 = st.tabs(["Stocks & ETFs", "Precious Metals", "Crypto"])
+    # ==================== SUMMARY STATISTICS ====================
+
+    # Calculate overall stats
+    all_assets = {**STOCK_ETFS, **PRECIOUS_METALS, **CRYPTO_ASSETS}
+    total_assets = len(all_assets)
+
+    downloaded_count = 0
+    total_rows = 0
+    for ticker in all_assets:
+        if check_asset_status(ticker) == "downloaded":
+            downloaded_count += 1
+            df = load_asset_data(ticker)
+            if df is not None:
+                total_rows += len(df)
+
+    # Summary cards
+    st.markdown("---")
+    sum_col1, sum_col2, sum_col3, sum_col4 = st.columns(4)
+
+    with sum_col1:
+        st.metric("Total Assets", total_assets)
+    with sum_col2:
+        st.metric("Downloaded", downloaded_count)
+    with sum_col3:
+        pct = (downloaded_count / total_assets * 100) if total_assets > 0 else 0
+        st.metric("Coverage", f"{pct:.0f}%")
+    with sum_col4:
+        st.metric("Total Data Points", f"{total_rows:,}")
+
+    # Progress bar
+    st.progress(downloaded_count / total_assets if total_assets > 0 else 0)
+    st.caption(f"{downloaded_count} of {total_assets} assets downloaded")
+
+    # ==================== QUICK ACTIONS ====================
+
+    st.markdown("---")
+    st.subheader("Quick Actions")
+
+    action_col1, action_col2, action_col3 = st.columns(3)
+
+    with action_col1:
+        if st.button("Download All Assets", key="download_all", use_container_width=True):
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+
+            status_text.text("Downloading SPY data...")
+            subprocess.run(["python3", "update_spy_data.py"], capture_output=True)
+            progress_bar.progress(33)
+
+            status_text.text("Downloading ETFs & Bonds...")
+            subprocess.run(["python3", "download_equity_etfs.py"], capture_output=True)
+            progress_bar.progress(66)
+
+            status_text.text("Downloading Crypto...")
+            subprocess.run(["python3", "download_crypto_enhanced.py"], capture_output=True)
+            progress_bar.progress(100)
+
+            status_text.text("Complete!")
+            st.cache_data.clear()
+            st.success("All assets downloaded successfully!")
+
+    with action_col2:
+        if st.button("Refresh Data Cache", key="refresh_cache", use_container_width=True):
+            st.cache_data.clear()
+            st.success("Cache cleared - data will reload on next access")
+
+    with action_col3:
+        if st.button("Check Data Status", key="check_status", use_container_width=True):
+            st.rerun()
+
+    # ==================== ASSET CATEGORIES ====================
+
+    st.markdown("---")
+    tab1, tab2, tab3 = st.tabs(["Stocks & ETFs", "Precious Metals", "Cryptocurrency"])
 
     with tab1:
-        st.subheader(f"Stock & ETF Assets ({len(STOCK_ETFS)} available)")
+        st.markdown(f"### Stocks & ETFs ({len(STOCK_ETFS)} assets)")
 
+        # Build asset table with more info
         asset_data = []
         for ticker, name in STOCK_ETFS.items():
             status = check_asset_status(ticker)
             df = load_asset_data(ticker)
-            rows = len(df) if df is not None else 0
+
+            if df is not None and len(df) > 0:
+                rows = len(df)
+                latest_date = df['Date'].max().strftime('%Y-%m-%d') if 'Date' in df.columns else '-'
+                latest_price = f"${df['Close'].iloc[-1]:.2f}" if 'Close' in df.columns else '-'
+            else:
+                rows = 0
+                latest_date = '-'
+                latest_price = '-'
 
             asset_data.append({
                 'Ticker': ticker,
                 'Name': name,
-                'Status': 'Downloaded' if status == 'downloaded' else 'Available',
-                'Rows': rows if rows > 0 else '-'
+                'Status': 'Ready' if status == 'downloaded' else 'Not Downloaded',
+                'Records': rows if rows > 0 else '-',
+                'Latest Date': latest_date,
+                'Last Price': latest_price
             })
 
         df_assets = pd.DataFrame(asset_data)
-        st.dataframe(df_assets, use_container_width=True)
 
+        # Color-code the status column
+        def highlight_status(val):
+            if val == 'Ready':
+                return 'background-color: rgba(34, 197, 94, 0.2)'
+            return 'background-color: rgba(239, 68, 68, 0.1)'
+
+        styled_df = df_assets.style.applymap(highlight_status, subset=['Status'])
+        st.dataframe(styled_df, use_container_width=True, hide_index=True)
+
+        # Download options
         st.markdown("---")
+        dl_col1, dl_col2 = st.columns(2)
 
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.markdown("**Download SPY Data:**")
-            if st.button("Update SPY Data", key="download_spy"):
-                with st.spinner("Downloading SPY data..."):
-                    result = subprocess.run(
-                        ["python3", "update_spy_data.py"],
-                        capture_output=True,
-                        text=True
-                    )
+        with dl_col1:
+            st.markdown("**SPY (S&P 500 Index)**")
+            if st.button("Download SPY Data", key="dl_spy", use_container_width=True):
+                with st.spinner("Downloading SPY data from 2000 to present..."):
+                    result = subprocess.run(["python3", "update_spy_data.py"], capture_output=True, text=True)
                     if result.returncode == 0:
-                        st.success("SPY data updated successfully!")
-                        st.cache_data.clear()  # Clear cache to reload data
-                    else:
-                        st.error(f"Error: {result.stderr[:200]}")
-
-            st.caption("Downloads S&P 500 data from 2000-present")
-
-        with col2:
-            st.markdown("**Download All ETFs:**")
-            if st.button("Download ETFs & Bonds", key="download_etfs"):
-                with st.spinner("Downloading 35+ assets..."):
-                    result = subprocess.run(
-                        ["python3", "download_equity_etfs.py"],
-                        capture_output=True,
-                        text=True
-                    )
-                    if result.returncode == 0:
-                        st.success("ETFs & bonds downloaded!")
+                        st.success("SPY data updated!")
                         st.cache_data.clear()
                     else:
-                        st.error(f"Error: {result.stderr[:200]}")
+                        st.error(f"Error: {result.stderr[:200] if result.stderr else 'Unknown error'}")
 
-            st.caption("Downloads ETFs, bonds, precious metals, commodities")
+        with dl_col2:
+            st.markdown("**All ETFs & Bonds**")
+            if st.button("Download All ETFs", key="dl_etfs", use_container_width=True):
+                with st.spinner("Downloading 35+ ETF and bond assets..."):
+                    result = subprocess.run(["python3", "download_equity_etfs.py"], capture_output=True, text=True)
+                    if result.returncode == 0:
+                        st.success("ETFs downloaded!")
+                        st.cache_data.clear()
+                    else:
+                        st.error(f"Error: {result.stderr[:200] if result.stderr else 'Unknown error'}")
 
     with tab2:
-        st.subheader(f"Precious Metals ({len(PRECIOUS_METALS)} available)")
+        st.markdown(f"### Precious Metals ({len(PRECIOUS_METALS)} assets)")
 
         metal_data = []
         for ticker, name in PRECIOUS_METALS.items():
             status = check_asset_status(ticker)
             df = load_asset_data(ticker)
-            rows = len(df) if df is not None else 0
+
+            if df is not None and len(df) > 0:
+                rows = len(df)
+                latest_date = df['Date'].max().strftime('%Y-%m-%d') if 'Date' in df.columns else '-'
+                latest_price = f"${df['Close'].iloc[-1]:.2f}" if 'Close' in df.columns else '-'
+            else:
+                rows = 0
+                latest_date = '-'
+                latest_price = '-'
 
             metal_data.append({
                 'Ticker': ticker,
                 'Name': name,
-                'Status': 'Downloaded' if status == 'downloaded' else 'Available',
-                'Rows': rows if rows > 0 else '-'
+                'Status': 'Ready' if status == 'downloaded' else 'Not Downloaded',
+                'Records': rows if rows > 0 else '-',
+                'Latest Date': latest_date,
+                'Last Price': latest_price
             })
 
         df_metals = pd.DataFrame(metal_data)
-        st.dataframe(df_metals, use_container_width=True)
+        styled_metals = df_metals.style.applymap(highlight_status, subset=['Status'])
+        st.dataframe(styled_metals, use_container_width=True, hide_index=True)
 
-        st.markdown("**Download Command:**")
-        st.code("python3 framework/download_all_assets.py --asset GLD\npython3 framework/download_all_assets.py --asset SLV")
+        st.markdown("---")
+        st.markdown("**Download via ETFs package** (included with Download All ETFs)")
+        st.caption("GLD (Gold) and SLV (Silver) are downloaded with the ETF package")
 
     with tab3:
-        st.subheader(f"Cryptocurrency Assets ({len(CRYPTO_ASSETS)} available)")
+        st.markdown(f"### Cryptocurrency ({len(CRYPTO_ASSETS)} assets)")
 
         crypto_data = []
         for ticker, name in CRYPTO_ASSETS.items():
             status = check_asset_status(ticker)
             df = load_asset_data(ticker)
-            rows = len(df) if df is not None else 0
+
+            if df is not None and len(df) > 0:
+                rows = len(df)
+                latest_date = df['Date'].max().strftime('%Y-%m-%d') if 'Date' in df.columns else '-'
+                latest_price = f"${df['Close'].iloc[-1]:.2f}" if 'Close' in df.columns else '-'
+            else:
+                rows = 0
+                latest_date = '-'
+                latest_price = '-'
 
             crypto_data.append({
                 'Ticker': ticker,
                 'Name': name,
-                'Status': 'Downloaded' if status == 'downloaded' else 'Available',
-                'Rows': rows if rows > 0 else '-'
+                'Status': 'Ready' if status == 'downloaded' else 'Not Downloaded',
+                'Records': rows if rows > 0 else '-',
+                'Latest Date': latest_date,
+                'Last Price': latest_price
             })
 
         df_crypto = pd.DataFrame(crypto_data)
-        st.dataframe(df_crypto, use_container_width=True)
+        styled_crypto = df_crypto.style.applymap(highlight_status, subset=['Status'])
+        st.dataframe(styled_crypto, use_container_width=True, hide_index=True)
 
         st.markdown("---")
-
-        st.markdown("**Download Cryptocurrency Data:**")
-        if st.button("Download All 10 Cryptocurrencies", key="download_crypto"):
-            with st.spinner("Downloading crypto data from Binance..."):
-                result = subprocess.run(
-                    ["python3", "download_crypto_enhanced.py"],
-                    capture_output=True,
-                    text=True
-                )
+        if st.button("Download All Crypto", key="dl_crypto", use_container_width=True):
+            with st.spinner("Downloading crypto data from Binance API..."):
+                result = subprocess.run(["python3", "download_crypto_enhanced.py"], capture_output=True, text=True)
                 if result.returncode == 0:
                     st.success("Cryptocurrency data downloaded!")
                     st.cache_data.clear()
                 else:
-                    st.error(f"Error: {result.stderr[:200]}")
+                    st.error(f"Error: {result.stderr[:200] if result.stderr else 'Unknown error'}")
 
-        st.caption("Downloads BTC, ETH, SOL, BNB, XRP, ADA, DOGE, AVAX, MATIC, LINK")
+        st.caption("Data source: Binance API | Assets: BTC, ETH, SOL, BNB, XRP, ADA, DOGE, AVAX, MATIC, LINK")
 
-    # Quick Actions
+    # ==================== ASSET PREVIEW ====================
+
     st.markdown("---")
-    st.subheader("Quick Actions")
+    st.subheader("Asset Preview")
 
-    qa_col1, qa_col2, qa_col3 = st.columns(3)
+    # Get list of downloaded assets
+    downloaded_assets = [t for t in all_assets if check_asset_status(t) == "downloaded"]
 
-    with qa_col1:
-        if st.button("Refresh All Data", key="refresh_display"):
-            st.cache_data.clear()
-            st.success("Cache cleared! Reload page to see fresh data.")
+    if downloaded_assets:
+        preview_asset = st.selectbox("Select asset to preview", downloaded_assets)
 
-    with qa_col2:
-        if st.button("Download All Assets", key="download_all"):
-            with st.spinner("Downloading all assets..."):
-                # SPY
-                subprocess.run(["python3", "update_spy_data.py"], capture_output=True)
-                # ETFs
-                subprocess.run(["python3", "download_equity_etfs.py"], capture_output=True)
-                # Crypto
-                subprocess.run(["python3", "download_crypto_enhanced.py"], capture_output=True)
-                st.success("All downloads complete!")
-                st.cache_data.clear()
+        if preview_asset:
+            df = load_asset_data(preview_asset)
+            if df is not None and len(df) > 0:
+                # Show mini chart
+                recent_data = df.tail(90)  # Last 90 days
 
-    with qa_col3:
-        st.info("Individual downloads above for granular control")
+                chart_col, stats_col = st.columns([2, 1])
+
+                with chart_col:
+                    fig = go.Figure()
+                    fig.add_trace(go.Scatter(
+                        x=recent_data['Date'], y=recent_data['Close'],
+                        mode='lines', name='Price',
+                        line=dict(color='#1f77b4', width=2),
+                        fill='tozeroy', fillcolor='rgba(31,119,180,0.1)'
+                    ))
+                    fig.update_layout(
+                        title=f"{preview_asset} - Last 90 Days",
+                        height=300,
+                        margin=dict(l=40, r=20, t=40, b=40),
+                        xaxis_title="",
+                        yaxis_title="Price ($)"
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
+
+                with stats_col:
+                    latest = df.iloc[-1]
+                    first = df.iloc[0]
+
+                    st.metric("Current Price", f"${latest['Close']:.2f}")
+                    st.metric("Data Range", f"{len(df):,} records")
+
+                    # Calculate returns
+                    if len(recent_data) > 1:
+                        ret_90d = ((latest['Close'] - recent_data.iloc[0]['Close']) / recent_data.iloc[0]['Close']) * 100
+                        st.metric("90-Day Return", f"{ret_90d:+.1f}%")
+
+                    st.caption(f"From {first['Date'].strftime('%Y-%m-%d')} to {latest['Date'].strftime('%Y-%m-%d')}")
+    else:
+        st.info("No assets downloaded yet. Use the download buttons above to get started.")
 
 
 def show_recession_indicator():
     """Recession probability analysis"""
-    st.title("📉 Recession Probability Indicator")
+    st.title("Recession Probability Indicator")
     st.markdown("*Multi-factor recession risk analysis*")
 
     st.info("Analyzes yield curves, market stress, and technical signals to assess recession risk")
@@ -1190,19 +1312,19 @@ def show_recession_indicator():
 
 def show_valuation_detector():
     """Asset valuation analysis with visual gauges and gradient indicators"""
-    st.title("📊 Valuation Detector")
+    st.title("Valuation Detector")
     st.markdown("*Comprehensive asset valuation analysis using technical indicators and statistical measures*")
 
     # Evaluation timestamp
     eval_time = datetime.now().strftime("%B %d, %Y at %I:%M %p")
-    st.caption(f"🕐 Analysis generated: {eval_time}")
+    st.caption(f"Analysis generated: {eval_time}")
 
     # Asset selector
     all_assets = list(STOCK_ETFS.keys()) + list(PRECIOUS_METALS.keys()) + list(CRYPTO_ASSETS.keys())
     downloaded_assets = [a for a in all_assets if check_asset_status(a) == "downloaded"]
 
     if not downloaded_assets:
-        st.warning("⚠️ No assets downloaded. Visit Asset Manager to download data.")
+        st.warning("No assets downloaded. Visit Asset Manager to download data.")
         return
 
     col_select, col_period = st.columns([2, 1])
@@ -1214,7 +1336,7 @@ def show_valuation_detector():
     df = load_asset_data(selected_asset)
 
     if df is None or len(df) < 100:
-        st.warning(f"⚠️ Insufficient data for {selected_asset}")
+        st.warning(f"Insufficient data for {selected_asset}")
         return
 
     # Set period based on selection
@@ -1487,31 +1609,24 @@ def show_valuation_detector():
     # Gradient Classification (more nuanced levels)
     if valuation_score > 0.6:
         classification = "STRONGLY OVERVALUED"
-        classification_emoji = "🔴"
         classification_color = "error"
     elif valuation_score > 0.4:
         classification = "OVERVALUED"
-        classification_emoji = "🟠"
         classification_color = "error"
     elif valuation_score > 0.2:
         classification = "SLIGHTLY OVERVALUED"
-        classification_emoji = "🟡"
         classification_color = "warning"
     elif valuation_score < -0.6:
         classification = "STRONGLY UNDERVALUED"
-        classification_emoji = "🟢"
         classification_color = "success"
     elif valuation_score < -0.4:
         classification = "UNDERVALUED"
-        classification_emoji = "🟢"
         classification_color = "success"
     elif valuation_score < -0.2:
         classification = "SLIGHTLY UNDERVALUED"
-        classification_emoji = "🔵"
         classification_color = "info"
     else:
         classification = "FAIRLY VALUED"
-        classification_emoji = "⚪"
         classification_color = "info"
 
     # ==================== PRICE HEADER ====================
@@ -1524,8 +1639,7 @@ def show_valuation_detector():
     st.markdown("---")
     price_cols = st.columns([2.5, 1, 1, 1])
     with price_cols[0]:
-        change_icon = "📈" if price_change >= 0 else "📉"
-        st.markdown(f"### {selected_asset} {change_icon}")
+        st.markdown(f"### {selected_asset}")
         change_color = "green" if price_change >= 0 else "red"
         st.markdown(f"**${latest['Close']:.2f}** <span style='color:{change_color}'>({price_change_pct:+.2f}%)</span>", unsafe_allow_html=True)
         st.caption(f"Data as of {latest_data_date}")
@@ -1539,7 +1653,7 @@ def show_valuation_detector():
     # ==================== MAIN VALUATION GAUGE ====================
 
     st.markdown("---")
-    st.subheader("🎯 Overall Valuation Assessment")
+    st.subheader("Overall Valuation Assessment")
 
     gauge_col, verdict_col = st.columns([1.2, 1])
 
@@ -1578,26 +1692,26 @@ def show_valuation_detector():
         st.plotly_chart(main_gauge, use_container_width=True)
 
     with verdict_col:
-        # Classification with emoji
-        st.markdown(f"### {classification_emoji} {classification}")
+        # Classification display
+        st.markdown(f"### {classification}")
 
         # Signal summary
-        st.markdown("**📊 Signal Breakdown:**")
+        st.markdown("**Signal Breakdown:**")
         sig_cols = st.columns(3)
         with sig_cols[0]:
-            st.markdown(f"🟢 **{bullish_count}**")
+            st.markdown(f"**{bullish_count}**")
             st.caption("Bullish")
         with sig_cols[1]:
-            st.markdown(f"⚪ **{neutral_count}**")
+            st.markdown(f"**{neutral_count}**")
             st.caption("Neutral")
         with sig_cols[2]:
-            st.markdown(f"🔴 **{bearish_count}**")
+            st.markdown(f"**{bearish_count}**")
             st.caption("Bearish")
 
         st.markdown("---")
 
         # Recommendation based on gradient score
-        st.markdown("**💡 Recommendation:**")
+        st.markdown("**Recommendation:**")
         if valuation_score > 0.6:
             st.error("Strong caution. Consider taking profits.")
         elif valuation_score > 0.4:
@@ -1625,7 +1739,7 @@ def show_valuation_detector():
                                        thresholds=[30, 70],
                                        colors=["#22c55e", "#fef08a", "#ef4444"])
         st.plotly_chart(rsi_gauge, use_container_width=True)
-        rsi_label = "🔴 Overbought" if latest_rsi > 70 else "🟢 Oversold" if latest_rsi < 30 else "⚪ Neutral"
+        rsi_label = "Overbought" if latest_rsi > 70 else "Oversold" if latest_rsi < 30 else "Neutral"
         st.caption(rsi_label)
 
     with g2:
@@ -1634,7 +1748,7 @@ def show_valuation_detector():
                                      thresholds=[-1, 1],
                                      colors=["#22c55e", "#fef08a", "#ef4444"])
         st.plotly_chart(z_gauge, use_container_width=True)
-        z_label = "🔴 Expensive" if z_score > 2 else "🟢 Cheap" if z_score < -2 else "⚪ Normal"
+        z_label = "Expensive" if z_score > 2 else "Cheap" if z_score < -2 else "Normal"
         st.caption(z_label)
 
     with g3:
@@ -1642,7 +1756,7 @@ def show_valuation_detector():
                                       thresholds=[20, 80],
                                       colors=["#22c55e", "#fef08a", "#ef4444"])
         st.plotly_chart(bb_gauge, use_container_width=True)
-        bb_label = "🔴 Upper" if bb_position > 80 else "🟢 Lower" if bb_position < 20 else "⚪ Middle"
+        bb_label = "Upper" if bb_position > 80 else "Lower" if bb_position < 20 else "Middle"
         st.caption(bb_label)
 
     with g4:
@@ -1650,13 +1764,13 @@ def show_valuation_detector():
                                          thresholds=[20, 80],
                                          colors=["#22c55e", "#fef08a", "#ef4444"])
         st.plotly_chart(stoch_gauge, use_container_width=True)
-        stoch_label = "🔴 Overbought" if latest_stoch_k > 80 else "🟢 Oversold" if latest_stoch_k < 20 else "⚪ Neutral"
+        stoch_label = "Overbought" if latest_stoch_k > 80 else "Oversold" if latest_stoch_k < 20 else "Neutral"
         st.caption(stoch_label)
 
     # ==================== PRICE CHART ====================
 
     st.markdown("---")
-    st.subheader("📈 Price Action & Trend")
+    st.subheader("Price Action & Trend")
 
     # Combined price chart with BB and RSI
     price_fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
@@ -1726,14 +1840,14 @@ def show_valuation_detector():
     # ==================== DETAILED METRICS TABS ====================
 
     st.markdown("---")
-    tab1, tab2, tab3, tab4 = st.tabs(["🎯 Momentum", "📊 Trend Analysis", "📉 Volatility", "📋 Signal Summary"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Momentum", "Trend Analysis", "Volatility", "Signal Summary"])
 
     with tab1:
         st.markdown("### Momentum Indicators")
         st.caption("Measuring speed and strength of price movements")
 
         # RSI Section with chart
-        st.markdown("#### 📊 RSI (Relative Strength Index)")
+        st.markdown("#### RSI (Relative Strength Index)")
         rsi_chart_col, rsi_info_col = st.columns([2, 1])
 
         with rsi_chart_col:
@@ -1754,24 +1868,24 @@ def show_valuation_detector():
         with rsi_info_col:
             st.metric("Current RSI", f"{latest_rsi:.1f}", delta=f"{latest_rsi - 50:.1f} from 50")
             if latest_rsi > 80:
-                st.error("🔴 Extremely Overbought")
+                st.error("Extremely Overbought")
             elif latest_rsi > 70:
-                st.warning("🟠 Overbought")
+                st.warning("Overbought")
             elif latest_rsi > 60:
-                st.info("🟡 Elevated")
+                st.info("Elevated")
             elif latest_rsi < 20:
-                st.success("🟢 Extremely Oversold")
+                st.success("Extremely Oversold")
             elif latest_rsi < 30:
-                st.success("🟢 Oversold")
+                st.success("Oversold")
             elif latest_rsi < 40:
-                st.info("🔵 Depressed")
+                st.info("Depressed")
             else:
-                st.info("⚪ Neutral")
+                st.info("Neutral")
 
         st.markdown("---")
 
         # Stochastic Section with chart
-        st.markdown("#### 📊 Stochastic Oscillator")
+        st.markdown("#### Stochastic Oscillator")
         stoch_fig = go.Figure()
         stoch_fig.add_trace(go.Scatter(x=analysis_window['Date'], y=stoch_k.tail(days),
                                        mode='lines', name='%K', line=dict(color='blue', width=2)))
@@ -1790,45 +1904,45 @@ def show_valuation_detector():
         with stoch_cols[1]:
             st.metric("%D", f"{latest_stoch_d:.1f}")
         with stoch_cols[2]:
-            cross = "🟢 Bullish" if latest_stoch_k > latest_stoch_d else "🔴 Bearish"
+            cross = "Bullish" if latest_stoch_k > latest_stoch_d else "Bearish"
             st.metric("Cross", cross)
 
         if latest_stoch_k > 80 and latest_stoch_d > 80:
-            st.error("🔴 Both lines in overbought zone")
+            st.error("Both lines in overbought zone")
         elif latest_stoch_k < 20 and latest_stoch_d < 20:
-            st.success("🟢 Both lines in oversold zone")
+            st.success("Both lines in oversold zone")
         else:
-            st.info("⚪ Neutral territory")
+            st.info("Neutral territory")
 
         st.markdown("---")
 
         # CCI and Williams %R side by side
-        st.markdown("#### 📊 Additional Momentum Indicators")
+        st.markdown("#### Additional Momentum Indicators")
         cci_col, wr_col = st.columns(2)
 
         with cci_col:
             st.markdown("**CCI (20)**")
             st.metric("Value", f"{latest_cci:.1f}")
             if latest_cci > 200:
-                st.error("🔴 Extreme Overbought")
+                st.error("Extreme Overbought")
             elif latest_cci > 100:
-                st.warning("🟠 Overbought")
+                st.warning("Overbought")
             elif latest_cci < -200:
-                st.success("🟢 Extreme Oversold")
+                st.success("Extreme Oversold")
             elif latest_cci < -100:
-                st.success("🟢 Oversold")
+                st.success("Oversold")
             else:
-                st.info("⚪ Normal Range")
+                st.info("Normal Range")
 
         with wr_col:
             st.markdown("**Williams %R**")
             st.metric("Value", f"{latest_williams:.1f}")
             if latest_williams > -20:
-                st.error("🔴 Overbought")
+                st.error("Overbought")
             elif latest_williams < -80:
-                st.success("🟢 Oversold")
+                st.success("Oversold")
             else:
-                st.info("⚪ Normal Range")
+                st.info("Normal Range")
 
         roc_cols = st.columns(3)
         with roc_cols[0]:
@@ -1844,7 +1958,7 @@ def show_valuation_detector():
         st.caption("Identifying direction and strength of trends")
 
         # Moving Average Analysis with chart
-        st.markdown("#### 📊 Moving Average Structure")
+        st.markdown("#### Moving Average Structure")
 
         ma_fig = go.Figure()
         ma_fig.add_trace(go.Scatter(x=analysis_window['Date'], y=analysis_window['Close'],
@@ -1865,23 +1979,23 @@ def show_valuation_detector():
         with ma_cols[2]:
             st.metric("Price vs 50-MA", f"{ma_50_deviation:+.1f}%")
         with ma_cols[3]:
-            ma_status = "🟢 Golden Cross" if ma_50 > ma_200 else "🔴 Death Cross"
+            ma_status = "Golden Cross" if ma_50 > ma_200 else "Death Cross"
             st.metric("Structure", ma_status)
 
         # Trend interpretation
         if latest['Close'] > ma_50 > ma_200:
-            st.success("📈 **Strong Uptrend** - Price above both MAs with bullish structure")
+            st.success("**Strong Uptrend** - Price above both MAs with bullish structure")
         elif latest['Close'] < ma_50 < ma_200:
-            st.error("📉 **Strong Downtrend** - Price below both MAs with bearish structure")
+            st.error("**Strong Downtrend** - Price below both MAs with bearish structure")
         elif latest['Close'] > ma_200:
-            st.info("📊 **Uptrend with Pullback** - Above 200-MA but testing shorter MAs")
+            st.info("**Uptrend with Pullback** - Above 200-MA but testing shorter MAs")
         else:
-            st.warning("📊 **Mixed** - Conflicting trend signals")
+            st.warning("**Mixed** - Conflicting trend signals")
 
         st.markdown("---")
 
         # MACD Analysis
-        st.markdown("#### 📊 MACD")
+        st.markdown("#### MACD")
 
         macd_fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1, row_heights=[0.5, 0.5])
         macd_fig.add_trace(go.Scatter(x=analysis_window['Date'], y=analysis_window['Close'],
@@ -1903,13 +2017,13 @@ def show_valuation_detector():
         with macd_cols[1]:
             st.metric("Signal", f"{latest_signal:.4f}")
         with macd_cols[2]:
-            hist_icon = "📈" if latest_histogram > 0 else "📉"
-            st.metric("Histogram", f"{hist_icon} {latest_histogram:+.4f}")
+            hist_direction = "+" if latest_histogram > 0 else ""
+            st.metric("Histogram", f"{latest_histogram:+.4f}")
 
         st.markdown("---")
 
         # Z-Score Analysis with distribution
-        st.markdown("#### 📊 Statistical Valuation (Z-Score)")
+        st.markdown("#### Statistical Valuation (Z-Score)")
 
         zscore_cols = st.columns([2, 1])
         with zscore_cols[0]:
@@ -1930,11 +2044,11 @@ def show_valuation_detector():
             st.metric("Std Dev", f"${std_price:.2f}")
 
             if z_score > 2:
-                st.error("🔴 Top ~2.5% - Expensive")
+                st.error("Top ~2.5% - Expensive")
             elif z_score < -2:
-                st.success("🟢 Bottom ~2.5% - Cheap")
+                st.success("Bottom ~2.5% - Cheap")
             else:
-                st.info("⚪ Within normal range")
+                st.info("Within normal range")
 
         st.markdown("---")
 
@@ -1943,7 +2057,7 @@ def show_valuation_detector():
         st.caption("Measuring price variability and trading ranges")
 
         # Bollinger Bands with chart
-        st.markdown("#### 📊 Bollinger Bands")
+        st.markdown("#### Bollinger Bands")
 
         bb_fig = go.Figure()
         bb_fig.add_trace(go.Scatter(x=analysis_window['Date'], y=upper_band.tail(days),
@@ -1992,7 +2106,7 @@ def show_valuation_detector():
         st.markdown("---")
 
         # ATR and Volatility
-        st.markdown("#### 📈 Volatility Metrics")
+        st.markdown("#### Volatility Metrics")
 
         vol_cols = st.columns(3)
         with vol_cols[0]:
@@ -2000,13 +2114,13 @@ def show_valuation_detector():
         with vol_cols[1]:
             st.metric("ATR %", f"{atr_percent:.2f}%")
         with vol_cols[2]:
-            vol_level = "🔴 High" if atr_percent > 3 else "🟡 Moderate" if atr_percent > 1.5 else "🟢 Low"
+            vol_level = "High" if atr_percent > 3 else "Moderate" if atr_percent > 1.5 else "Low"
             st.metric("Volatility", vol_level)
 
         st.markdown("---")
 
         # 52-Week Range with gauge
-        st.markdown("#### 📊 52-Week Range")
+        st.markdown("#### 52-Week Range")
 
         range_gauge = go.Figure(go.Indicator(
             mode="gauge+number",
@@ -2043,30 +2157,27 @@ def show_valuation_detector():
         # Volume (if available)
         if has_volume:
             st.markdown("---")
-            st.markdown("#### 📊 Volume Analysis")
+            st.markdown("#### Volume Analysis")
             v1, v2 = st.columns(2)
             with v1:
                 st.metric("Volume Ratio", f"{volume_ratio:.2f}x")
                 if volume_ratio > 1.5:
-                    st.success("🟢 High volume - Strong conviction")
+                    st.success("High volume - Strong conviction")
                 elif volume_ratio < 0.5:
-                    st.warning("🟡 Low volume - Weak conviction")
+                    st.warning("Low volume - Weak conviction")
                 else:
-                    st.info("⚪ Normal volume")
+                    st.info("Normal volume")
             with v2:
-                obv_icon = "📈" if obv_trend == "Bullish" else "📉"
-                st.metric("OBV Trend", f"{obv_icon} {obv_trend}")
+                st.metric("OBV Trend", obv_trend)
 
     with tab4:
-        st.markdown("### 📋 Signal Summary")
+        st.markdown("### Signal Summary")
 
-        # Create signal table with visual indicators
+        # Create signal table
         signal_data = []
         for sig in signals:
             name, reading, score, direction = sig[0], sig[1], sig[2], sig[3]
-            emoji = "🟢" if direction == "bullish" else "🔴" if direction == "bearish" else "⚪"
             signal_data.append({
-                "": emoji,
                 "Indicator": name,
                 "Reading": reading,
                 "Score": f"{score:+.2f}",
@@ -2081,7 +2192,7 @@ def show_valuation_detector():
         sig_col1, sig_col2, sig_col3 = st.columns(3)
 
         with sig_col1:
-            st.markdown("**🟢 Bullish Signals**")
+            st.markdown("**Bullish Signals**")
             bullish = [s for s in signals if s[3] == "bullish"]
             for s in bullish:
                 st.markdown(f"- {s[0]}: {s[1]}")
@@ -2089,7 +2200,7 @@ def show_valuation_detector():
                 st.caption("None")
 
         with sig_col2:
-            st.markdown("**⚪ Neutral Signals**")
+            st.markdown("**Neutral Signals**")
             neutral = [s for s in signals if s[3] == "neutral"]
             for s in neutral:
                 st.markdown(f"- {s[0]}: {s[1]}")
@@ -2097,7 +2208,7 @@ def show_valuation_detector():
                 st.caption("None")
 
         with sig_col3:
-            st.markdown("**🔴 Bearish Signals**")
+            st.markdown("**Bearish Signals**")
             bearish = [s for s in signals if s[3] == "bearish"]
             for s in bearish:
                 st.markdown(f"- {s[0]}: {s[1]}")
@@ -2107,7 +2218,7 @@ def show_valuation_detector():
     # Disclaimer
     st.markdown("---")
     st.caption("""
-    ⚠️ **Disclaimer:** This analysis is for informational purposes only and does not constitute financial advice.
+    **Disclaimer:** This analysis is for informational purposes only and does not constitute financial advice.
     Technical indicators reflect historical patterns and may not predict future performance.
     Always conduct your own research before making investment decisions.
     """)
@@ -2115,7 +2226,7 @@ def show_valuation_detector():
 
 def show_llm_analysis():
     """LLM-powered market analysis"""
-    st.title("🤖 LLM Market Analysis")
+    st.title("LLM Market Analysis")
     st.markdown("*AI-powered market commentary using GPT-4 or Claude*")
 
     st.info("Integrates with OpenAI/Anthropic to generate market analysis based on predictions, price data, and news")
@@ -2258,7 +2369,7 @@ python3 newsletter_generator.py --send --assets SPY,BTC/USDT
 
 def show_portfolio_rebalancing():
     """Portfolio rebalancing optimizer"""
-    st.title("⚖️ Portfolio Rebalancing Optimizer")
+    st.title("Portfolio Rebalancing Optimizer")
     st.markdown("*Find optimal rebalancing frequency for your portfolio*")
 
     st.info("Tests different rebalancing frequencies (daily, weekly, monthly, etc.) and identifies the optimal strategy based on returns, Sharpe ratio, and transaction costs")
@@ -2320,7 +2431,7 @@ python3 portfolio_rebalancer.py \\
 
 def show_forecast_results():
     """Display forecast results from PostgreSQL"""
-    st.title("📈 Forecast Results")
+    st.title("Forecast Results")
     st.markdown("*View predictions generated by the forecasting API*")
 
     # Load predictions from PostgreSQL
@@ -2397,7 +2508,7 @@ def show_forecast_results():
 
 def show_automation():
     """Automation and pipeline execution"""
-    st.title("⚙️ Automation & Pipeline")
+    st.title("Automation & Pipeline")
     st.markdown("*Automate data downloads, training, and forecasting*")
 
     st.markdown("""
@@ -2489,7 +2600,7 @@ python3 backtest.py
 
 def show_custom_imports():
     """Custom data import interface"""
-    st.title("📥 Custom Data Imports")
+    st.title("Custom Data Imports")
     st.markdown("*Import your own asset data for forecasting*")
 
     st.markdown("""
