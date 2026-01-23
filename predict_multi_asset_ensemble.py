@@ -189,7 +189,7 @@ for tf in threshold_files:
                 threshold = thresh_data.get("threshold", PREDICTION_THRESHOLD)
                 print(f"   ℹ️  Using threshold from {tf.name}: {threshold:.3f}")
                 break
-        except:
+        except Exception:
             pass
 
 # Generate binary predictions
@@ -278,7 +278,7 @@ if labeled_path.exists():
             existing_labels['Date'] = pd.to_datetime(existing_labels['Date'])
             output_labeled['Date'] = pd.to_datetime(output_labeled['Date'])
             output_labeled = output_labeled.merge(existing_labels, on='Date', how='left')
-    except:
+    except Exception:
         pass
 
 output_labeled.to_csv(labeled_path, index=False)

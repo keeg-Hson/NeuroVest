@@ -464,7 +464,7 @@ with tab5:
             try:
                 df = pd.read_csv(filepath)
                 crypto_found.append((crypto_file.replace('.csv', ''), len(df)))
-            except:
+            except Exception:
                 pass
 
     if crypto_found:

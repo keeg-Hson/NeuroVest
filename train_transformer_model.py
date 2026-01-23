@@ -343,7 +343,7 @@ try:
     print(f"   F1 Score:  {f1_lstm:.4f}")
 
     has_lstm = True
-except:
+except Exception:
     print(f"\n⚠️  Could not load LSTM model for comparison")
     has_lstm = False
     acc_lstm = 0.678  # Known from previous run

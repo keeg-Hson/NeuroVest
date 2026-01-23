@@ -12,11 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-<<<<<<< HEAD
 from utils import load_SPY_data, load_asset_data
-=======
-from utils import load_SPY_data
->>>>>>> f1644007
 
 subprocess.run(
     [sys.executable, str(pathlib.Path(__file__).with_name("update_spy_data.py"))], check=False
@@ -49,27 +45,19 @@ def _git_sha() -> str:
 
 def _to_jsonable(x):
     # make numpy/pandas types JSON-friendly
-<<<<<<< HEAD
     if isinstance(x, (list, tuple)):
         return [_to_jsonable(i) for i in x]
     if isinstance(x, np.ndarray):
         return x.tolist()
-=======
->>>>>>> f1644007
     if isinstance(x, np.floating | np.float32 | np.float64):
         return float(x)
     if isinstance(x, np.integer | np.int32 | np.int64):
         return int(x)
-<<<<<<< HEAD
     try:
         if pd.isna(x):
             return None
     except (ValueError, TypeError):
         pass  # x is array-like, skip isna check
-=======
-    if pd.isna(x):
-        return None
->>>>>>> f1644007
     return x
 
 
@@ -259,10 +247,7 @@ CAPITAL_BASE = 100_000  # initial capital base for dollar-return tracking
 
 
 def run_backtest(
-<<<<<<< HEAD
     asset: str = "SPY",
-=======
->>>>>>> f1644007
     window_days: int | None = None,
     crash_thresh: float | None = None,
     spike_thresh: float | None = None,
@@ -298,22 +283,15 @@ def run_backtest(
     """
     End-to-end backtest:
       - loads predictions (logs/daily_predictions.csv)
-<<<<<<< HEAD
       - loads asset history (default: SPY, configurable via --asset)
-=======
-      - loads SPY history and normalizes duplicate/multiindex columns
->>>>>>> f1644007
       - optional pre-filter by confidence
       - optional explicit class thresholds (else use model-provided labels)
       - joins by Date and simulates ENTRY_SHIFT/EXIT_SHIFT trade rules
       - returns (trades_df, metrics_dict, simulate_mode)
-<<<<<<< HEAD
 
     Args:
         asset: Ticker symbol to backtest on (e.g., 'SPY', 'QQQ', 'BTC/USDT')
         ... (other params)
-=======
->>>>>>> f1644007
     """
 
     # ── 1) Load predictions ─────────────────────────────────────────────────────
@@ -330,7 +308,6 @@ def run_backtest(
         if "Spike_Conf" not in preds.columns and "Trade_Conf" in preds.columns:
             preds["Spike_Conf"] = preds["Trade_Conf"]
 
-<<<<<<< HEAD
         # Check if predictions are already in 0/1/2 format (multi-asset ensemble)
         # Multi-asset predictor already outputs: 0=crash, 1=normal, 2=spike
         pred_values = set(preds["Prediction"].dropna().unique())
@@ -339,24 +316,15 @@ def run_backtest(
             print(f"   ℹ️  Predictions already in 3-class format (0/1/2), skipping 1→2 mapping")
         elif "Prediction" in preds.columns:
             # Binary format {0,1} (No-Trade/Trade) -> map to {1,2} (Hold/Spike=long)
-=======
-        # Map {0,1} (No-Trade/Trade) -> {0,2} (Hold/Spike=long) to match backtest logic
-        if "Prediction" in preds.columns:
->>>>>>> f1644007
             preds["Prediction"] = preds["Prediction"].replace({1: 2})
 
     print(f"🔧 [bt] PREDICT_VARIANT = {VAR}")
     vc_post = preds.get("Prediction", pd.Series(dtype=int)).value_counts(dropna=False)
     print("🔎 [bt] Labels after mapping:", dict(vc_post))
 
-<<<<<<< HEAD
     # ── 2) Load & normalize asset data ──────────────────────────────────────────
     print(f"📊 [bt] Loading asset data for: {asset}")
     spy_df = load_asset_data(asset)
-=======
-    # ── 2) Load & normalize SPY ─────────────────────────────────────────────────
-    spy_df = load_SPY_data()
->>>>>>> f1644007
 
     spy_df = spy_df[~spy_df.index.duplicated(keep="last")].sort_index()
 
@@ -395,11 +363,7 @@ def run_backtest(
 
     spy_df = pd.DataFrame(canonical, index=spy_df.index)
 
-<<<<<<< HEAD
     # 2d) Keep only required OHLCV columns and enforce daily DatetimeIndex
-=======
-    # 2d) Keep only OHLCV we need and enforce daily DatetimeIndex
->>>>>>> f1644007
     needed = [c for c in ["Open", "Close", "High", "Low", "Volume"] if c in spy_df.columns]
     spy_df = spy_df[needed].copy()
     if not isinstance(spy_df.index, pd.DatetimeIndex):
@@ -941,7 +905,6 @@ def run_backtest(
     gross_loss = -trades.loc[trades["dollar_return"] < 0, "dollar_return"].sum()
     profit_factor = gross_win / gross_loss if gross_loss != 0 else np.inf
 
-<<<<<<< HEAD
     # Calculate buy-and-hold benchmark for the same period
     if len(trades) > 1:
         start = pd.to_datetime(trades.index.min(), errors="coerce")
@@ -971,8 +934,6 @@ def run_backtest(
     alpha = total_return - buy_hold_return
     alpha_annual = annualized_return - buy_hold_annual if not np.isnan(annualized_return) else np.nan
 
-=======
->>>>>>> f1644007
     metrics = {
         "trades": len(trades),
         "total_return": total_return,
@@ -985,13 +946,10 @@ def run_backtest(
         "avg_short": avg_short,
         "max_drawdown": max_drawdown,
         "profit_factor": profit_factor,
-<<<<<<< HEAD
         "buy_hold_return": buy_hold_return,
         "buy_hold_annual": buy_hold_annual,
         "alpha": alpha,
         "alpha_annual": alpha_annual,
-=======
->>>>>>> f1644007
     }
 
     # --- Optional top-K per week/month to force activity ---
@@ -1043,11 +1001,7 @@ def optimize_thresholds(
     Grid-search thresholds to maximize chosen objective.
     Returns: (confidence_thresh, crash_thresh, spike_thresh, best_metrics)
     """
-<<<<<<< HEAD
     # Default search space (configurable)
-=======
-    # Default search space (tighten/loosen as you like)
->>>>>>> f1644007
     if grid is None:
         grid = {
             "confidence_thresh": [None, 0.60, 0.70, 0.80, 0.85, 0.90],
@@ -1160,11 +1114,7 @@ if __name__ == "__main__":
     import json
     from copy import deepcopy
 
-<<<<<<< HEAD
     # ---- defaults mirroring current hard-coded configuration ----
-=======
-    # ---- defaults mirroring your current hard-coded run ----
->>>>>>> f1644007
     base_cfg = dict(
         window_days=None,
         lookahead=5,
@@ -1226,7 +1176,6 @@ if __name__ == "__main__":
     parser.add_argument("--config", help="JSON file to seed/override params")
     parser.add_argument("--save-config", help="Save the final merged config to this JSON")
 
-<<<<<<< HEAD
     # Asset selection
     parser.add_argument(
         "--asset",
@@ -1246,8 +1195,6 @@ if __name__ == "__main__":
         help="Compare backtest results across multiple assets (shows summary table)"
     )
 
-=======
->>>>>>> f1644007
     # numerics
     parser.add_argument("--window-days", type=int)
     parser.add_argument("--lookahead", type=int)
@@ -1425,7 +1372,6 @@ if __name__ == "__main__":
     allowed = set(inspect.signature(run_backtest).parameters)
     kwargs = {k: v for k, v in cfg.items() if k in allowed}
 
-<<<<<<< HEAD
     # Handle asset/asset-group/compare selection
     if args.compare or args.asset_group:
         # Run comparison mode
@@ -1533,8 +1479,6 @@ if __name__ == "__main__":
     if args.asset:
         kwargs['asset'] = args.asset
 
-=======
->>>>>>> f1644007
     if args.optimize:
         # Build grid from flags or use defaults inside optimize_thresholds
         grid = None
@@ -1618,11 +1562,7 @@ if __name__ == "__main__":
 
     trades, m, simulate_mode = run_backtest(**kwargs)
 
-<<<<<<< HEAD
     # --- print existing backtest report (unchanged) ---
-=======
-    # --- print your existing backtest report (unchanged) ---
->>>>>>> f1644007
     print("\n📈 Backtest Report")
     print(f"  Trades taken:       {m['trades']}")
     print(f"  Total return:       {m['total_return']:.2%}")
@@ -1632,7 +1572,6 @@ if __name__ == "__main__":
     print(f"  Avg long:           {m['avg_long']:.5f}")
     print(f"  Avg short:          {m['avg_short']:.5f}")
 
-<<<<<<< HEAD
     # Buy-and-hold comparison
     print("\n📊 vs Buy-and-Hold:")
     print(f"  Buy & Hold return:  {m.get('buy_hold_return', 0):.2%}")
@@ -1643,9 +1582,6 @@ if __name__ == "__main__":
         print(f"  Alpha (annual):     {alpha_annual:+.2%}")
 
     # optional summary/record (if helper functions available)
-=======
-    # optional summary/record (if you pasted the helpers earlier)
->>>>>>> f1644007
     try:
         print_run_summary(m, cfg)
         save_run_record(cfg, m, simulate_mode, trades)

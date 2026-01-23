@@ -162,7 +162,7 @@ try:
         'features': len(all_features)
     })
     print("✅ Configured successfully")
-except:
+except Exception:
     print(f"❌ Failed")
 
 # Model 4: Ensemble

@@ -59,7 +59,7 @@ for symbol, name in ASSETS.items():
                     print(f"✓ {symbol:6s} ({name:25s}) - Using cached ({len(existing)} rows)")
                     successful.append(symbol)
                     continue
-        except:
+        except Exception:
             pass
 
     try:

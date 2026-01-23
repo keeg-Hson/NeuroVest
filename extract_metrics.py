@@ -270,19 +270,19 @@ def run_quick_prediction_test():
                         try:
                             pct = line.split('(')[1].split('%')[0].strip()
                             metrics['crash_pct'] = f"{pct}%"
-                        except:
+                        except Exception:
                             pass
                     elif "NORMAL" in line and "(" in line:
                         try:
                             pct = line.split('(')[1].split('%')[0].strip()
                             metrics['normal_pct'] = f"{pct}%"
-                        except:
+                        except Exception:
                             pass
                     elif "SPIKE" in line and "(" in line:
                         try:
                             pct = line.split('(')[1].split('%')[0].strip()
                             metrics['spike_pct'] = f"{pct}%"
-                        except:
+                        except Exception:
                             pass
 
             return metrics

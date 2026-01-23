@@ -41,11 +41,7 @@ from sklearn.metrics import (  # noqa: E402
     precision_score,
     recall_score,
 )
-<<<<<<< HEAD
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV  # noqa: E402
-=======
-from sklearn.model_selection import GridSearchCV  # noqa: E402
->>>>>>> f1644007
 from xgboost import XGBClassifier  # noqa: E402
 
 # Import from existing modules
@@ -279,12 +275,8 @@ def train_improved_model(df: pd.DataFrame) -> bool:
         verbosity=0,
         tree_method="hist",
         use_label_encoder=False,
-<<<<<<< HEAD
         # Note: early_stopping_rounds removed - incompatible with cross-validation
         # The n_estimators hyperparameter grid controls boosting rounds instead
-=======
-        early_stopping_rounds=75,  # Increased for better convergence
->>>>>>> f1644007
     )
     xgb_obj = dict(objective="binary:logistic", eval_metric="logloss")
 
@@ -395,26 +387,18 @@ def train_improved_model(df: pd.DataFrame) -> bool:
         f"mean={float(sample_weight_profit.mean()):.3f}"
     )
 
-<<<<<<< HEAD
     # Randomized search with F1 optimization (faster than exhaustive grid search)
     # Using n_iter=300 samples 300 random combinations from the 737,280 total
     grid_search = RandomizedSearchCV(
         estimator=pipe,
         param_distributions=param_grid,
         n_iter=300,  # Sample 300 random combinations instead of all 737K
-=======
-    # Grid search with F1 optimization
-    grid_search = GridSearchCV(
-        estimator=pipe,
-        param_grid=param_grid,
->>>>>>> f1644007
         scoring="f1",  # Optimize F1 directly
         cv=tscv_local,
         n_jobs=-1,
         verbose=2,
         error_score=0,
         refit=True,
-<<<<<<< HEAD
         random_state=42,  # For reproducibility
     )
 
@@ -423,15 +407,6 @@ def train_improved_model(df: pd.DataFrame) -> bool:
     print("This should complete in 30-60 minutes depending on your system...")
     grid_search.fit(X, y)
     print(f"[{datetime.now():%H:%M:%S}] RandomizedSearchCV completed!")
-=======
-    )
-
-    print(f"\n[{datetime.now():%H:%M:%S}] Starting GridSearchCV...")
-    print(f"Searching through {grid_size:,} combinations for optimal hyperparameters...")
-    print("This may take several hours depending on your system...")
-    grid_search.fit(X, y)
-    print(f"[{datetime.now():%H:%M:%S}] GridSearchCV completed!")
->>>>>>> f1644007
 
     print("\n✅ Best Parameters:")
     for k, v in grid_search.best_params_.items():

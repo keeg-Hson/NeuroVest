@@ -584,7 +584,7 @@ def show_overview():
             db_stocks = sum(1 for _, atype in db_assets if atype == 'stock')
             db_crypto = sum(1 for _, atype in db_assets if atype == 'crypto')
             db_total = len(db_assets)
-        except:
+        except Exception:
             db_stocks, db_crypto, db_total = 29, 11, 40  # Fallback to known counts
 
         st.markdown(f"""

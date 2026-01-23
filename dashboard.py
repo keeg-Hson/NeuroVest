@@ -120,7 +120,7 @@ def load_asset_data(ticker):
             try:
                 pd.to_datetime(df[first_col].iloc[0])
                 date_col = first_col
-            except:
+            except Exception:
                 return None  # Can't find date column
 
     if date_col is None:
@@ -439,7 +439,7 @@ def show_dashboard(selected_asset):
             try:
                 df = pd.read_csv(pred_file)
                 st.markdown(f"🟢 {len(df):,} predictions")
-            except:
+            except Exception:
                 st.markdown("🟡 File exists (parse error)")
         else:
             st.markdown("🔴 No predictions yet")

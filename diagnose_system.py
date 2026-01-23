@@ -302,7 +302,7 @@ try:
         spike_count = (pred_df['Prediction'] == 2).sum()
         if spike_count < 100:
             recommendations.append("Regenerate predictions - too few SPIKE signals for meaningful backtest")
-except:
+except Exception:
     pass
 
 if recommendations:

@@ -401,7 +401,7 @@ try:
                 print(f"   Win Rate: {win_rate_opt:.2%}")
                 print(f"   N Trades: {n_trades_opt}")
 
-            except:
+            except Exception:
                 pass
 
         else:
@@ -475,7 +475,7 @@ try:
         'Win_Rate': win_rate,
         'N_Trades': n_trades
     })
-except:
+except Exception:
     pass
 
 comparison_df = pd.DataFrame(comparison_data)

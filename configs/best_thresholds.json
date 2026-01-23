@@ -1,5 +1,4 @@
 {
-<<<<<<< HEAD
   "threshold": 0.30,
   "spike_thresh": 0.30,
   "crash_thresh": 0.30,
@@ -11,15 +10,3 @@
     "timestamp": "2025-11-18T01:00:00"
   }
 }
-=======
-  "confidence_thresh": null,
-  "crash_thresh": null,
-  "spike_thresh": null,
-  "meta": {
-    "objective": "profit_factor",
-    "min_trades": 30,
-    "window_days": null,
-    "timestamp": "2025-11-05T23:59:56"
-  }
-}
->>>>>>> f1644007

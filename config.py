@@ -67,7 +67,6 @@ TRAIN_CFG = {
 }
 
 # ─── Prediction / decision gating ────────────────────────────
-<<<<<<< HEAD
 # Single source of truth for prediction threshold (DO NOT hardcode elsewhere)
 PREDICTION_THRESHOLD = 0.35  # Lowered Nov 18 2025 to improve recall (target 40-50%)
 
@@ -80,13 +79,6 @@ PREDICT_CFG = {
     # This acts as a default; live runs may override via thresholds_fwd.json
     # or configs/best_thresholds.json.
     "p_min": PREDICTION_THRESHOLD,  # Use constant above
-=======
-PREDICT_CFG = {
-    # Minimum probability of event (long) to consider a trade.
-    # This acts as a default; live runs may override via thresholds_fwd.json
-    # or configs/best_thresholds.json.
-    "p_min": 0.55,
->>>>>>> f1644007
     # Minimum expected value (in return units) for a trade to pass EV gating.
     "ev_min": 0.0005,  # 5 bps minimum expected value
     # Typical winner/loser magnitudes used for EV heuristics.

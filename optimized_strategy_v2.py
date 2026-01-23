@@ -50,7 +50,7 @@ def load_models():
 
                 print(f"✓ Loaded {suffix} models")
                 return xgb, lgb, rf, nn, scaler
-            except:
+            except Exception:
                 continue
 
         print("✗ Could not load any models")

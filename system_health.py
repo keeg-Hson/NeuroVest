@@ -59,7 +59,7 @@ def check_data():
                     df = pd.read_csv(path)
                     print(f"✓ {crypto}: {len(df):,} rows")
                     crypto_count += 1
-                except:
+                except Exception:
                     print(f"✗ {crypto}: Parse error")
 
     if crypto_count == 0:
@@ -304,7 +304,7 @@ def calculate_metrics():
         try:
             df = pd.read_csv(pred_file)
             print(f"Total Predictions: {len(df):,}")
-        except:
+        except Exception:
             pass
 
     # Disk usage

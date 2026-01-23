@@ -17,14 +17,14 @@ from datetime import datetime
 # Install if needed
 try:
     import lightgbm as lgb
-except:
+except Exception:
     import subprocess
     subprocess.check_call(["pip", "install", "-q", "lightgbm"])
     import lightgbm as lgb
 
 try:
     import catboost as cb
-except:
+except Exception:
     import subprocess
     subprocess.check_call(["pip", "install", "-q", "catboost"])
     import catboost as cb

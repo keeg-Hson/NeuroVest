@@ -1,14 +1,10 @@
 .env
 prediction_log.txt
-<<<<<<< HEAD
 *.log
-=======
->>>>>>> f1644007
 /logs/
 /backups/
 
 models/
-
 
 # local env
 .venv/
@@ -17,11 +13,6 @@ __pycache__/
 
 # databases
 *.duckdb
-
-# env & caches
-.venv/
-__pycache__/
-*.pyc
 
 # data & outputs
 outputs/
@@ -36,7 +27,4 @@ data_cache/
 
 # os/editor
 .DS_Store
-<<<<<<< HEAD
 catboost_info/
-=======
->>>>>>> f1644007

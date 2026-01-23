@@ -150,7 +150,7 @@ for ticker, name in sectors.items():
             print(f"      ✅ {ticker} ({name})")
         else:
             print(f"      ⚠️  {ticker} ({name}) - file not found")
-    except:
+    except Exception:
         print(f"      ❌ {ticker} ({name}) - error loading")
 
 if sector_data:
@@ -222,7 +222,7 @@ if (DATA_DIR / "GLD.csv").exists():
         ).astype(int)
 
         print(f"   ✅ Added 1 safe-haven sentiment feature")
-    except:
+    except Exception:
         pass
 
 # ============================================================================

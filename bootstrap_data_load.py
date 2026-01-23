@@ -107,7 +107,7 @@ def main():
             try:
                 callback = create_ccxt_callback(symbol, exchange, '1d', limit=3000)
                 data = callback()
-            except:
+            except Exception:
                 # If Coinbase fails (BNB/MATIC not available), try Binance
                 if ticker in ['BNB_USDT', 'MATIC_USDT']:
                     exchange = 'binance'
