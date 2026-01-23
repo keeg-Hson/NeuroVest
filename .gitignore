@@ -1,6 +1,9 @@
 .env
 prediction_log.txt
+<<<<<<< HEAD
 *.log
+=======
+>>>>>>> f1644007
 /logs/
 /backups/
 
@@ -33,4 +36,7 @@ data_cache/
 
 # os/editor
 .DS_Store
+<<<<<<< HEAD
 catboost_info/
+=======
+>>>>>>> f1644007
