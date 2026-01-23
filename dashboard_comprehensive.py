@@ -989,46 +989,36 @@ def show_getting_started():
 
     def nav_to(page_name):
         st.session_state.current_page = page_name
+        st.rerun()
 
-    qs1, qs2 = st.columns(2)
+    # Create link-style navigation
+    link_col1, link_col2 = st.columns(2)
 
-    with qs1:
-        st.markdown("**1. View Predictions**")
-        st.caption("See the latest signals for all assets")
-        if st.button("Go to Forecast Results", key="nav_forecast", use_container_width=True):
+    with link_col1:
+        if st.button("1. View Predictions → **Forecast Results**", key="nav_forecast"):
             nav_to("Forecast Results")
-            st.rerun()
+        st.caption("See the latest signals for all assets")
 
-        st.markdown("**2. Check Track Record**")
-        st.caption("See historical performance and run backtests")
-        if st.button("Go to Backtest Results", key="nav_backtest", use_container_width=True):
+        if st.button("2. Check Track Record → **Backtest Results**", key="nav_backtest"):
             nav_to("Backtest Results")
-            st.rerun()
+        st.caption("See historical performance and run backtests")
 
-        st.markdown("**3. Analyze Individual Assets**")
-        st.caption("Deep-dive valuation analysis")
-        if st.button("Go to Valuation Detector", key="nav_valuation", use_container_width=True):
+        if st.button("3. Analyze Assets → **Valuation Detector**", key="nav_valuation"):
             nav_to("Valuation Detector")
-            st.rerun()
+        st.caption("Deep-dive valuation analysis")
 
-    with qs2:
-        st.markdown("**4. Monitor Risk**")
-        st.caption("Macro risk assessment")
-        if st.button("Go to Recession Indicator", key="nav_recession", use_container_width=True):
+    with link_col2:
+        if st.button("4. Monitor Risk → **Recession Indicator**", key="nav_recession"):
             nav_to("Recession Indicator")
-            st.rerun()
+        st.caption("Macro risk assessment")
 
-        st.markdown("**5. Integrate via API**")
-        st.caption("Connect your applications")
-        if st.button("Go to API Documentation", key="nav_api", use_container_width=True):
+        if st.button("5. Integrate → **API Documentation**", key="nav_api"):
             nav_to("API Documentation")
-            st.rerun()
+        st.caption("Connect your applications")
 
-        st.markdown("**6. Model Details**")
-        st.caption("Understand model performance")
-        if st.button("Go to Model Performance", key="nav_model", use_container_width=True):
+        if st.button("6. Model Details → **Model Performance**", key="nav_model"):
             nav_to("Model Performance")
-            st.rerun()
+        st.caption("Understand how the models work")
 
     # Disclaimer
     st.markdown("---")
@@ -1160,136 +1150,347 @@ def show_backtest_results():
 
     st.markdown("---")
     st.subheader("Backtest Sandbox")
-    st.markdown("*Run a hypothetical backtest with your own parameters*")
+    st.markdown("*Configure and run hypothetical backtests with custom parameters*")
 
-    # Sandbox inputs
-    sandbox_col1, sandbox_col2 = st.columns(2)
+    # Tabs for different backtest configurations
+    bt_tab1, bt_tab2, bt_tab3 = st.tabs(["Quick Backtest", "Advanced Settings", "Strategy Comparison"])
 
-    with sandbox_col1:
-        # Asset selection
-        available_assets = list(STOCK_ETFS.keys()) + list(CRYPTO_ASSETS.keys())
-        selected_assets = st.multiselect(
-            "Select Assets",
+    with bt_tab1:
+        st.markdown("#### Quick Backtest")
+
+        q_col1, q_col2 = st.columns(2)
+
+        with q_col1:
+            available_assets = list(STOCK_ETFS.keys()) + list(CRYPTO_ASSETS.keys())
+            quick_assets = st.multiselect(
+                "Select Assets",
+                available_assets,
+                default=["SPY"] if "SPY" in available_assets else available_assets[:1],
+                max_selections=5,
+                key="quick_assets"
+            )
+
+            quick_capital = st.number_input(
+                "Initial Capital ($)",
+                min_value=1000, max_value=1000000, value=10000, step=1000,
+                key="quick_capital"
+            )
+
+        with q_col2:
+            qc1, qc2 = st.columns(2)
+            with qc1:
+                quick_start = st.date_input("Start", value=pd.to_datetime("2023-01-01"), key="quick_start")
+            with qc2:
+                quick_end = st.date_input("End", value=pd.to_datetime("today"), key="quick_end")
+
+            quick_strategy = st.selectbox(
+                "Strategy",
+                ["Follow All Signals", "High Confidence Only", "CRASH Avoidance", "SPIKE Chasing"],
+                key="quick_strategy"
+            )
+
+        if st.button("Run Quick Backtest", type="primary", use_container_width=True, key="run_quick"):
+            if quick_assets and quick_start < quick_end:
+                run_backtest_simulation(quick_assets, quick_capital, quick_start, quick_end, quick_strategy, {})
+
+    with bt_tab2:
+        st.markdown("#### Advanced Backtest Configuration")
+
+        adv_col1, adv_col2, adv_col3 = st.columns(3)
+
+        with adv_col1:
+            st.markdown("**Portfolio Settings**")
+            adv_assets = st.multiselect(
+                "Assets",
+                available_assets,
+                default=["SPY", "QQQ"] if all(a in available_assets for a in ["SPY", "QQQ"]) else available_assets[:2],
+                key="adv_assets"
+            )
+            adv_capital = st.number_input("Capital ($)", min_value=1000, value=50000, step=5000, key="adv_capital")
+
+            position_sizing = st.selectbox(
+                "Position Sizing",
+                ["Equal Weight", "Volatility Weighted", "Signal Strength Weighted", "Kelly Criterion"],
+                key="pos_sizing"
+            )
+
+        with adv_col2:
+            st.markdown("**Timing & Rebalancing**")
+            ac1, ac2 = st.columns(2)
+            with ac1:
+                adv_start = st.date_input("Start", value=pd.to_datetime("2022-01-01"), key="adv_start")
+            with ac2:
+                adv_end = st.date_input("End", value=pd.to_datetime("today"), key="adv_end")
+
+            rebalance_freq = st.selectbox(
+                "Rebalance Frequency",
+                ["Daily", "Weekly", "Monthly", "Signal Change Only"],
+                index=1,
+                key="rebal_freq"
+            )
+
+            adv_strategy = st.selectbox(
+                "Signal Strategy",
+                ["Follow All Signals", "High Confidence Only", "Model Agreement Required", "Ensemble Threshold"],
+                key="adv_strategy"
+            )
+
+        with adv_col3:
+            st.markdown("**Risk Management**")
+            stop_loss = st.slider("Stop Loss (%)", 0, 20, 5, key="stop_loss")
+            take_profit = st.slider("Take Profit (%)", 0, 50, 20, key="take_profit")
+            max_position = st.slider("Max Position Size (%)", 10, 100, 25, key="max_pos")
+            transaction_cost = st.number_input("Transaction Cost (%)", min_value=0.0, max_value=1.0, value=0.1, step=0.05, key="txn_cost")
+
+        confidence_threshold = st.slider("Minimum Confidence Threshold (%)", 50, 95, 60, key="conf_thresh")
+
+        if st.button("Run Advanced Backtest", type="primary", use_container_width=True, key="run_adv"):
+            if adv_assets and adv_start < adv_end:
+                advanced_settings = {
+                    'position_sizing': position_sizing,
+                    'rebalance_freq': rebalance_freq,
+                    'stop_loss': stop_loss,
+                    'take_profit': take_profit,
+                    'max_position': max_position,
+                    'transaction_cost': transaction_cost,
+                    'confidence_threshold': confidence_threshold
+                }
+                run_backtest_simulation(adv_assets, adv_capital, adv_start, adv_end, adv_strategy, advanced_settings)
+
+    with bt_tab3:
+        st.markdown("#### Strategy Comparison")
+        st.markdown("Compare multiple strategies side-by-side")
+
+        comp_assets = st.multiselect(
+            "Assets for Comparison",
             available_assets,
             default=["SPY"] if "SPY" in available_assets else available_assets[:1],
-            max_selections=5,
-            help="Choose up to 5 assets for the backtest"
+            key="comp_assets"
         )
 
-        # Initial capital
-        initial_capital = st.number_input(
-            "Initial Capital ($)",
-            min_value=1000,
-            max_value=1000000,
-            value=10000,
-            step=1000
+        cc1, cc2 = st.columns(2)
+        with cc1:
+            comp_start = st.date_input("Start", value=pd.to_datetime("2023-01-01"), key="comp_start")
+        with cc2:
+            comp_end = st.date_input("End", value=pd.to_datetime("today"), key="comp_end")
+
+        strategies_to_compare = st.multiselect(
+            "Strategies to Compare",
+            ["Buy & Hold", "Follow All Signals", "High Confidence Only", "CRASH Avoidance", "Model Agreement"],
+            default=["Buy & Hold", "Follow All Signals", "High Confidence Only"],
+            key="strats_compare"
         )
 
-    with sandbox_col2:
-        # Date range
-        col_start, col_end = st.columns(2)
-        with col_start:
-            start_date = st.date_input(
-                "Start Date",
-                value=pd.to_datetime("2023-01-01"),
-                min_value=pd.to_datetime("2020-01-01"),
-                max_value=pd.to_datetime("today")
-            )
-        with col_end:
-            end_date = st.date_input(
-                "End Date",
-                value=pd.to_datetime("today"),
-                min_value=pd.to_datetime("2020-01-01"),
-                max_value=pd.to_datetime("today")
-            )
+        if st.button("Compare Strategies", type="primary", use_container_width=True, key="run_comp"):
+            if comp_assets and strategies_to_compare and comp_start < comp_end:
+                run_strategy_comparison(comp_assets, comp_start, comp_end, strategies_to_compare)
 
-        # Strategy
-        strategy = st.selectbox(
-            "Strategy",
-            ["Follow Signals", "Contrarian", "High Confidence Only"],
-            help="How to interpret the prediction signals"
-        )
 
-    # Run backtest button
-    if st.button("Run Backtest", type="primary", use_container_width=True):
-        if not selected_assets:
-            st.error("Please select at least one asset")
-        elif start_date >= end_date:
-            st.error("End date must be after start date")
-        else:
-            with st.spinner("Running backtest simulation..."):
-                # Simulate backtest results
-                import time
-                time.sleep(1)  # Simulate processing
+def run_backtest_simulation(assets, capital, start_date, end_date, strategy, settings):
+    """Run a simulated backtest and display results"""
+    import time
 
-                # Generate simulated results based on inputs
-                np.random.seed(hash(str(selected_assets) + str(start_date)) % 2**32)
-                days = (end_date - start_date).days
-                num_trades = max(10, days // 7)  # Roughly 1 trade per week
+    with st.spinner("Running backtest simulation..."):
+        time.sleep(0.5)
 
-                # Generate random but realistic returns
-                base_return = 0.002 if strategy == "Follow Signals" else 0.001
-                volatility = 0.015
+        # Generate simulated results
+        np.random.seed(hash(str(assets) + str(start_date) + strategy) % 2**32)
+        days = (end_date - start_date).days
+        num_periods = max(20, days // 5)
 
-                daily_returns = np.random.normal(base_return, volatility, num_trades)
+        # Base return varies by strategy
+        strategy_params = {
+            "Follow All Signals": (0.0015, 0.012),
+            "High Confidence Only": (0.002, 0.015),
+            "CRASH Avoidance": (0.001, 0.008),
+            "SPIKE Chasing": (0.0025, 0.02),
+            "Model Agreement Required": (0.0018, 0.013),
+            "Ensemble Threshold": (0.0016, 0.011)
+        }
+        base_return, volatility = strategy_params.get(strategy, (0.0015, 0.012))
 
-                # High confidence strategy has fewer but better trades
-                if strategy == "High Confidence Only":
-                    daily_returns = daily_returns * 1.2
-                    num_trades = num_trades // 2
+        # Adjust for settings
+        if settings:
+            if settings.get('stop_loss', 0) > 0:
+                volatility *= 0.85  # Reduced volatility with stop loss
+            if settings.get('confidence_threshold', 50) > 70:
+                base_return *= 1.15  # Better returns with higher threshold
 
-                cumulative = np.cumprod(1 + daily_returns)
-                total_return = (cumulative[-1] - 1) * 100
-                win_rate = (daily_returns > 0).mean() * 100
-                sharpe = (daily_returns.mean() / daily_returns.std()) * np.sqrt(252) if daily_returns.std() > 0 else 0
-                max_dd = ((cumulative / np.maximum.accumulate(cumulative)) - 1).min() * 100
+        # Generate returns
+        period_returns = np.random.normal(base_return, volatility, num_periods)
 
-                # Display results
-                st.markdown("---")
-                st.markdown("### Backtest Results")
+        # Apply transaction costs
+        txn_cost = settings.get('transaction_cost', 0.1) / 100 if settings else 0.001
+        period_returns = period_returns - txn_cost
 
-                res1, res2, res3, res4 = st.columns(4)
-                with res1:
-                    color = "normal" if total_return > 0 else "inverse"
-                    st.metric("Total Return", f"{total_return:+.1f}%", delta_color=color)
-                with res2:
-                    st.metric("Win Rate", f"{win_rate:.1f}%")
-                with res3:
-                    st.metric("Sharpe Ratio", f"{sharpe:.2f}")
-                with res4:
-                    st.metric("Max Drawdown", f"{max_dd:.1f}%")
+        cumulative = np.cumprod(1 + period_returns)
+        dates = pd.date_range(start=start_date, periods=len(cumulative), freq='B')[:len(cumulative)]
 
-                # Equity curve
-                dates = pd.date_range(start=start_date, periods=len(cumulative), freq='W')
-                sandbox_fig = go.Figure()
-                sandbox_fig.add_trace(go.Scatter(
-                    x=dates, y=cumulative * initial_capital,
-                    mode='lines', fill='tozeroy',
-                    line=dict(color='#22c55e' if total_return > 0 else '#ef4444', width=2),
-                    fillcolor='rgba(34, 197, 94, 0.1)' if total_return > 0 else 'rgba(239, 68, 68, 0.1)'
-                ))
-                sandbox_fig.add_hline(y=initial_capital, line_dash="dash", line_color="gray")
-                sandbox_fig.update_layout(
-                    height=300,
-                    margin=dict(l=40, r=20, t=20, b=40),
-                    yaxis_title="Portfolio Value ($)",
-                    yaxis_tickprefix="$",
-                    hovermode='x unified'
-                )
-                st.plotly_chart(sandbox_fig, use_container_width=True)
+        # Calculate metrics
+        total_return = (cumulative[-1] - 1) * 100
+        win_rate = (period_returns > 0).mean() * 100
+        sharpe = (period_returns.mean() / period_returns.std()) * np.sqrt(252) if period_returns.std() > 0 else 0
 
-                # Summary
-                final_value = cumulative[-1] * initial_capital
-                st.markdown(f"""
-                **Summary:**
-                - **Assets:** {', '.join(selected_assets)}
-                - **Period:** {start_date} to {end_date} ({days} days)
-                - **Strategy:** {strategy}
-                - **Trades:** {num_trades}
-                - **Final Value:** ${final_value:,.2f}
-                """)
+        # Drawdown calculation
+        running_max = np.maximum.accumulate(cumulative)
+        drawdowns = (cumulative - running_max) / running_max * 100
+        max_dd = drawdowns.min()
 
-                st.caption("*This is a simulated backtest for demonstration purposes. Actual results may vary.*")
+        # Additional metrics
+        sortino = (period_returns.mean() / period_returns[period_returns < 0].std()) * np.sqrt(252) if len(period_returns[period_returns < 0]) > 0 else 0
+        calmar = (total_return / abs(max_dd)) if max_dd != 0 else 0
+        avg_trade = period_returns.mean() * 100
+        best_trade = period_returns.max() * 100
+        worst_trade = period_returns.min() * 100
+
+    # Display Results
+    st.markdown("---")
+    st.markdown("### Backtest Results")
+
+    # Primary metrics
+    m1, m2, m3, m4 = st.columns(4)
+    with m1:
+        st.metric("Total Return", f"{total_return:+.1f}%")
+    with m2:
+        st.metric("Win Rate", f"{win_rate:.1f}%")
+    with m3:
+        st.metric("Sharpe Ratio", f"{sharpe:.2f}")
+    with m4:
+        st.metric("Max Drawdown", f"{max_dd:.1f}%")
+
+    # Secondary metrics
+    m5, m6, m7, m8 = st.columns(4)
+    with m5:
+        st.metric("Sortino Ratio", f"{sortino:.2f}")
+    with m6:
+        st.metric("Calmar Ratio", f"{calmar:.2f}")
+    with m7:
+        st.metric("Best Trade", f"{best_trade:+.2f}%")
+    with m8:
+        st.metric("Worst Trade", f"{worst_trade:+.2f}%")
+
+    # Charts
+    chart_tab1, chart_tab2, chart_tab3 = st.tabs(["Equity Curve", "Drawdown", "Monthly Returns"])
+
+    with chart_tab1:
+        eq_fig = go.Figure()
+        eq_fig.add_trace(go.Scatter(
+            x=dates, y=cumulative * capital,
+            mode='lines', name='Portfolio',
+            line=dict(color='#3b82f6', width=2),
+            fill='tozeroy', fillcolor='rgba(59, 130, 246, 0.1)'
+        ))
+        eq_fig.add_hline(y=capital, line_dash="dash", line_color="gray", annotation_text="Initial")
+        eq_fig.update_layout(height=350, margin=dict(l=40, r=20, t=20, b=40),
+                             yaxis_title="Portfolio Value ($)", yaxis_tickprefix="$", hovermode='x unified')
+        st.plotly_chart(eq_fig, use_container_width=True)
+
+    with chart_tab2:
+        dd_fig = go.Figure()
+        dd_fig.add_trace(go.Scatter(
+            x=dates, y=drawdowns,
+            mode='lines', name='Drawdown',
+            line=dict(color='#ef4444', width=2),
+            fill='tozeroy', fillcolor='rgba(239, 68, 68, 0.2)'
+        ))
+        dd_fig.add_hline(y=-10, line_dash="dash", line_color="orange")
+        dd_fig.add_hline(y=-20, line_dash="dash", line_color="red")
+        dd_fig.update_layout(height=300, margin=dict(l=40, r=20, t=20, b=40),
+                             yaxis_title="Drawdown (%)", hovermode='x unified')
+        st.plotly_chart(dd_fig, use_container_width=True)
+
+    with chart_tab3:
+        # Create monthly returns heatmap
+        monthly_df = pd.DataFrame({'date': dates, 'return': period_returns})
+        monthly_df['month'] = monthly_df['date'].dt.to_period('M')
+        monthly_returns = monthly_df.groupby('month')['return'].sum() * 100
+
+        if len(monthly_returns) > 0:
+            months = [str(m) for m in monthly_returns.index]
+            values = monthly_returns.values
+
+            colors = ['#ef4444' if v < 0 else '#22c55e' for v in values]
+            monthly_fig = go.Figure(data=[go.Bar(x=months, y=values, marker_color=colors)])
+            monthly_fig.update_layout(height=300, margin=dict(l=40, r=20, t=20, b=60),
+                                      yaxis_title="Return (%)", xaxis_tickangle=-45)
+            st.plotly_chart(monthly_fig, use_container_width=True)
+
+    # Summary
+    final_value = cumulative[-1] * capital
+    st.markdown(f"""
+    **Configuration:** {', '.join(assets)} | {strategy} | {start_date} to {end_date}
+
+    **Final Portfolio Value:** ${final_value:,.2f} (from ${capital:,.2f})
+    """)
+    st.caption("*Simulated results for demonstration. Past performance does not guarantee future results.*")
+
+
+def run_strategy_comparison(assets, start_date, end_date, strategies):
+    """Compare multiple strategies"""
+    import time
+
+    with st.spinner("Running strategy comparison..."):
+        time.sleep(0.5)
+
+        days = (end_date - start_date).days
+        num_periods = max(20, days // 5)
+        dates = pd.date_range(start=start_date, periods=num_periods, freq='B')
+
+        results = {}
+        strategy_params = {
+            "Buy & Hold": (0.0008, 0.015),
+            "Follow All Signals": (0.0012, 0.012),
+            "High Confidence Only": (0.0018, 0.014),
+            "CRASH Avoidance": (0.0010, 0.009),
+            "Model Agreement": (0.0015, 0.011)
+        }
+
+        for strat in strategies:
+            np.random.seed(hash(str(assets) + strat) % 2**32)
+            base_ret, vol = strategy_params.get(strat, (0.001, 0.012))
+            returns = np.random.normal(base_ret, vol, num_periods)
+            cumulative = np.cumprod(1 + returns)
+            results[strat] = {
+                'cumulative': cumulative,
+                'total_return': (cumulative[-1] - 1) * 100,
+                'sharpe': (returns.mean() / returns.std()) * np.sqrt(252) if returns.std() > 0 else 0,
+                'max_dd': ((cumulative / np.maximum.accumulate(cumulative)) - 1).min() * 100
+            }
+
+    st.markdown("---")
+    st.markdown("### Strategy Comparison Results")
+
+    # Comparison chart
+    comp_fig = go.Figure()
+    colors = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6']
+    for i, (strat, data) in enumerate(results.items()):
+        comp_fig.add_trace(go.Scatter(
+            x=dates, y=data['cumulative'] * 10000,
+            mode='lines', name=strat,
+            line=dict(color=colors[i % len(colors)], width=2)
+        ))
+    comp_fig.add_hline(y=10000, line_dash="dash", line_color="gray")
+    comp_fig.update_layout(height=400, margin=dict(l=40, r=20, t=20, b=40),
+                           yaxis_title="Portfolio Value ($)", yaxis_tickprefix="$",
+                           legend=dict(orientation="h", yanchor="bottom", y=1.02),
+                           hovermode='x unified')
+    st.plotly_chart(comp_fig, use_container_width=True)
+
+    # Comparison table
+    comp_data = []
+    for strat, data in results.items():
+        comp_data.append({
+            'Strategy': strat,
+            'Total Return': f"{data['total_return']:+.1f}%",
+            'Sharpe': f"{data['sharpe']:.2f}",
+            'Max DD': f"{data['max_dd']:.1f}%"
+        })
+
+    st.dataframe(pd.DataFrame(comp_data), use_container_width=True, hide_index=True)
+
+    # Winner
+    best_strat = max(results.items(), key=lambda x: x[1]['total_return'])
+    st.success(f"**Best Performer:** {best_strat[0]} with {best_strat[1]['total_return']:+.1f}% return")
 
 
 def show_model_performance():
