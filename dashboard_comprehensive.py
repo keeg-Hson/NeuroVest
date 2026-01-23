@@ -2453,8 +2453,8 @@ def show_forecast_results():
 
         # Rename columns for display
         df['Date'] = pd.to_datetime(df['prediction_date'])
-        df['Proba'] = df['prediction_proba']
-        df['Confidence'] = df['confidence']
+        df['Proba'] = df['ensemble_prob']
+        df['Confidence'] = df['confidence_score']
 
     except Exception as e:
         st.error(f"Error loading predictions from database: {e}")
