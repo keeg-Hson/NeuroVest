@@ -983,42 +983,92 @@ def show_getting_started():
     | **Ensemble** | The weighted average prediction from all three models. |
     """)
 
-    # Quick Start - Clickable navigation
+    # Quick Start - Clickable navigation links
     st.markdown("---")
     st.subheader("Quick Start Guide")
 
-    def nav_to(page_name):
-        st.session_state.current_page = page_name
-        st.rerun()
+    # CSS to style buttons as text links
+    st.markdown("""
+    <style>
+    .link-button {
+        background: none !important;
+        border: none !important;
+        color: #60a5fa !important;
+        text-decoration: underline;
+        cursor: pointer;
+        padding: 0 !important;
+        font-size: 1rem;
+    }
+    .link-button:hover {
+        color: #93c5fd !important;
+    }
+    div[data-testid="stButton"] > button[kind="secondary"] {
+        background: none !important;
+        border: none !important;
+        color: #60a5fa !important;
+        padding: 0 !important;
+        text-decoration: underline;
+    }
+    div[data-testid="stButton"] > button[kind="secondary"]:hover {
+        color: #93c5fd !important;
+        background: none !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
 
-    # Create link-style navigation
+    # Navigation links as a clean list
+    st.markdown("""
+    Navigate to any section using the sidebar, or click below:
+    """)
+
+    # Create a cleaner link layout
     link_col1, link_col2 = st.columns(2)
 
     with link_col1:
-        if st.button("1. View Predictions → **Forecast Results**", key="nav_forecast"):
-            nav_to("Forecast Results")
+        st.markdown("##### View Predictions")
+        clicked_forecast = st.button("→ Forecast Results", key="nav_forecast")
         st.caption("See the latest signals for all assets")
 
-        if st.button("2. Check Track Record → **Backtest Results**", key="nav_backtest"):
-            nav_to("Backtest Results")
-        st.caption("See historical performance and run backtests")
+        st.markdown("##### Check Track Record")
+        clicked_backtest = st.button("→ Backtest Results", key="nav_backtest")
+        st.caption("Historical performance and run backtests")
 
-        if st.button("3. Analyze Assets → **Valuation Detector**", key="nav_valuation"):
-            nav_to("Valuation Detector")
+        st.markdown("##### Analyze Assets")
+        clicked_valuation = st.button("→ Valuation Detector", key="nav_valuation")
         st.caption("Deep-dive valuation analysis")
 
     with link_col2:
-        if st.button("4. Monitor Risk → **Recession Indicator**", key="nav_recession"):
-            nav_to("Recession Indicator")
+        st.markdown("##### Monitor Risk")
+        clicked_recession = st.button("→ Recession Indicator", key="nav_recession")
         st.caption("Macro risk assessment")
 
-        if st.button("5. Integrate → **API Documentation**", key="nav_api"):
-            nav_to("API Documentation")
+        st.markdown("##### Integrate")
+        clicked_api = st.button("→ API Documentation", key="nav_api")
         st.caption("Connect your applications")
 
-        if st.button("6. Model Details → **Model Performance**", key="nav_model"):
-            nav_to("Model Performance")
+        st.markdown("##### Model Details")
+        clicked_model = st.button("→ Model Performance", key="nav_model")
         st.caption("Understand how the models work")
+
+    # Handle navigation after all buttons are rendered
+    if clicked_forecast:
+        st.session_state.current_page = "Forecast Results"
+        st.rerun()
+    if clicked_backtest:
+        st.session_state.current_page = "Backtest Results"
+        st.rerun()
+    if clicked_valuation:
+        st.session_state.current_page = "Valuation Detector"
+        st.rerun()
+    if clicked_recession:
+        st.session_state.current_page = "Recession Indicator"
+        st.rerun()
+    if clicked_api:
+        st.session_state.current_page = "API Documentation"
+        st.rerun()
+    if clicked_model:
+        st.session_state.current_page = "Model Performance"
+        st.rerun()
 
     # Disclaimer
     st.markdown("---")
