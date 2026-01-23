@@ -1191,13 +1191,11 @@ def show_recession_indicator():
 def show_valuation_detector():
     """Asset valuation analysis"""
     st.title("Valuation Detector")
-    st.markdown("*Identify over/undervalued assets using technical indicators*")
+    st.markdown("*Comprehensive asset valuation analysis using multiple technical indicators*")
 
     # Evaluation timestamp
     eval_time = datetime.now().strftime("%B %d, %Y at %I:%M %p")
     st.caption(f"Analysis Date: {eval_time}")
-
-    st.info("Uses RSI, Z-Score, Bollinger Bands, and MA deviation to classify asset valuation")
 
     # Asset selector
     all_assets = list(STOCK_ETFS.keys()) + list(PRECIOUS_METALS.keys()) + list(CRYPTO_ASSETS.keys())
@@ -1207,7 +1205,11 @@ def show_valuation_detector():
         st.warning("No assets downloaded. Visit Asset Manager to download data.")
         return
 
-    selected_asset = st.selectbox("Select Asset", downloaded_assets)
+    col_select, col_period = st.columns([2, 1])
+    with col_select:
+        selected_asset = st.selectbox("Select Asset", downloaded_assets)
+    with col_period:
+        analysis_period = st.selectbox("Analysis Period", ["1 Year", "6 Months", "3 Months"], index=0)
 
     df = load_asset_data(selected_asset)
 
@@ -1215,167 +1217,701 @@ def show_valuation_detector():
         st.warning(f"Insufficient data for {selected_asset}")
         return
 
-    # Calculate valuation metrics
-    recent = df.tail(252)
+    # Set period based on selection
+    period_days = {"1 Year": 252, "6 Months": 126, "3 Months": 63}
+    days = period_days.get(analysis_period, 252)
+    recent = df.tail(max(days, 252))  # Need at least 252 for some calcs
+    analysis_window = df.tail(days)
     latest = recent.iloc[-1]
 
     # Get latest data date
     latest_data_date = latest['Date'].strftime("%B %d, %Y") if 'Date' in latest else "Unknown"
-    st.info(f"Latest Market Data: {latest_data_date} | Price: ${latest['Close']:.2f}")
 
-    # RSI
+    # ==================== CALCULATE ALL METRICS ====================
+
+    # 1. RSI (14-day)
     delta = recent['Close'].diff()
     gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
     loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
     rs = gain / loss
-    rsi = 100 - (100 / (1 + rs))
-    latest_rsi = rsi.iloc[-1]
+    rsi_series = 100 - (100 / (1 + rs))
+    latest_rsi = rsi_series.iloc[-1]
 
-    # Z-Score
+    # 2. Z-Score (252-day)
     mean_price = recent['Close'].mean()
     std_price = recent['Close'].std()
     z_score = (latest['Close'] - mean_price) / std_price if std_price > 0 else 0
 
-    # Bollinger Bands
-    sma_20 = recent['Close'].rolling(20).mean().iloc[-1]
-    std_20 = recent['Close'].rolling(20).std().iloc[-1]
+    # 3. Bollinger Bands
+    sma_20 = recent['Close'].rolling(20).mean()
+    std_20 = recent['Close'].rolling(20).std()
     upper_band = sma_20 + (2 * std_20)
     lower_band = sma_20 - (2 * std_20)
-    bb_position = ((latest['Close'] - lower_band) / (upper_band - lower_band)) * 100 if upper_band > lower_band else 50
+    bb_position = ((latest['Close'] - lower_band.iloc[-1]) / (upper_band.iloc[-1] - lower_band.iloc[-1])) * 100 if upper_band.iloc[-1] > lower_band.iloc[-1] else 50
 
-    # MA deviation
+    # 4. Moving Average Deviations
+    ma_50 = recent['Close'].rolling(50).mean().iloc[-1] if len(recent) >= 50 else recent['Close'].mean()
     ma_200 = recent['Close'].rolling(200).mean().iloc[-1] if len(recent) >= 200 else recent['Close'].mean()
-    ma_deviation = ((latest['Close'] - ma_200) / ma_200) * 100
+    ma_50_deviation = ((latest['Close'] - ma_50) / ma_50) * 100
+    ma_200_deviation = ((latest['Close'] - ma_200) / ma_200) * 100
 
-    # Valuation score
-    valuation_score = 0
+    # 5. MACD
+    ema_12 = recent['Close'].ewm(span=12, adjust=False).mean()
+    ema_26 = recent['Close'].ewm(span=26, adjust=False).mean()
+    macd_line = ema_12 - ema_26
+    signal_line = macd_line.ewm(span=9, adjust=False).mean()
+    macd_histogram = macd_line - signal_line
+    latest_macd = macd_line.iloc[-1]
+    latest_signal = signal_line.iloc[-1]
+    latest_histogram = macd_histogram.iloc[-1]
+
+    # 6. Stochastic Oscillator (14-day)
+    low_14 = recent['Low'].rolling(14).min()
+    high_14 = recent['High'].rolling(14).max()
+    stoch_k = ((recent['Close'] - low_14) / (high_14 - low_14)) * 100
+    stoch_d = stoch_k.rolling(3).mean()
+    latest_stoch_k = stoch_k.iloc[-1]
+    latest_stoch_d = stoch_d.iloc[-1]
+
+    # 7. Williams %R (14-day)
+    williams_r = ((high_14 - recent['Close']) / (high_14 - low_14)) * -100
+    latest_williams = williams_r.iloc[-1]
+
+    # 8. CCI (Commodity Channel Index, 20-day)
+    typical_price = (recent['High'] + recent['Low'] + recent['Close']) / 3
+    tp_sma = typical_price.rolling(20).mean()
+    tp_mad = typical_price.rolling(20).apply(lambda x: np.abs(x - x.mean()).mean())
+    cci = (typical_price - tp_sma) / (0.015 * tp_mad)
+    latest_cci = cci.iloc[-1]
+
+    # 9. Rate of Change (multiple periods)
+    roc_10 = ((latest['Close'] - recent.iloc[-10]['Close']) / recent.iloc[-10]['Close']) * 100 if len(recent) >= 10 else 0
+    roc_30 = ((latest['Close'] - recent.iloc[-30]['Close']) / recent.iloc[-30]['Close']) * 100 if len(recent) >= 30 else 0
+    roc_90 = ((latest['Close'] - recent.iloc[-90]['Close']) / recent.iloc[-90]['Close']) * 100 if len(recent) >= 90 else 0
+
+    # 10. ATR (Average True Range, 14-day)
+    high_low = recent['High'] - recent['Low']
+    high_close = np.abs(recent['High'] - recent['Close'].shift())
+    low_close = np.abs(recent['Low'] - recent['Close'].shift())
+    true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+    atr = true_range.rolling(14).mean()
+    latest_atr = atr.iloc[-1]
+    atr_percent = (latest_atr / latest['Close']) * 100
+
+    # 11. Volume indicators (if volume available)
+    has_volume = 'Volume' in recent.columns and recent['Volume'].sum() > 0
+    if has_volume:
+        avg_volume_20 = recent['Volume'].rolling(20).mean().iloc[-1]
+        latest_volume = recent['Volume'].iloc[-1]
+        volume_ratio = latest_volume / avg_volume_20 if avg_volume_20 > 0 else 1
+
+        # OBV trend
+        obv = (np.sign(recent['Close'].diff()) * recent['Volume']).fillna(0).cumsum()
+        obv_sma = obv.rolling(20).mean()
+        obv_trend = "Bullish" if obv.iloc[-1] > obv_sma.iloc[-1] else "Bearish"
+    else:
+        volume_ratio = None
+        obv_trend = None
+
+    # 12. Price vs 52-week range
+    high_52w = recent['High'].max()
+    low_52w = recent['Low'].min()
+    range_52w_position = ((latest['Close'] - low_52w) / (high_52w - low_52w)) * 100 if high_52w > low_52w else 50
+
+    # ==================== VALUATION SCORING ====================
+
+    # Build comprehensive valuation score with weighted signals
+    signals = []
+
+    # RSI Signal
     if latest_rsi > 70:
-        valuation_score += 0.3
+        signals.append(("RSI", "Overbought", 0.15, "bearish"))
+    elif latest_rsi > 60:
+        signals.append(("RSI", "Elevated", 0.05, "bearish"))
     elif latest_rsi < 30:
-        valuation_score -= 0.3
+        signals.append(("RSI", "Oversold", -0.15, "bullish"))
+    elif latest_rsi < 40:
+        signals.append(("RSI", "Depressed", -0.05, "bullish"))
+    else:
+        signals.append(("RSI", "Neutral", 0, "neutral"))
 
+    # Z-Score Signal
     if z_score > 2:
-        valuation_score += 0.3
+        signals.append(("Z-Score", "Significantly Elevated", 0.15, "bearish"))
+    elif z_score > 1:
+        signals.append(("Z-Score", "Above Average", 0.08, "bearish"))
     elif z_score < -2:
-        valuation_score -= 0.3
+        signals.append(("Z-Score", "Significantly Depressed", -0.15, "bullish"))
+    elif z_score < -1:
+        signals.append(("Z-Score", "Below Average", -0.08, "bullish"))
+    else:
+        signals.append(("Z-Score", "Near Mean", 0, "neutral"))
 
-    if bb_position > 80:
-        valuation_score += 0.2
+    # Bollinger Band Signal
+    if bb_position > 95:
+        signals.append(("Bollinger %", "Extreme Upper", 0.12, "bearish"))
+    elif bb_position > 80:
+        signals.append(("Bollinger %", "Upper Band", 0.06, "bearish"))
+    elif bb_position < 5:
+        signals.append(("Bollinger %", "Extreme Lower", -0.12, "bullish"))
     elif bb_position < 20:
-        valuation_score -= 0.2
+        signals.append(("Bollinger %", "Lower Band", -0.06, "bullish"))
+    else:
+        signals.append(("Bollinger %", "Mid Range", 0, "neutral"))
 
-    if ma_deviation > 20:
-        valuation_score += 0.2
-    elif ma_deviation < -20:
-        valuation_score -= 0.2
+    # MA Deviation Signals
+    if ma_200_deviation > 30:
+        signals.append(("200-MA Dev", "Far Above", 0.10, "bearish"))
+    elif ma_200_deviation > 15:
+        signals.append(("200-MA Dev", "Above", 0.05, "bearish"))
+    elif ma_200_deviation < -30:
+        signals.append(("200-MA Dev", "Far Below", -0.10, "bullish"))
+    elif ma_200_deviation < -15:
+        signals.append(("200-MA Dev", "Below", -0.05, "bullish"))
+    else:
+        signals.append(("200-MA Dev", "Near MA", 0, "neutral"))
+
+    # Stochastic Signal
+    if latest_stoch_k > 80 and latest_stoch_d > 80:
+        signals.append(("Stochastic", "Overbought", 0.08, "bearish"))
+    elif latest_stoch_k < 20 and latest_stoch_d < 20:
+        signals.append(("Stochastic", "Oversold", -0.08, "bullish"))
+    else:
+        signals.append(("Stochastic", "Neutral", 0, "neutral"))
+
+    # Williams %R Signal
+    if latest_williams > -20:
+        signals.append(("Williams %R", "Overbought", 0.06, "bearish"))
+    elif latest_williams < -80:
+        signals.append(("Williams %R", "Oversold", -0.06, "bullish"))
+    else:
+        signals.append(("Williams %R", "Neutral", 0, "neutral"))
+
+    # CCI Signal
+    if latest_cci > 200:
+        signals.append(("CCI", "Extreme Overbought", 0.10, "bearish"))
+    elif latest_cci > 100:
+        signals.append(("CCI", "Overbought", 0.05, "bearish"))
+    elif latest_cci < -200:
+        signals.append(("CCI", "Extreme Oversold", -0.10, "bullish"))
+    elif latest_cci < -100:
+        signals.append(("CCI", "Oversold", -0.05, "bullish"))
+    else:
+        signals.append(("CCI", "Neutral", 0, "neutral"))
+
+    # MACD Signal
+    if latest_macd > latest_signal and latest_histogram > 0:
+        signals.append(("MACD", "Bullish Cross", -0.05, "bullish"))
+    elif latest_macd < latest_signal and latest_histogram < 0:
+        signals.append(("MACD", "Bearish Cross", 0.05, "bearish"))
+    else:
+        signals.append(("MACD", "Neutral", 0, "neutral"))
+
+    # 52-Week Range Position
+    if range_52w_position > 90:
+        signals.append(("52W Range", "Near High", 0.08, "bearish"))
+    elif range_52w_position < 10:
+        signals.append(("52W Range", "Near Low", -0.08, "bullish"))
+    else:
+        signals.append(("52W Range", "Mid Range", 0, "neutral"))
+
+    # Calculate total valuation score
+    valuation_score = sum(s[2] for s in signals)
+    valuation_score = max(-1.0, min(1.0, valuation_score))  # Clamp to [-1, 1]
+
+    # Count signals
+    bullish_count = sum(1 for s in signals if s[3] == "bullish")
+    bearish_count = sum(1 for s in signals if s[3] == "bearish")
+    neutral_count = sum(1 for s in signals if s[3] == "neutral")
 
     # Classification
-    if valuation_score > 0.5:
+    if valuation_score > 0.4:
         classification = "OVERVALUED"
-        color = "error"
-    elif valuation_score < -0.5:
+        classification_color = "error"
+    elif valuation_score > 0.2:
+        classification = "SLIGHTLY OVERVALUED"
+        classification_color = "warning"
+    elif valuation_score < -0.4:
         classification = "UNDERVALUED"
-        color = "success"
+        classification_color = "success"
+    elif valuation_score < -0.2:
+        classification = "SLIGHTLY UNDERVALUED"
+        classification_color = "info"
     else:
         classification = "FAIRLY VALUED"
-        color = "info"
+        classification_color = "info"
 
-    # Display classification
+    # ==================== DISPLAY ====================
+
+    # Header with price info
     st.markdown("---")
-    if color == "error":
-        st.error(f"### {classification}")
-        st.markdown("**Recommendation:** Monitor for exit opportunities, consider taking profits")
-    elif color == "success":
-        st.success(f"### {classification}")
-        st.markdown("**Recommendation:** Consider accumulating or opening positions")
+    header_cols = st.columns([2, 1, 1, 1])
+    with header_cols[0]:
+        st.markdown(f"### {selected_asset}")
+        st.markdown(f"**${latest['Close']:.2f}** as of {latest_data_date}")
+    with header_cols[1]:
+        st.metric("52W High", f"${high_52w:.2f}")
+    with header_cols[2]:
+        st.metric("52W Low", f"${low_52w:.2f}")
+    with header_cols[3]:
+        st.metric("52W Position", f"{range_52w_position:.1f}%")
+
+    # Main valuation verdict
+    st.markdown("---")
+    verdict_cols = st.columns([2, 1, 1])
+
+    with verdict_cols[0]:
+        if classification_color == "error":
+            st.error(f"## {classification}")
+        elif classification_color == "warning":
+            st.warning(f"## {classification}")
+        elif classification_color == "success":
+            st.success(f"## {classification}")
+        else:
+            st.info(f"## {classification}")
+
+    with verdict_cols[1]:
+        st.metric("Valuation Score", f"{valuation_score:+.2f}", help="Range: -1.0 (undervalued) to +1.0 (overvalued)")
+
+    with verdict_cols[2]:
+        st.markdown("**Signal Summary**")
+        st.markdown(f"Bullish: {bullish_count} | Bearish: {bearish_count} | Neutral: {neutral_count}")
+
+    # Recommendation
+    if classification in ["OVERVALUED", "SLIGHTLY OVERVALUED"]:
+        st.markdown("**Recommendation:** Consider taking profits or reducing position size. Wait for pullback before adding.")
+    elif classification in ["UNDERVALUED", "SLIGHTLY UNDERVALUED"]:
+        st.markdown("**Recommendation:** Potential accumulation opportunity. Consider building position on further weakness.")
     else:
-        st.info(f"### {classification}")
-        st.markdown("**Recommendation:** Hold current positions, wait for better entry/exit")
+        st.markdown("**Recommendation:** Asset trading near fair value. Hold existing positions, wait for clearer signals.")
 
-    st.markdown(f"**Valuation Score:** {valuation_score:.2f} (Range: -1.0 to +1.0)")
+    # ==================== DETAILED METRICS TABS ====================
 
-    # Metrics
     st.markdown("---")
-    st.subheader("Technical Indicators")
+    tab1, tab2, tab3, tab4 = st.tabs(["Momentum Indicators", "Trend Indicators", "Volatility Metrics", "Charts"])
 
-    col1, col2, col3 = st.columns(3)
+    with tab1:
+        st.subheader("Momentum Indicators")
+        st.markdown("*Measure the speed and magnitude of price movements*")
 
-    with col1:
-        st.metric("RSI (14)", f"{latest_rsi:.1f}")
-        if latest_rsi > 70:
-            st.markdown("Overbought (>70)")
-        elif latest_rsi < 30:
-            st.markdown("Oversold (<30)")
-        else:
-            st.markdown("Neutral (30-70)")
+        # RSI Card
+        st.markdown("#### RSI (Relative Strength Index)")
+        rsi_cols = st.columns([1, 2])
+        with rsi_cols[0]:
+            st.metric("RSI (14)", f"{latest_rsi:.1f}")
+            rsi_signal = [s for s in signals if s[0] == "RSI"][0]
+            if rsi_signal[3] == "bullish":
+                st.success(f"Signal: {rsi_signal[1]}")
+            elif rsi_signal[3] == "bearish":
+                st.error(f"Signal: {rsi_signal[1]}")
+            else:
+                st.info(f"Signal: {rsi_signal[1]}")
+        with rsi_cols[1]:
+            st.markdown("""
+            **Interpretation:**
+            - RSI > 70: Overbought - momentum may be exhausted, potential reversal
+            - RSI < 30: Oversold - selling may be exhausted, potential bounce
+            - RSI 30-70: Neutral zone - trend following appropriate
 
-    with col2:
-        st.metric("Z-Score", f"{z_score:.2f}")
-        if z_score > 2:
-            st.markdown("Expensive (>2)")
-        elif z_score < -2:
-            st.markdown("Cheap (<-2)")
-        else:
-            st.markdown("Normal (-2 to 2)")
+            **Current Reading:** """ + (
+                "Strong upward momentum suggests caution for new longs" if latest_rsi > 70 else
+                "Depressed momentum may present buying opportunity" if latest_rsi < 30 else
+                "Momentum is balanced, follow the prevailing trend"
+            ))
 
-    with col3:
-        st.metric("Bollinger %", f"{bb_position:.1f}%")
-        if bb_position > 80:
-            st.markdown("Upper band")
-        elif bb_position < 20:
-            st.markdown("Lower band")
-        else:
-            st.markdown("Middle range")
+        st.markdown("---")
 
-    # Additional metrics
-    col4, col5 = st.columns(2)
+        # Stochastic Card
+        st.markdown("#### Stochastic Oscillator")
+        stoch_cols = st.columns([1, 2])
+        with stoch_cols[0]:
+            st.metric("%K", f"{latest_stoch_k:.1f}")
+            st.metric("%D", f"{latest_stoch_d:.1f}")
+            stoch_signal = [s for s in signals if s[0] == "Stochastic"][0]
+            if stoch_signal[3] == "bullish":
+                st.success(f"Signal: {stoch_signal[1]}")
+            elif stoch_signal[3] == "bearish":
+                st.error(f"Signal: {stoch_signal[1]}")
+            else:
+                st.info(f"Signal: {stoch_signal[1]}")
+        with stoch_cols[1]:
+            st.markdown("""
+            **Interpretation:**
+            - Both %K and %D > 80: Overbought territory
+            - Both %K and %D < 20: Oversold territory
+            - %K crossing above %D: Bullish signal
+            - %K crossing below %D: Bearish signal
 
-    with col4:
-        st.metric("200-MA Deviation", f"{ma_deviation:+.1f}%")
+            **Current Reading:** """ + (
+                "Both lines in overbought zone, watch for bearish crossover" if latest_stoch_k > 80 and latest_stoch_d > 80 else
+                "Both lines in oversold zone, watch for bullish crossover" if latest_stoch_k < 20 and latest_stoch_d < 20 else
+                "Stochastic in neutral territory"
+            ))
 
-    with col5:
-        roc_30 = ((latest['Close'] - recent.iloc[-30]['Close']) / recent.iloc[-30]['Close']) * 100 if len(recent) >= 30 else 0
-        st.metric("30-Day ROC", f"{roc_30:+.1f}%")
+        st.markdown("---")
 
-    # Chart
+        # Williams %R Card
+        st.markdown("#### Williams %R")
+        wr_cols = st.columns([1, 2])
+        with wr_cols[0]:
+            st.metric("Williams %R", f"{latest_williams:.1f}")
+            wr_signal = [s for s in signals if s[0] == "Williams %R"][0]
+            if wr_signal[3] == "bullish":
+                st.success(f"Signal: {wr_signal[1]}")
+            elif wr_signal[3] == "bearish":
+                st.error(f"Signal: {wr_signal[1]}")
+            else:
+                st.info(f"Signal: {wr_signal[1]}")
+        with wr_cols[1]:
+            st.markdown("""
+            **Interpretation:**
+            - Williams %R > -20: Overbought (near period high)
+            - Williams %R < -80: Oversold (near period low)
+            - Range: -100 to 0
+
+            **Current Reading:** """ + (
+                "Price near recent highs, overbought conditions" if latest_williams > -20 else
+                "Price near recent lows, oversold conditions" if latest_williams < -80 else
+                "Price in middle of recent range"
+            ))
+
+        st.markdown("---")
+
+        # CCI Card
+        st.markdown("#### CCI (Commodity Channel Index)")
+        cci_cols = st.columns([1, 2])
+        with cci_cols[0]:
+            st.metric("CCI (20)", f"{latest_cci:.1f}")
+            cci_signal = [s for s in signals if s[0] == "CCI"][0]
+            if cci_signal[3] == "bullish":
+                st.success(f"Signal: {cci_signal[1]}")
+            elif cci_signal[3] == "bearish":
+                st.error(f"Signal: {cci_signal[1]}")
+            else:
+                st.info(f"Signal: {cci_signal[1]}")
+        with cci_cols[1]:
+            st.markdown("""
+            **Interpretation:**
+            - CCI > +200: Extremely overbought
+            - CCI > +100: Overbought, strong uptrend
+            - CCI < -100: Oversold, strong downtrend
+            - CCI < -200: Extremely oversold
+
+            **Current Reading:** """ + (
+                "Extreme overbought - high probability of pullback" if latest_cci > 200 else
+                "Overbought - uptrend may be overextended" if latest_cci > 100 else
+                "Extreme oversold - high probability of bounce" if latest_cci < -200 else
+                "Oversold - downtrend may be overextended" if latest_cci < -100 else
+                "CCI in normal range"
+            ))
+
+    with tab2:
+        st.subheader("Trend Indicators")
+        st.markdown("*Identify price direction and trend strength*")
+
+        # Z-Score Card
+        st.markdown("#### Z-Score (Statistical Deviation)")
+        zscore_cols = st.columns([1, 2])
+        with zscore_cols[0]:
+            st.metric("Z-Score", f"{z_score:+.2f}")
+            zscore_signal = [s for s in signals if s[0] == "Z-Score"][0]
+            if zscore_signal[3] == "bullish":
+                st.success(f"Signal: {zscore_signal[1]}")
+            elif zscore_signal[3] == "bearish":
+                st.error(f"Signal: {zscore_signal[1]}")
+            else:
+                st.info(f"Signal: {zscore_signal[1]}")
+        with zscore_cols[1]:
+            st.markdown(f"""
+            **Interpretation:**
+            - Z > +2: Price 2+ std devs above mean (top ~2.5%)
+            - Z > +1: Price above average
+            - Z < -1: Price below average
+            - Z < -2: Price 2+ std devs below mean (bottom ~2.5%)
+
+            **Statistics (252-day):**
+            - Mean Price: ${mean_price:.2f}
+            - Std Dev: ${std_price:.2f}
+            - Current: ${latest['Close']:.2f}
+            """)
+
+        st.markdown("---")
+
+        # Moving Average Card
+        st.markdown("#### Moving Average Analysis")
+        ma_cols = st.columns([1, 2])
+        with ma_cols[0]:
+            st.metric("50-MA", f"${ma_50:.2f}")
+            st.metric("200-MA", f"${ma_200:.2f}")
+            st.metric("50-MA Deviation", f"{ma_50_deviation:+.1f}%")
+            st.metric("200-MA Deviation", f"{ma_200_deviation:+.1f}%")
+        with ma_cols[1]:
+            ma_cross = "Golden Cross (Bullish)" if ma_50 > ma_200 else "Death Cross (Bearish)"
+            st.markdown(f"""
+            **Interpretation:**
+            - Price > 200-MA: Long-term uptrend
+            - Price < 200-MA: Long-term downtrend
+            - 50-MA > 200-MA: Golden Cross (bullish)
+            - 50-MA < 200-MA: Death Cross (bearish)
+
+            **Current Status:**
+            - MA Cross: {ma_cross}
+            - Price is {ma_200_deviation:+.1f}% from 200-MA
+            - {"Above both MAs - bullish structure" if latest['Close'] > ma_50 and latest['Close'] > ma_200 else "Below both MAs - bearish structure" if latest['Close'] < ma_50 and latest['Close'] < ma_200 else "Between MAs - mixed signals"}
+            """)
+
+        st.markdown("---")
+
+        # MACD Card
+        st.markdown("#### MACD (Moving Average Convergence Divergence)")
+        macd_cols = st.columns([1, 2])
+        with macd_cols[0]:
+            st.metric("MACD Line", f"{latest_macd:.4f}")
+            st.metric("Signal Line", f"{latest_signal:.4f}")
+            st.metric("Histogram", f"{latest_histogram:+.4f}")
+            macd_signal = [s for s in signals if s[0] == "MACD"][0]
+            if macd_signal[3] == "bullish":
+                st.success(f"Signal: {macd_signal[1]}")
+            elif macd_signal[3] == "bearish":
+                st.error(f"Signal: {macd_signal[1]}")
+            else:
+                st.info(f"Signal: {macd_signal[1]}")
+        with macd_cols[1]:
+            st.markdown("""
+            **Interpretation:**
+            - MACD > Signal: Bullish momentum
+            - MACD < Signal: Bearish momentum
+            - Histogram expanding: Momentum increasing
+            - Histogram contracting: Momentum decreasing
+
+            **Current Reading:** """ + (
+                "MACD above signal line with positive histogram - bullish momentum" if latest_macd > latest_signal and latest_histogram > 0 else
+                "MACD below signal line with negative histogram - bearish momentum" if latest_macd < latest_signal and latest_histogram < 0 else
+                "MACD near signal line - momentum neutral/transitioning"
+            ))
+
+        st.markdown("---")
+
+        # Rate of Change Card
+        st.markdown("#### Rate of Change (Price Momentum)")
+        roc_cols = st.columns(3)
+        with roc_cols[0]:
+            st.metric("10-Day ROC", f"{roc_10:+.1f}%")
+        with roc_cols[1]:
+            st.metric("30-Day ROC", f"{roc_30:+.1f}%")
+        with roc_cols[2]:
+            st.metric("90-Day ROC", f"{roc_90:+.1f}%")
+
+        st.markdown("""
+        **Interpretation:** ROC measures percentage price change over specified periods.
+        Positive values indicate upward momentum, negative values indicate downward momentum.
+        Compare short vs long-term ROC to identify momentum divergences.
+        """)
+
+    with tab3:
+        st.subheader("Volatility & Range Metrics")
+        st.markdown("*Measure price variability and trading ranges*")
+
+        # Bollinger Bands Card
+        st.markdown("#### Bollinger Bands")
+        bb_cols = st.columns([1, 2])
+        with bb_cols[0]:
+            st.metric("Upper Band", f"${upper_band.iloc[-1]:.2f}")
+            st.metric("Middle (SMA20)", f"${sma_20.iloc[-1]:.2f}")
+            st.metric("Lower Band", f"${lower_band.iloc[-1]:.2f}")
+            st.metric("Band Position", f"{bb_position:.1f}%")
+            bb_signal = [s for s in signals if s[0] == "Bollinger %"][0]
+            if bb_signal[3] == "bullish":
+                st.success(f"Signal: {bb_signal[1]}")
+            elif bb_signal[3] == "bearish":
+                st.error(f"Signal: {bb_signal[1]}")
+            else:
+                st.info(f"Signal: {bb_signal[1]}")
+        with bb_cols[1]:
+            band_width = ((upper_band.iloc[-1] - lower_band.iloc[-1]) / sma_20.iloc[-1]) * 100
+            st.markdown(f"""
+            **Interpretation:**
+            - Price near upper band (>80%): Overbought/strong uptrend
+            - Price near lower band (<20%): Oversold/strong downtrend
+            - Band Width: {band_width:.1f}% (wider = higher volatility)
+
+            **Current Reading:**
+            - Price at {bb_position:.1f}% of band range
+            - {"Near upper band - potential resistance" if bb_position > 80 else "Near lower band - potential support" if bb_position < 20 else "Mid-band - no extreme reading"}
+            """)
+
+        st.markdown("---")
+
+        # ATR Card
+        st.markdown("#### ATR (Average True Range)")
+        atr_cols = st.columns([1, 2])
+        with atr_cols[0]:
+            st.metric("ATR (14)", f"${latest_atr:.2f}")
+            st.metric("ATR %", f"{atr_percent:.2f}%")
+        with atr_cols[1]:
+            st.markdown(f"""
+            **Interpretation:**
+            - ATR measures average daily price movement
+            - Higher ATR = Higher volatility
+            - ATR % shows volatility relative to price
+
+            **Current Reading:**
+            - Average daily range: ${latest_atr:.2f}
+            - Volatility: {atr_percent:.2f}% of price
+            - {"High volatility - use wider stops" if atr_percent > 3 else "Moderate volatility" if atr_percent > 1.5 else "Low volatility - tighter ranges expected"}
+            """)
+
+        st.markdown("---")
+
+        # 52-Week Range Card
+        st.markdown("#### 52-Week Range Analysis")
+        range_cols = st.columns([1, 2])
+        with range_cols[0]:
+            st.metric("52W High", f"${high_52w:.2f}")
+            st.metric("52W Low", f"${low_52w:.2f}")
+            st.metric("Range Position", f"{range_52w_position:.1f}%")
+            range_signal = [s for s in signals if s[0] == "52W Range"][0]
+            if range_signal[3] == "bullish":
+                st.success(f"Signal: {range_signal[1]}")
+            elif range_signal[3] == "bearish":
+                st.error(f"Signal: {range_signal[1]}")
+            else:
+                st.info(f"Signal: {range_signal[1]}")
+        with range_cols[1]:
+            from_high = ((latest['Close'] - high_52w) / high_52w) * 100
+            from_low = ((latest['Close'] - low_52w) / low_52w) * 100
+            st.markdown(f"""
+            **Current Position:**
+            - {from_high:+.1f}% from 52-week high
+            - {from_low:+.1f}% from 52-week low
+            - Trading at {range_52w_position:.1f}% of annual range
+
+            **Interpretation:**
+            - Near 52W high (>90%): Strong momentum but extended
+            - Near 52W low (<10%): Weak momentum but potentially oversold
+            """)
+
+        # Volume section (if available)
+        if has_volume:
+            st.markdown("---")
+            st.markdown("#### Volume Analysis")
+            vol_cols = st.columns([1, 2])
+            with vol_cols[0]:
+                st.metric("Volume Ratio", f"{volume_ratio:.2f}x")
+                st.metric("OBV Trend", obv_trend)
+            with vol_cols[1]:
+                st.markdown(f"""
+                **Interpretation:**
+                - Volume Ratio: Current volume vs 20-day average
+                - Ratio > 1.5: High volume (strong conviction)
+                - Ratio < 0.5: Low volume (weak conviction)
+
+                **OBV (On-Balance Volume):**
+                - OBV rising: Accumulation (buying pressure)
+                - OBV falling: Distribution (selling pressure)
+                - Current trend: {obv_trend}
+                """)
+
+    with tab4:
+        st.subheader("Technical Charts")
+
+        chart_type = st.selectbox("Select Chart", [
+            "Price with Bollinger Bands",
+            "RSI History",
+            "MACD",
+            "Stochastic Oscillator",
+            "Moving Averages"
+        ])
+
+        if chart_type == "Price with Bollinger Bands":
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=analysis_window['Close'],
+                                     mode='lines', name='Price', line=dict(color='black', width=2)))
+            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=upper_band.tail(days),
+                                     mode='lines', name='Upper BB', line=dict(color='red', width=1, dash='dash')))
+            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=sma_20.tail(days),
+                                     mode='lines', name='SMA(20)', line=dict(color='blue', width=1)))
+            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=lower_band.tail(days),
+                                     mode='lines', name='Lower BB', line=dict(color='green', width=1, dash='dash')))
+            fig.update_layout(title=f"{selected_asset} - Bollinger Bands", height=500)
+            st.plotly_chart(fig, use_container_width=True)
+
+        elif chart_type == "RSI History":
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=rsi_series.tail(days),
+                                     mode='lines', name='RSI', line=dict(color='purple', width=2)))
+            fig.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Overbought (70)")
+            fig.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold (30)")
+            fig.add_hline(y=50, line_dash="dot", line_color="gray")
+            fig.update_layout(title=f"{selected_asset} - RSI (14)", height=400, yaxis_range=[0, 100])
+            st.plotly_chart(fig, use_container_width=True)
+
+        elif chart_type == "MACD":
+            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1,
+                               row_heights=[0.6, 0.4])
+            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=analysis_window['Close'],
+                                     mode='lines', name='Price', line=dict(color='black')), row=1, col=1)
+            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=macd_line.tail(days),
+                                     mode='lines', name='MACD', line=dict(color='blue')), row=2, col=1)
+            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=signal_line.tail(days),
+                                     mode='lines', name='Signal', line=dict(color='orange')), row=2, col=1)
+            colors = ['green' if val >= 0 else 'red' for val in macd_histogram.tail(days)]
+            fig.add_trace(go.Bar(x=analysis_window['Date'], y=macd_histogram.tail(days),
+                                 name='Histogram', marker_color=colors), row=2, col=1)
+            fig.update_layout(title=f"{selected_asset} - MACD", height=600)
+            st.plotly_chart(fig, use_container_width=True)
+
+        elif chart_type == "Stochastic Oscillator":
+            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1,
+                               row_heights=[0.6, 0.4])
+            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=analysis_window['Close'],
+                                     mode='lines', name='Price', line=dict(color='black')), row=1, col=1)
+            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=stoch_k.tail(days),
+                                     mode='lines', name='%K', line=dict(color='blue')), row=2, col=1)
+            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=stoch_d.tail(days),
+                                     mode='lines', name='%D', line=dict(color='orange')), row=2, col=1)
+            fig.add_hline(y=80, line_dash="dash", line_color="red", row=2, col=1)
+            fig.add_hline(y=20, line_dash="dash", line_color="green", row=2, col=1)
+            fig.update_layout(title=f"{selected_asset} - Stochastic Oscillator", height=600)
+            st.plotly_chart(fig, use_container_width=True)
+
+        elif chart_type == "Moving Averages":
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=analysis_window['Close'],
+                                     mode='lines', name='Price', line=dict(color='black', width=2)))
+            ma_50_series = recent['Close'].rolling(50).mean()
+            ma_200_series = recent['Close'].rolling(200).mean()
+            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=ma_50_series.tail(days),
+                                     mode='lines', name='50-MA', line=dict(color='blue', width=1)))
+            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=ma_200_series.tail(days),
+                                     mode='lines', name='200-MA', line=dict(color='red', width=1)))
+            fig.update_layout(title=f"{selected_asset} - Moving Averages", height=500)
+            st.plotly_chart(fig, use_container_width=True)
+
+    # ==================== SIGNAL SUMMARY TABLE ====================
+
     st.markdown("---")
-    st.subheader("Price with Bollinger Bands")
+    st.subheader("Complete Signal Summary")
 
-    fig = go.Figure()
+    signal_data = []
+    for name, reading, score, direction in signals:
+        signal_data.append({
+            "Indicator": name,
+            "Reading": reading,
+            "Score": f"{score:+.2f}",
+            "Signal": direction.upper()
+        })
 
-    fig.add_trace(go.Scatter(x=recent['Date'], y=recent['Close'],
-                             mode='lines', name='Price',
-                             line=dict(color='black', width=2)))
+    signal_df = pd.DataFrame(signal_data)
+    st.dataframe(signal_df, use_container_width=True, hide_index=True)
 
-    # Bollinger bands
-    sma = recent['Close'].rolling(20).mean()
-    std = recent['Close'].rolling(20).std()
-    upper = sma + (2 * std)
-    lower = sma - (2 * std)
-
-    fig.add_trace(go.Scatter(x=recent['Date'], y=upper,
-                             mode='lines', name='Upper BB',
-                             line=dict(color='red', width=1, dash='dash')))
-
-    fig.add_trace(go.Scatter(x=recent['Date'], y=sma,
-                             mode='lines', name='SMA(20)',
-                             line=dict(color='blue', width=1)))
-
-    fig.add_trace(go.Scatter(x=recent['Date'], y=lower,
-                             mode='lines', name='Lower BB',
-                             line=dict(color='green', width=1, dash='dash')))
-
-    fig.update_layout(title=f"{selected_asset} Valuation Analysis",
-                     xaxis_title="Date",
-                     yaxis_title="Price ($)",
-                     height=500)
-
-    st.plotly_chart(fig, use_container_width=True)
-
-    # Command
+    # Disclaimer
     st.markdown("---")
-    st.markdown("**Run Valuation Analysis:**")
-    st.code(f"python3 valuation_detector.py --asset {selected_asset}")
+    st.caption("""
+    **Disclaimer:** This analysis is for informational purposes only and does not constitute financial advice.
+    Technical indicators are based on historical data and may not predict future performance.
+    Always conduct your own research and consider consulting a financial advisor before making investment decisions.
+    """)
 
 
 def show_llm_analysis():
