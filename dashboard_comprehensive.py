@@ -1103,186 +1103,369 @@ def show_asset_manager():
 
 
 def show_recession_indicator():
-    """Recession probability analysis"""
+    """Recession probability analysis with comprehensive metrics"""
     st.title("Recession Probability Indicator")
-    st.markdown("*Multi-factor recession risk analysis*")
-
-    st.info("Analyzes yield curves, market stress, and technical signals to assess recession risk")
+    st.markdown("*Multi-factor recession risk analysis using market stress signals*")
 
     # Load SPY for analysis
     spy_df = load_asset_data('SPY')
 
     if spy_df is None or len(spy_df) < 200:
         st.error("Insufficient SPY Data")
-
-        st.markdown("""
-        <div class="info-card" style="border-left: 4px solid #e74c3c;">
-            <h3>Data Required</h3>
-            <p>
-                The recession indicator needs at least 200 days of SPY (S&P 500) data to calculate reliable metrics.
-            </p>
-            <p style="margin-bottom: 0;">
-                <b>Current status:</b> {rows} rows found (need 200+)
-            </p>
-        </div>
-        """.format(rows=len(spy_df) if spy_df is not None else 0), unsafe_allow_html=True)
-
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.markdown("**Download Fresh Data:**")
-            st.code("python3 update_spy_data.py", language="bash")
-            st.caption("Downloads SPY data from 2000 to present (~6,300 days)")
-
-        with col2:
-            st.markdown("**Quick Fix:**")
-            st.code("python3 main.py\n# Select: 5 → 1 (Update SPY Data)", language="bash")
-            st.caption("Use main menu for guided data download")
-
-        st.info("After downloading, refresh this page using the button in the sidebar")
+        st.markdown(f"Need at least 200 days of data. Current: {len(spy_df) if spy_df is not None else 0} rows")
+        st.code("python3 update_spy_data.py", language="bash")
         return
 
-    # Calculate recession indicators
+    # Load additional data if available
+    tnx_df = load_asset_data('TNX')  # 10-Year Treasury
+    hyg_df = load_asset_data('HYG')  # High Yield Bonds
+    dxy_df = load_asset_data('DXY')  # Dollar Index
+
+    # ==================== CALCULATE INDICATORS ====================
+
     recent = spy_df.tail(252)
     latest = recent.iloc[-1]
+    latest_date = recent['Date'].max()
 
-    # Market stress metrics
+    # Market returns and volatility
     returns = recent['Close'].pct_change().dropna()
     volatility = returns.std() * np.sqrt(252) * 100
 
+    # Drawdown calculation
     cumulative = (1 + returns).cumprod()
     rolling_max = cumulative.expanding().max()
-    drawdown = ((cumulative - rolling_max) / rolling_max * 100).min()
+    drawdowns = (cumulative - rolling_max) / rolling_max * 100
+    current_drawdown = drawdowns.iloc[-1]
+    max_drawdown = drawdowns.min()
 
     # Moving averages
-    ma_50 = recent['Close'].rolling(50).mean().iloc[-1] if len(recent) >= 50 else recent['Close'].mean()
-    ma_200 = recent['Close'].rolling(200).mean().iloc[-1] if len(recent) >= 200 else recent['Close'].mean()
+    ma_20 = recent['Close'].rolling(20).mean().iloc[-1]
+    ma_50 = recent['Close'].rolling(50).mean().iloc[-1]
+    ma_200 = recent['Close'].rolling(200).mean().iloc[-1]
 
-    # Check for NaN values
-    if pd.isna(ma_50):
-        ma_50 = recent['Close'].mean()
-    if pd.isna(ma_200):
-        ma_200 = recent['Close'].mean()
+    # Handle NaN
+    ma_50 = ma_50 if pd.notna(ma_50) else recent['Close'].mean()
+    ma_200 = ma_200 if pd.notna(ma_200) else recent['Close'].mean()
 
-    death_cross = ma_50 < ma_200 if not (pd.isna(ma_50) or pd.isna(ma_200)) else False
+    # Technical signals
+    death_cross = ma_50 < ma_200
+    below_200ma = latest['Close'] < ma_200
+    price_vs_200ma = ((latest['Close'] - ma_200) / ma_200) * 100
 
-    # Recession score
-    recession_score = 0
+    # RSI
+    delta = recent['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    rsi = (100 - (100 / (1 + rs))).iloc[-1]
+
+    # Rate of change
+    roc_20 = ((latest['Close'] - recent.iloc[-20]['Close']) / recent.iloc[-20]['Close']) * 100 if len(recent) >= 20 else 0
+    roc_60 = ((latest['Close'] - recent.iloc[-60]['Close']) / recent.iloc[-60]['Close']) * 100 if len(recent) >= 60 else 0
+
+    # ==================== RECESSION SCORE CALCULATION ====================
+
+    # Build component scores
+    components = []
+
+    # 1. Death Cross (25 pts)
     if death_cross:
-        recession_score += 25
-    if latest['Close'] < ma_200:
-        recession_score += 20
-    if volatility > 25:
-        recession_score += 20
-    if drawdown < -15:
-        recession_score += 25
-    if volatility > 20 and drawdown < -10:
-        recession_score += 10
-
-    # Display metrics
-    col1, col2, col3, col4 = st.columns(4)
-
-    with col1:
-        st.metric("Current Price", f"${latest['Close']:.2f}")
-
-    with col2:
-        below_200ma = latest['Close'] < ma_200
-        st.metric("vs 200-MA", f"${ma_200:.2f}",
-                 delta="Below" if below_200ma else "Above",
-                 delta_color="inverse" if below_200ma else "normal")
-
-    with col3:
-        st.metric("Volatility", f"{volatility:.1f}%",
-                 delta="High" if volatility > 25 else "Normal")
-
-    with col4:
-        st.metric("Max Drawdown", f"{drawdown:.1f}%", delta_color="inverse")
-
-    # Recession assessment
-    st.markdown("---")
-    st.subheader("Recession Risk Assessment")
-
-    if recession_score > 70:
-        st.error(f"HIGH RECESSION RISK (Score: {recession_score}/100)")
-        st.markdown("""
-        **Recommended Actions:**
-        - Reduce equity exposure
-        - Increase cash/bond allocation
-        - Consider defensive sectors
-        - Hedge positions if appropriate
-        """)
-    elif recession_score > 40:
-        st.warning(f"MODERATE RECESSION RISK (Score: {recession_score}/100)")
-        st.markdown("""
-        **Recommended Actions:**
-        - Monitor indicators closely
-        - Reduce position sizes
-        - Maintain cash reserves
-        - Avoid aggressive strategies
-        """)
+        components.append(("Death Cross", 25, "50-MA below 200-MA", "critical"))
     else:
-        st.success(f"LOW RECESSION RISK (Score: {recession_score}/100)")
-        st.markdown("""
-        **Market Conditions:**
-        - Normal market conditions
-        - Standard strategies appropriate
-        - Maintain diversified portfolio
-        """)
+        components.append(("Golden Cross", 0, "50-MA above 200-MA", "positive"))
 
-    # Signals
+    # 2. Price vs 200-MA (20 pts)
+    if below_200ma:
+        if price_vs_200ma < -10:
+            components.append(("Price vs 200-MA", 20, f"{price_vs_200ma:.1f}% below", "critical"))
+        else:
+            components.append(("Price vs 200-MA", 15, f"{price_vs_200ma:.1f}% below", "warning"))
+    else:
+        components.append(("Price vs 200-MA", 0, f"{price_vs_200ma:+.1f}% above", "positive"))
+
+    # 3. Volatility (20 pts)
+    if volatility > 30:
+        components.append(("Volatility", 20, f"{volatility:.1f}% (extreme)", "critical"))
+    elif volatility > 25:
+        components.append(("Volatility", 15, f"{volatility:.1f}% (high)", "warning"))
+    elif volatility > 20:
+        components.append(("Volatility", 10, f"{volatility:.1f}% (elevated)", "warning"))
+    else:
+        components.append(("Volatility", 0, f"{volatility:.1f}% (normal)", "positive"))
+
+    # 4. Drawdown (25 pts)
+    if max_drawdown < -20:
+        components.append(("Max Drawdown", 25, f"{max_drawdown:.1f}%", "critical"))
+    elif max_drawdown < -15:
+        components.append(("Max Drawdown", 20, f"{max_drawdown:.1f}%", "warning"))
+    elif max_drawdown < -10:
+        components.append(("Max Drawdown", 10, f"{max_drawdown:.1f}%", "warning"))
+    else:
+        components.append(("Max Drawdown", 0, f"{max_drawdown:.1f}%", "positive"))
+
+    # 5. RSI Weakness (10 pts)
+    if rsi < 30:
+        components.append(("RSI", 10, f"{rsi:.0f} (oversold)", "warning"))
+    elif rsi < 40:
+        components.append(("RSI", 5, f"{rsi:.0f} (weak)", "warning"))
+    else:
+        components.append(("RSI", 0, f"{rsi:.0f}", "positive"))
+
+    # Calculate total score
+    recession_score = sum(c[1] for c in components)
+
+    # Determine risk level
+    if recession_score >= 70:
+        risk_level = "HIGH"
+        risk_color = "#ef4444"
+    elif recession_score >= 40:
+        risk_level = "MODERATE"
+        risk_color = "#f59e0b"
+    elif recession_score >= 20:
+        risk_level = "LOW"
+        risk_color = "#22c55e"
+    else:
+        risk_level = "MINIMAL"
+        risk_color = "#10b981"
+
+    # ==================== HEADER DISPLAY ====================
+
     st.markdown("---")
-    st.subheader("Technical Signals")
 
-    col1, col2 = st.columns(2)
+    # Main gauge and score
+    gauge_col, info_col = st.columns([1.2, 1])
 
-    with col1:
+    with gauge_col:
+        # Recession probability gauge
+        gauge_fig = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=recession_score,
+            number={'suffix': '%', 'font': {'size': 48}},
+            gauge={
+                'axis': {'range': [0, 100], 'tickwidth': 1},
+                'bar': {'color': "rgba(0,0,0,0)"},
+                'steps': [
+                    {'range': [0, 20], 'color': "#10b981"},
+                    {'range': [20, 40], 'color': "#22c55e"},
+                    {'range': [40, 70], 'color': "#f59e0b"},
+                    {'range': [70, 100], 'color': "#ef4444"},
+                ],
+                'threshold': {
+                    'line': {'color': "black", 'width': 4},
+                    'thickness': 0.8,
+                    'value': recession_score
+                }
+            },
+            title={'text': "Recession Risk Score", 'font': {'size': 16}}
+        ))
+        gauge_fig.update_layout(
+            height=280,
+            margin=dict(l=30, r=30, t=60, b=20),
+            paper_bgcolor="rgba(0,0,0,0)"
+        )
+        st.plotly_chart(gauge_fig, use_container_width=True)
+
+    with info_col:
+        st.markdown(f"### <span style='color:{risk_color};'>●</span> {risk_level} RISK", unsafe_allow_html=True)
+        st.caption(f"As of {latest_date.strftime('%B %d, %Y')}")
+
+        st.markdown("---")
+
+        # Quick stats
+        st.markdown(f"**SPY Price:** ${latest['Close']:.2f}")
+        st.markdown(f"**vs 200-MA:** {price_vs_200ma:+.1f}%")
+        st.markdown(f"**Volatility:** {volatility:.1f}%")
+        st.markdown(f"**Max Drawdown:** {max_drawdown:.1f}%")
+
+    # ==================== KEY METRICS ====================
+
+    st.markdown("---")
+    st.subheader("Key Metrics")
+
+    m1, m2, m3, m4, m5 = st.columns(5)
+
+    with m1:
+        st.metric("SPY Price", f"${latest['Close']:.2f}")
+    with m2:
+        delta_color = "inverse" if below_200ma else "normal"
+        st.metric("200-Day MA", f"${ma_200:.2f}", delta="Below" if below_200ma else "Above", delta_color=delta_color)
+    with m3:
+        st.metric("Volatility", f"{volatility:.1f}%", delta="High" if volatility > 25 else "Normal")
+    with m4:
+        st.metric("RSI (14)", f"{rsi:.0f}", delta="Oversold" if rsi < 30 else ("Overbought" if rsi > 70 else None))
+    with m5:
+        st.metric("20-Day Return", f"{roc_20:+.1f}%")
+
+    # ==================== COMPONENT BREAKDOWN ====================
+
+    st.markdown("---")
+    st.subheader("Risk Component Breakdown")
+
+    # Display components as a table with colored indicators
+    comp_data = []
+    for name, score, detail, status in components:
+        if status == "critical":
+            indicator = "🔴"
+        elif status == "warning":
+            indicator = "🟡"
+        else:
+            indicator = "🟢"
+
+        comp_data.append({
+            '': indicator,
+            'Indicator': name,
+            'Status': detail,
+            'Score': f"+{score}" if score > 0 else "0"
+        })
+
+    st.dataframe(pd.DataFrame(comp_data), use_container_width=True, hide_index=True)
+    st.caption(f"**Total Score: {recession_score}/100** (Higher = More Risk)")
+
+    # ==================== MARKET ANALYSIS ====================
+
+    st.markdown("---")
+    st.subheader("Technical Analysis")
+
+    tech_col1, tech_col2 = st.columns(2)
+
+    with tech_col1:
+        st.markdown("#### Trend Signals")
+
         if death_cross:
-            st.markdown("**Death Cross** - 50-MA below 200-MA (Bearish)")
+            st.markdown("<span style='color:#ef4444;'>●</span> **Death Cross Active** - 50-MA below 200-MA", unsafe_allow_html=True)
         else:
-            st.markdown("**Golden Cross** - 50-MA above 200-MA (Bullish)")
+            st.markdown("<span style='color:#22c55e;'>●</span> **Golden Cross Active** - 50-MA above 200-MA", unsafe_allow_html=True)
 
-        if latest['Close'] < ma_200:
-            st.markdown("**Below 200-MA** - Bearish trend")
+        if below_200ma:
+            st.markdown("<span style='color:#ef4444;'>●</span> **Below 200-MA** - Bearish trend", unsafe_allow_html=True)
         else:
-            st.markdown("**Above 200-MA** - Bullish trend")
+            st.markdown("<span style='color:#22c55e;'>●</span> **Above 200-MA** - Bullish trend", unsafe_allow_html=True)
 
-    with col2:
-        st.markdown(f"**Stress Score:** {min(100, (volatility * 2 + abs(drawdown)) / 2):.1f}/100")
-
-        if volatility > 25:
-            st.markdown("**High Volatility** - Market stress")
+        if latest['Close'] < ma_50:
+            st.markdown("<span style='color:#f59e0b;'>●</span> **Below 50-MA** - Short-term weakness", unsafe_allow_html=True)
         else:
-            st.markdown("**Normal Volatility**")
+            st.markdown("<span style='color:#22c55e;'>●</span> **Above 50-MA** - Short-term strength", unsafe_allow_html=True)
 
-    # Price chart
+    with tech_col2:
+        st.markdown("#### Momentum")
+
+        # RSI status
+        if rsi < 30:
+            st.markdown(f"<span style='color:#22c55e;'>●</span> **RSI {rsi:.0f}** - Oversold (potential bounce)", unsafe_allow_html=True)
+        elif rsi > 70:
+            st.markdown(f"<span style='color:#ef4444;'>●</span> **RSI {rsi:.0f}** - Overbought (caution)", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<span style='color:#fbbf24;'>●</span> **RSI {rsi:.0f}** - Neutral", unsafe_allow_html=True)
+
+        # Return momentum
+        if roc_20 < -5:
+            st.markdown(f"<span style='color:#ef4444;'>●</span> **20-Day Return: {roc_20:+.1f}%** - Significant decline", unsafe_allow_html=True)
+        elif roc_20 > 5:
+            st.markdown(f"<span style='color:#22c55e;'>●</span> **20-Day Return: {roc_20:+.1f}%** - Strong rally", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<span style='color:#fbbf24;'>●</span> **20-Day Return: {roc_20:+.1f}%** - Sideways", unsafe_allow_html=True)
+
+        # 60-day trend
+        if roc_60 < -10:
+            st.markdown(f"<span style='color:#ef4444;'>●</span> **60-Day Return: {roc_60:+.1f}%** - Bear market territory", unsafe_allow_html=True)
+        elif roc_60 > 10:
+            st.markdown(f"<span style='color:#22c55e;'>●</span> **60-Day Return: {roc_60:+.1f}%** - Bull market", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<span style='color:#fbbf24;'>●</span> **60-Day Return: {roc_60:+.1f}%** - Consolidating", unsafe_allow_html=True)
+
+    # ==================== PRICE CHART ====================
+
     st.markdown("---")
-    st.subheader("Price vs Moving Averages")
+    st.subheader("SPY Price & Moving Averages")
 
-    fig = go.Figure()
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08,
+                        row_heights=[0.7, 0.3])
 
-    fig.add_trace(go.Scatter(x=recent['Date'], y=recent['Close'],
-                             mode='lines', name='SPY Price',
-                             line=dict(color='black', width=2)))
+    # Price and MAs
+    fig.add_trace(go.Scatter(
+        x=recent['Date'], y=recent['Close'],
+        mode='lines', name='SPY',
+        line=dict(color='#1f77b4', width=2),
+        fill='tozeroy', fillcolor='rgba(31,119,180,0.1)'
+    ), row=1, col=1)
 
-    fig.add_trace(go.Scatter(x=recent['Date'], y=recent['Close'].rolling(50).mean(),
-                             mode='lines', name='50-Day MA',
-                             line=dict(color='blue', width=1, dash='dash')))
+    fig.add_trace(go.Scatter(
+        x=recent['Date'], y=recent['Close'].rolling(50).mean(),
+        mode='lines', name='50-MA',
+        line=dict(color='#ff7f0e', width=1.5)
+    ), row=1, col=1)
 
-    fig.add_trace(go.Scatter(x=recent['Date'], y=recent['Close'].rolling(200).mean(),
-                             mode='lines', name='200-Day MA',
-                             line=dict(color='red', width=1, dash='dash')))
+    fig.add_trace(go.Scatter(
+        x=recent['Date'], y=recent['Close'].rolling(200).mean(),
+        mode='lines', name='200-MA',
+        line=dict(color='#d62728', width=1.5)
+    ), row=1, col=1)
 
-    fig.update_layout(title="SPY with Moving Averages",
-                     xaxis_title="Date",
-                     yaxis_title="Price ($)",
-                     height=500)
+    # Drawdown subplot
+    fig.add_trace(go.Scatter(
+        x=recent['Date'], y=drawdowns,
+        mode='lines', name='Drawdown',
+        line=dict(color='#9467bd', width=1.5),
+        fill='tozeroy', fillcolor='rgba(148,103,189,0.2)'
+    ), row=2, col=1)
+
+    fig.add_hline(y=-10, line_dash="dash", line_color="orange", line_width=1, row=2, col=1)
+    fig.add_hline(y=-20, line_dash="dash", line_color="red", line_width=1, row=2, col=1)
+
+    fig.update_layout(
+        height=500,
+        margin=dict(l=50, r=20, t=20, b=40),
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        hovermode='x unified'
+    )
+    fig.update_yaxes(title_text="Price ($)", row=1, col=1)
+    fig.update_yaxes(title_text="Drawdown %", row=2, col=1)
 
     st.plotly_chart(fig, use_container_width=True)
 
-    # Command to run full analysis
+    # ==================== RECOMMENDATIONS ====================
+
     st.markdown("---")
-    st.markdown("**Run Full Analysis:**")
-    st.code("python3 recession_indicator.py --save")
+    st.subheader("Recommendations")
+
+    if recession_score >= 70:
+        st.error("High Risk Environment")
+        rec_col1, rec_col2 = st.columns(2)
+        with rec_col1:
+            st.markdown("""
+            **Defensive Actions:**
+            - Reduce equity exposure significantly
+            - Increase cash allocation (20-40%)
+            - Consider Treasury bonds or gold
+            - Avoid leveraged positions
+            """)
+        with rec_col2:
+            st.markdown("""
+            **Hedging Options:**
+            - Consider protective puts
+            - Look at inverse ETFs (short-term only)
+            - Rotate to defensive sectors (utilities, healthcare)
+            - Reduce position sizes across the board
+            """)
+    elif recession_score >= 40:
+        st.warning("Elevated Risk Environment")
+        st.markdown("""
+        **Suggested Actions:**
+        - Monitor indicators closely for further deterioration
+        - Reduce position sizes by 20-30%
+        - Maintain higher cash reserves (15-25%)
+        - Avoid aggressive growth strategies
+        - Focus on quality stocks with strong balance sheets
+        """)
+    else:
+        st.success("Low Risk Environment")
+        st.markdown("""
+        **Current Conditions:**
+        - Normal market conditions prevail
+        - Standard investment strategies appropriate
+        - Maintain diversified portfolio
+        - Continue regular rebalancing schedule
+        """)
 
 
 def show_valuation_detector():
