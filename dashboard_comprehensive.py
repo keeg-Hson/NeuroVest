@@ -1301,24 +1301,28 @@ def show_recession_indicator():
     st.markdown("---")
     st.subheader("Risk Component Breakdown")
 
-    # Display components as a table with colored indicators
+    # Display components as a table with colored status
     comp_data = []
     for name, score, detail, status in components:
-        if status == "critical":
-            indicator = "🔴"
-        elif status == "warning":
-            indicator = "🟡"
-        else:
-            indicator = "🟢"
-
+        risk_level = "HIGH" if status == "critical" else "WARN" if status == "warning" else "OK"
         comp_data.append({
-            '': indicator,
             'Indicator': name,
             'Status': detail,
-            'Score': f"+{score}" if score > 0 else "0"
+            'Risk': risk_level,
+            'Points': f"+{score}" if score > 0 else "0"
         })
 
-    st.dataframe(pd.DataFrame(comp_data), use_container_width=True, hide_index=True)
+    comp_df = pd.DataFrame(comp_data)
+
+    def color_risk(val):
+        if val == 'HIGH':
+            return 'color: #ef4444; font-weight: bold'
+        elif val == 'WARN':
+            return 'color: #fbbf24; font-weight: bold'
+        return 'color: #22c55e; font-weight: bold'
+
+    styled_comp_df = comp_df.style.applymap(color_risk, subset=['Risk'])
+    st.dataframe(styled_comp_df, use_container_width=True, hide_index=True)
     st.caption(f"**Total Score: {recession_score}/100** (Higher = More Risk)")
 
     # ==================== MARKET ANALYSIS ====================
@@ -1818,9 +1822,8 @@ def show_valuation_detector():
     with gauge_col:
         # Main valuation gauge with gradient colors
         main_gauge = go.Figure(go.Indicator(
-            mode="gauge+number",
+            mode="gauge",
             value=valuation_score,
-            number={'font': {'size': 36}, 'valueformat': '+.2f'},
             gauge={
                 'axis': {'range': [-1, 1], 'tickvals': [-1, -0.5, 0, 0.5, 1],
                          'ticktext': ['Strong Buy', 'Buy', 'Hold', 'Sell', 'Strong Sell']},
@@ -1843,11 +1846,14 @@ def show_valuation_detector():
             title={'text': "Valuation Score", 'font': {'size': 14}}
         ))
         main_gauge.update_layout(
-            height=250,
+            height=220,
             margin=dict(l=20, r=20, t=50, b=10),
             paper_bgcolor="rgba(0,0,0,0)",
         )
         st.plotly_chart(main_gauge, use_container_width=True)
+        # Display score as formatted text
+        score_color = "#22c55e" if valuation_score < -0.2 else "#ef4444" if valuation_score > 0.2 else "#fbbf24"
+        st.markdown(f"<div style='text-align:center; font-size:32px; font-weight:bold; color:{score_color}; margin-top:-20px;'>{valuation_score:+.2f}</div>", unsafe_allow_html=True)
 
     with verdict_col:
         # Classification display with color
@@ -2337,19 +2343,11 @@ def show_valuation_detector():
     with tab4:
         st.markdown("### Signal Summary")
 
-        # Create signal table with colored indicators
+        # Create signal table with indicators
         signal_data = []
         for sig in signals:
             name, reading, score, direction = sig[0], sig[1], sig[2], sig[3]
-            # Add colored dot based on signal direction
-            if direction == "bullish":
-                color_dot = "🟢"
-            elif direction == "bearish":
-                color_dot = "🔴"
-            else:
-                color_dot = "🟡"
             signal_data.append({
-                "": color_dot,
                 "Indicator": name,
                 "Reading": reading,
                 "Score": f"{score:+.2f}",
@@ -2357,7 +2355,17 @@ def show_valuation_detector():
             })
 
         signal_df = pd.DataFrame(signal_data)
-        st.dataframe(signal_df, use_container_width=True, hide_index=True)
+
+        # Style the dataframe with colored Signal column
+        def color_signal(val):
+            if val == 'BULLISH':
+                return 'color: #22c55e; font-weight: bold'
+            elif val == 'BEARISH':
+                return 'color: #ef4444; font-weight: bold'
+            return 'color: #fbbf24; font-weight: bold'
+
+        styled_signal_df = signal_df.style.applymap(color_signal, subset=['Signal'])
+        st.dataframe(styled_signal_df, use_container_width=True, hide_index=True)
 
         # Grouped signals with colored indicators
         st.markdown("---")
@@ -2707,7 +2715,6 @@ def show_forecast_results():
         table_data = []
         for _, row in latest_df.sort_values('ticker').iterrows():
             signal = row['prediction_label']
-            indicator = '🔴' if signal == 'CRASH' else '🟢' if signal == 'SPIKE' else '🟡'
 
             # Individual model probabilities
             xgb = f"{row['xgboost_prob']:.0%}" if pd.notna(row.get('xgboost_prob')) else "-"
@@ -2717,7 +2724,6 @@ def show_forecast_results():
             confidence = f"{row['confidence_score']:.0%}" if pd.notna(row.get('confidence_score')) else "-"
 
             table_data.append({
-                '': indicator,
                 'Asset': row['ticker'],
                 'Signal': signal,
                 'Ensemble': ensemble,
@@ -2729,10 +2735,20 @@ def show_forecast_results():
                 'Date': pd.to_datetime(row['prediction_date']).strftime('%Y-%m-%d')
             })
 
-        st.dataframe(pd.DataFrame(table_data), use_container_width=True, hide_index=True)
+        pred_df = pd.DataFrame(table_data)
+
+        def color_signal(val):
+            if val == 'CRASH':
+                return 'color: #ef4444; font-weight: bold'
+            elif val == 'SPIKE':
+                return 'color: #22c55e; font-weight: bold'
+            return 'color: #fbbf24; font-weight: bold'
+
+        styled_pred_df = pred_df.style.applymap(color_signal, subset=['Signal'])
+        st.dataframe(styled_pred_df, use_container_width=True, hide_index=True)
 
         # Legend
-        st.caption("**Legend:** 🔴 CRASH (bearish) | 🟡 NORMAL (neutral) | 🟢 SPIKE (bullish) | ✓ All models agree | ✗ Models disagree")
+        st.caption("**Legend:** CRASH (bearish) | NORMAL (neutral) | SPIKE (bullish) | ✓ All models agree | ✗ Models disagree")
 
     # ==================== SIGNAL DISTRIBUTION CHART ====================
 
@@ -2794,10 +2810,8 @@ def show_forecast_results():
                 hist_data = []
                 for _, row in asset_history.head(30).iterrows():
                     signal = row['prediction_label']
-                    indicator = '🔴' if signal == 'CRASH' else '🟢' if signal == 'SPIKE' else '🟡'
 
                     hist_data.append({
-                        '': indicator,
                         'Date': row['Date'].strftime('%Y-%m-%d'),
                         'Signal': signal,
                         'Ensemble': f"{row['ensemble_prob']:.0%}" if pd.notna(row.get('ensemble_prob')) else "-",
@@ -2808,7 +2822,17 @@ def show_forecast_results():
                         'Agreement': '✓' if row.get('model_agreement') else '✗'
                     })
 
-                st.dataframe(pd.DataFrame(hist_data), use_container_width=True, hide_index=True)
+                hist_df = pd.DataFrame(hist_data)
+
+                def color_hist_signal(val):
+                    if val == 'CRASH':
+                        return 'color: #ef4444; font-weight: bold'
+                    elif val == 'SPIKE':
+                        return 'color: #22c55e; font-weight: bold'
+                    return 'color: #fbbf24; font-weight: bold'
+
+                styled_hist_df = hist_df.style.applymap(color_hist_signal, subset=['Signal'])
+                st.dataframe(styled_hist_df, use_container_width=True, hide_index=True)
                 st.caption(f"Showing last {len(hist_data)} predictions for {selected}")
 
                 # Signal trend chart
