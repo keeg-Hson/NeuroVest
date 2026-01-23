@@ -228,7 +228,7 @@ def check_asset_status(ticker):
         # If database fails, continue to CSV fallback
         # (Don't silently hide errors - but don't crash either)
         import sys
-        print(f"⚠️  Database check failed for {ticker}: {e}", file=sys.stderr)
+        print(f"Database check failed for {ticker}: {e}", file=sys.stderr)
 
     # Fallback: check CSV files (for backwards compatibility)
     if (DATA_DIR / f"{ticker}.csv").exists():
@@ -332,22 +332,22 @@ def main():
     page = st.sidebar.selectbox(
         "Navigation",
         [
-            "📊 Overview",
-            "📥 Asset Manager",
-            "📉 Recession Indicator",
-            "💰 Valuation Detector",
-            "🤖 LLM Analysis",
-            "🔄 Portfolio Rebalancing",
-            "📈 Forecast Results",
-            "🚀 Automation",
-            "📁 Custom Imports"
+            "Overview",
+            "Asset Manager",
+            "Recession Indicator",
+            "Valuation Detector",
+            "LLM Analysis",
+            "Portfolio Rebalancing",
+            "Forecast Results",
+            "Automation",
+            "Custom Imports"
         ]
     )
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Quick Actions")
 
-    if st.sidebar.button("🔄 Refresh Display"):
+    if st.sidebar.button("Refresh Display"):
         st.cache_data.clear()
         st.rerun()
 
@@ -377,23 +377,23 @@ def main():
     user_id = AuthManager.get_session_user()
 
     # Route to pages
-    if page == "📊 Overview":
+    if page == "Overview":
         show_overview()
-    elif page == "📥 Asset Manager":
+    elif page == "Asset Manager":
         show_asset_manager()
-    elif page == "📉 Recession Indicator":
+    elif page == "Recession Indicator":
         show_recession_indicator()
-    elif page == "💰 Valuation Detector":
+    elif page == "Valuation Detector":
         show_valuation_detector()
-    elif page == "🤖 LLM Analysis":
+    elif page == "LLM Analysis":
         show_llm_analysis()
-    elif page == "🔄 Portfolio Rebalancing":
+    elif page == "Portfolio Rebalancing":
         show_portfolio_rebalancing()
-    elif page == "📈 Forecast Results":
+    elif page == "Forecast Results":
         show_forecast_results()
-    elif page == "🚀 Automation":
+    elif page == "Automation":
         show_automation()
-    elif page == "📁 Custom Imports":
+    elif page == "Custom Imports":
         show_custom_imports()
 
 
@@ -417,7 +417,7 @@ def show_overview():
     with col1:
         st.markdown("""
         <div class="info-card">
-            <h3>🔬 What is NeuroVest?</h3>
+            <h3>What is NeuroVest?</h3>
             <p>
                 NeuroVest is an ensemble ML forecasting platform that predicts market movements across 41 assets.
                 The system combines XGBoost, LightGBM, and CatBoost models trained on 126+ features to generate
@@ -429,7 +429,7 @@ def show_overview():
     with col2:
         st.markdown("""
         <div class="info-card">
-            <h3>📊 Proven Results</h3>
+            <h3>Proven Results</h3>
             <p>
                 <strong>25-year SPY backtest:</strong><br>
                 • 191% total return, 2.55 Sharpe ratio<br>
@@ -446,30 +446,30 @@ def show_overview():
     st.markdown("---")
     st.markdown("""
     <div class="info-card" style="border-left: 5px solid #3498db; margin: 2rem 0;">
-        <h3 style="margin-bottom: 1rem;">🚀 Quick Start Guide</h3>
+        <h3 style="margin-bottom: 1rem;">Quick Start Guide</h3>
         <p style="margin-bottom: 1.5rem; font-size: 1.05rem;">
             This dashboard is your sandbox for exploring NeuroVest's capabilities. Navigate through the sidebar to access different features:
         </p>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
             <div>
                 <p style="margin: 0.5rem 0; line-height: 1.7;">
-                    <strong>📊 Overview:</strong> System status and key metrics<br>
-                    <strong>🔮 Market Forecast:</strong> Get real-time predictions for any supported asset<br>
-                    <strong>📉 Recession Indicator:</strong> US recession probability with historical data<br>
-                    <strong>🤖 LLM Forecast:</strong> Natural language market analysis<br>
+                    <strong>Overview:</strong> System status and key metrics<br>
+                    <strong>Market Forecast:</strong> Get real-time predictions for any supported asset<br>
+                    <strong>Recession Indicator:</strong> US recession probability with historical data<br>
+                    <strong>LLM Forecast:</strong> Natural language market analysis<br>
                 </p>
             </div>
             <div>
                 <p style="margin: 0.5rem 0; line-height: 1.7;">
-                    <strong>💼 Portfolio Rebalancer:</strong> Optimize allocations across assets<br>
-                    <strong>📈 Backtests:</strong> Test strategies with historical data<br>
-                    <strong>🔧 Automation:</strong> Schedule predictions and reports<br>
-                    <strong>📁 Custom Imports:</strong> Add your own data sources
+                    <strong>Portfolio Rebalancer:</strong> Optimize allocations across assets<br>
+                    <strong>Backtests:</strong> Test strategies with historical data<br>
+                    <strong>Automation:</strong> Schedule predictions and reports<br>
+                    <strong>Custom Imports:</strong> Add your own data sources
                 </p>
             </div>
         </div>
         <p style="margin-top: 1.5rem; font-size: 0.95rem; font-style: italic;">
-            💡 Tip: Start with Market Forecast to see live predictions, then explore Backtests to validate performance
+            Tip: Start with Market Forecast to see live predictions, then explore Backtests to validate performance
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -489,10 +489,10 @@ def show_overview():
     crypto_ready = sum(1 for ticker, atype in db_assets if atype == 'crypto')
 
     with col1:
-        st.metric("📈 Assets Supported", total_assets, help="All assets in database (stocks, ETFs, crypto, metals)")
+        st.metric("Assets Supported", total_assets, help="All assets in database (stocks, ETFs, crypto, metals)")
 
     with col2:
-        st.metric("✅ Assets Ready", f"{downloaded} ({stocks_ready} stocks, {crypto_ready} crypto)", help="Data downloaded and ready for analysis")
+        st.metric("Assets Ready", f"{downloaded} ({stocks_ready} stocks, {crypto_ready} crypto)", help="Data downloaded and ready for analysis")
 
     with col3:
         try:
@@ -501,7 +501,7 @@ def show_overview():
             pred_count = len(predictions_df)
         except Exception:
             pred_count = 0
-        st.metric("🔮 Predictions", pred_count, help="Latest forecast records in database")
+        st.metric("Predictions", pred_count, help="Latest forecast records in database")
 
     with col4:
         try:
@@ -510,18 +510,18 @@ def show_overview():
             model_count_main = len(models_df)
         except Exception:
             model_count_main = 0
-        st.metric("🤖 Models Trained", f"{model_count_main}/3", help="XGBoost, LightGBM, CatBoost")
+        st.metric("Models Trained", f"{model_count_main}/3", help="XGBoost, LightGBM, CatBoost")
 
     # Use Cases
     st.markdown("---")
-    st.markdown("### 🎬 Use Cases")
+    st.markdown("### Use Cases")
 
     use_case_col1, use_case_col2, use_case_col3 = st.columns(3)
 
     with use_case_col1:
         st.markdown("""
         <div class="use-case-box">
-            <h4>💼 Institutional Research</h4>
+            <h4>Institutional Research</h4>
             <p>
                 • Market regime classification<br>
                 • Economic indicator analysis<br>
@@ -534,7 +534,7 @@ def show_overview():
     with use_case_col2:
         st.markdown("""
         <div class="use-case-box">
-            <h4>📊 Portfolio Management</h4>
+            <h4>Portfolio Management</h4>
             <p>
                 • Asset allocation signals<br>
                 • Rebalancing optimization<br>
@@ -547,7 +547,7 @@ def show_overview():
     with use_case_col3:
         st.markdown("""
         <div class="use-case-box">
-            <h4>🔬 Research & Development</h4>
+            <h4>Research & Development</h4>
             <p>
                 • ML model benchmarking<br>
                 • Feature importance analysis<br>
@@ -559,14 +559,14 @@ def show_overview():
 
     # Core Features
     st.markdown("---")
-    st.markdown("### ⚡ Core Features")
+    st.markdown("### Core Features")
 
     feat_col1, feat_col2 = st.columns(2)
 
     with feat_col1:
         st.markdown("""
         <div class="feature-box">
-            <h4>🔮 Forecasting & Analysis</h4>
+            <h4>Forecasting & Analysis</h4>
             <ul>
                 <li><b>Multi-Asset Ensemble Predictions:</b> XGBoost + LightGBM + CatBoost</li>
                 <li><b>Recession Probability Indicator:</b> Yield curves, market stress, death cross</li>
@@ -589,7 +589,7 @@ def show_overview():
 
         st.markdown(f"""
         <div class="feature-box">
-            <h4>📦 Asset Coverage</h4>
+            <h4>Asset Coverage</h4>
             <ul>
                 <li><b>{db_stocks} Stock/ETF Assets:</b> SPY, QQQ, IWM, DIA, VTI, sector ETFs, macro indicators</li>
                 <li><b>7 Precious Metals:</b> Gold, Silver, GDX, GDXJ, Platinum, Palladium</li>
@@ -602,12 +602,12 @@ def show_overview():
 
     # System Status
     st.markdown("---")
-    st.markdown("### 🔧 System Status")
+    st.markdown("### System Status")
 
     status_col1, status_col2, status_col3 = st.columns(3)
 
     with status_col1:
-        st.markdown("**📁 Database Assets**")
+        st.markdown("**Database Assets**")
 
         # Query database for actual asset counts
         try:
@@ -618,32 +618,32 @@ def show_overview():
             crypto = sum(1 for _, atype in db_assets if atype == 'crypto')
 
             # Show actual counts from database (not hardcoded denominators)
-            st.markdown(f"🟢 Stocks: {stocks} assets")
-            st.markdown(f"💎 Crypto: {crypto} assets")
-            st.markdown(f"📊 Total: {len(db_assets)} assets")
+            st.markdown(f"Stocks: {stocks} assets")
+            st.markdown(f"Crypto: {crypto} assets")
+            st.markdown(f"Total: {len(db_assets)} assets")
         except Exception as e:
-            st.markdown("🔴 Database connection error")
+            st.markdown("Database connection error")
 
     with status_col2:
-        st.markdown("**🤖 ML Models**")
+        st.markdown("**ML Models**")
         try:
             dm = get_data_manager()
             models_df = dm.get_latest_models()
 
             if len(models_df) > 0:
-                st.markdown(f"🟢 {len(models_df)}/3 models trained")
+                st.markdown(f"{len(models_df)}/3 models trained")
                 for _, model in models_df.iterrows():
                     trained_at = pd.to_datetime(model['trained_at'])
                     age = (pd.Timestamp.now() - trained_at).days
                     st.markdown(f"   • {model['model_type']} ({age}d ago)")
             else:
-                st.markdown("🟡 No models yet")
+                st.markdown("No models yet")
                 st.markdown("   (training scheduled)")
         except Exception as e:
-            st.markdown("🔴 Database error")
+            st.markdown("Database error")
 
     with status_col3:
-        st.markdown("**🔮 Forecasts**")
+        st.markdown("**Forecasts**")
         try:
             dm = get_data_manager()
             predictions_df = dm.get_latest_predictions(limit=1)
@@ -655,34 +655,31 @@ def show_overview():
 
                 # Show status based on prediction age
                 if age_hours < 48:
-                    status_icon = "🟢"
                     status_text = "Fresh"
                 elif age_hours < 168:  # 1 week
-                    status_icon = "🟡"
                     status_text = "Stale"
                 else:
-                    status_icon = "🔴"
                     status_text = "VERY OLD"
 
-                st.markdown(f"{status_icon} {status_text}: {pred_date.strftime('%Y-%m-%d')}")
+                st.markdown(f"{status_text}: {pred_date.strftime('%Y-%m-%d')}")
                 st.markdown(f"   {latest_pred['prediction_label']}")
                 st.markdown(f"   ({age_hours:.1f}h ago)")
             else:
-                st.markdown("🟡 No predictions yet")
+                st.markdown("No predictions yet")
                 st.markdown("   (daily @ 4:30pm)")
         except Exception as e:
-            st.markdown("🔴 Database error")
+            st.markdown("Database error")
 
     # Quick Start
     st.markdown("---")
-    st.markdown("### 🚀 Quick Start")
+    st.markdown("### Quick Start")
 
     quickstart_col1, quickstart_col2 = st.columns(2)
 
     with quickstart_col1:
         st.markdown("""
         <div class="quickstart-box">
-            <h4>1️⃣ First Time Setup</h4>
+            <h4>1. First Time Setup</h4>
             <p>
                 # Download data<br>
                 python3 main.py → 5 → 1  # SPY<br>
@@ -697,7 +694,7 @@ def show_overview():
     with quickstart_col2:
         st.markdown("""
         <div class="quickstart-box">
-            <h4>2️⃣ Run Full Pipeline</h4>
+            <h4>2. Run Full Pipeline</h4>
             <p>
                 # Automated pipeline (20-35 min)<br>
                 python3 main.py → R<br><br>
@@ -709,7 +706,7 @@ def show_overview():
 
     # API Endpoints & Integration
     st.markdown("---")
-    st.markdown("### 🌐 REST API Integration")
+    st.markdown("### REST API Integration")
 
     st.markdown("""
     <div class="quickstart-box" style="margin-bottom: 1.5rem;">
@@ -725,7 +722,7 @@ def show_overview():
     api_col1, api_col2 = st.columns(2)
 
     with api_col1:
-        st.markdown("**🔌 Core Endpoints:**")
+        st.markdown("**Core Endpoints:**")
         st.code("""
 GET  /health
      → Health check & server status
@@ -744,7 +741,7 @@ GET  /predict/{asset}/history
         """, language="plaintext")
 
     with api_col2:
-        st.markdown("**📊 Example Usage (Python):**")
+        st.markdown("**Example Usage (Python):**")
         st.code("""
 import requests
 
@@ -776,7 +773,7 @@ print(f"Confidence: {data['confidence']}")
     int_col1, int_col2 = st.columns(2)
 
     with int_col1:
-        st.markdown("**🔗 JavaScript Integration:**")
+        st.markdown("**JavaScript Integration:**")
         st.code("""
 // Fetch prediction
 fetch('http://localhost:8000/predict/SPY')
@@ -797,7 +794,7 @@ fetch('http://localhost:8000/assets')
         """, language="javascript")
 
     with int_col2:
-        st.markdown("**🔧 cURL Examples:**")
+        st.markdown("**cURL Examples:**")
         st.code("""
 # Health check
 curl http://localhost:8000/health
@@ -817,7 +814,7 @@ curl "http://localhost:8000/assets?asset_type=crypto"
 
     # Client libraries & SDKs
     st.markdown("---")
-    st.markdown("### 📦 Client Integration")
+    st.markdown("### Client Integration")
 
     client_col1, client_col2, client_col3 = st.columns(3)
 
@@ -859,11 +856,11 @@ curl "http://localhost:8000/assets?asset_type=crypto"
 
 def show_asset_manager():
     """Asset download manager"""
-    st.title("📥 Asset Manager")
+    st.title("Asset Manager")
     st.markdown("*Download and manage data for all 41 supported assets*")
 
     # Asset category tabs
-    tab1, tab2, tab3 = st.tabs(["📊 Stocks & ETFs", "🥇 Precious Metals", "💎 Crypto"])
+    tab1, tab2, tab3 = st.tabs(["Stocks & ETFs", "Precious Metals", "Crypto"])
 
     with tab1:
         st.subheader(f"Stock & ETF Assets ({len(STOCK_ETFS)} available)")
@@ -877,7 +874,7 @@ def show_asset_manager():
             asset_data.append({
                 'Ticker': ticker,
                 'Name': name,
-                'Status': '✅ Downloaded' if status == 'downloaded' else '⬇️ Available',
+                'Status': 'Downloaded' if status == 'downloaded' else 'Available',
                 'Rows': rows if rows > 0 else '-'
             })
 
@@ -889,8 +886,8 @@ def show_asset_manager():
         col1, col2 = st.columns(2)
 
         with col1:
-            st.markdown("**📥 Download SPY Data:**")
-            if st.button("🔄 Update SPY Data", key="download_spy"):
+            st.markdown("**Download SPY Data:**")
+            if st.button("Update SPY Data", key="download_spy"):
                 with st.spinner("Downloading SPY data..."):
                     result = subprocess.run(
                         ["python3", "update_spy_data.py"],
@@ -898,16 +895,16 @@ def show_asset_manager():
                         text=True
                     )
                     if result.returncode == 0:
-                        st.success("✅ SPY data updated successfully!")
+                        st.success("SPY data updated successfully!")
                         st.cache_data.clear()  # Clear cache to reload data
                     else:
-                        st.error(f"❌ Error: {result.stderr[:200]}")
+                        st.error(f"Error: {result.stderr[:200]}")
 
             st.caption("Downloads S&P 500 data from 2000-present")
 
         with col2:
-            st.markdown("**📥 Download All ETFs:**")
-            if st.button("🔄 Download ETFs & Bonds", key="download_etfs"):
+            st.markdown("**Download All ETFs:**")
+            if st.button("Download ETFs & Bonds", key="download_etfs"):
                 with st.spinner("Downloading 35+ assets..."):
                     result = subprocess.run(
                         ["python3", "download_equity_etfs.py"],
@@ -915,10 +912,10 @@ def show_asset_manager():
                         text=True
                     )
                     if result.returncode == 0:
-                        st.success("✅ ETFs & bonds downloaded!")
+                        st.success("ETFs & bonds downloaded!")
                         st.cache_data.clear()
                     else:
-                        st.error(f"❌ Error: {result.stderr[:200]}")
+                        st.error(f"Error: {result.stderr[:200]}")
 
             st.caption("Downloads ETFs, bonds, precious metals, commodities")
 
@@ -934,7 +931,7 @@ def show_asset_manager():
             metal_data.append({
                 'Ticker': ticker,
                 'Name': name,
-                'Status': '✅ Downloaded' if status == 'downloaded' else '⬇️ Available',
+                'Status': 'Downloaded' if status == 'downloaded' else 'Available',
                 'Rows': rows if rows > 0 else '-'
             })
 
@@ -956,7 +953,7 @@ def show_asset_manager():
             crypto_data.append({
                 'Ticker': ticker,
                 'Name': name,
-                'Status': '✅ Downloaded' if status == 'downloaded' else '⬇️ Available',
+                'Status': 'Downloaded' if status == 'downloaded' else 'Available',
                 'Rows': rows if rows > 0 else '-'
             })
 
@@ -965,8 +962,8 @@ def show_asset_manager():
 
         st.markdown("---")
 
-        st.markdown("**📥 Download Cryptocurrency Data:**")
-        if st.button("🔄 Download All 10 Cryptocurrencies", key="download_crypto"):
+        st.markdown("**Download Cryptocurrency Data:**")
+        if st.button("Download All 10 Cryptocurrencies", key="download_crypto"):
             with st.spinner("Downloading crypto data from Binance..."):
                 result = subprocess.run(
                     ["python3", "download_crypto_enhanced.py"],
@@ -974,26 +971,26 @@ def show_asset_manager():
                     text=True
                 )
                 if result.returncode == 0:
-                    st.success("✅ Cryptocurrency data downloaded!")
+                    st.success("Cryptocurrency data downloaded!")
                     st.cache_data.clear()
                 else:
-                    st.error(f"❌ Error: {result.stderr[:200]}")
+                    st.error(f"Error: {result.stderr[:200]}")
 
         st.caption("Downloads BTC, ETH, SOL, BNB, XRP, ADA, DOGE, AVAX, MATIC, LINK")
 
     # Quick Actions
     st.markdown("---")
-    st.subheader("⚡ Quick Actions")
+    st.subheader("Quick Actions")
 
     qa_col1, qa_col2, qa_col3 = st.columns(3)
 
     with qa_col1:
-        if st.button("🔄 Refresh All Data", key="refresh_display"):
+        if st.button("Refresh All Data", key="refresh_display"):
             st.cache_data.clear()
-            st.success("✅ Cache cleared! Reload page to see fresh data.")
+            st.success("Cache cleared! Reload page to see fresh data.")
 
     with qa_col2:
-        if st.button("📊 Download All Assets", key="download_all"):
+        if st.button("Download All Assets", key="download_all"):
             with st.spinner("Downloading all assets..."):
                 # SPY
                 subprocess.run(["python3", "update_spy_data.py"], capture_output=True)
@@ -1001,29 +998,29 @@ def show_asset_manager():
                 subprocess.run(["python3", "download_equity_etfs.py"], capture_output=True)
                 # Crypto
                 subprocess.run(["python3", "download_crypto_enhanced.py"], capture_output=True)
-                st.success("✅ All downloads complete!")
+                st.success("All downloads complete!")
                 st.cache_data.clear()
 
     with qa_col3:
-        st.info("💡 Individual downloads above for granular control")
+        st.info("Individual downloads above for granular control")
 
 
 def show_recession_indicator():
     """Recession probability analysis"""
-    st.title("📉 Recession Probability Indicator")
+    st.title("Recession Probability Indicator")
     st.markdown("*Multi-factor recession risk analysis*")
 
-    st.info("💡 **Feature:** Analyzes yield curves, market stress, and technical signals to assess recession risk")
+    st.info("Analyzes yield curves, market stress, and technical signals to assess recession risk")
 
     # Load SPY for analysis
     spy_df = load_asset_data('SPY')
 
     if spy_df is None or len(spy_df) < 200:
-        st.error("🔴 **Insufficient SPY Data**")
+        st.error("Insufficient SPY Data")
 
         st.markdown("""
         <div class="info-card" style="border-left: 4px solid #e74c3c;">
-            <h3>📊 Data Required</h3>
+            <h3>Data Required</h3>
             <p>
                 The recession indicator needs at least 200 days of SPY (S&P 500) data to calculate reliable metrics.
             </p>
@@ -1036,16 +1033,16 @@ def show_recession_indicator():
         col1, col2 = st.columns(2)
 
         with col1:
-            st.markdown("**📥 Download Fresh Data:**")
+            st.markdown("**Download Fresh Data:**")
             st.code("python3 update_spy_data.py", language="bash")
             st.caption("Downloads SPY data from 2000 to present (~6,300 days)")
 
         with col2:
-            st.markdown("**🔧 Quick Fix:**")
+            st.markdown("**Quick Fix:**")
             st.code("python3 main.py\n# Select: 5 → 1 (Update SPY Data)", language="bash")
             st.caption("Use main menu for guided data download")
 
-        st.info("💡 **Tip:** After downloading, refresh this page using the button in the sidebar")
+        st.info("After downloading, refresh this page using the button in the sidebar")
         return
 
     # Calculate recession indicators
@@ -1106,10 +1103,10 @@ def show_recession_indicator():
 
     # Recession assessment
     st.markdown("---")
-    st.subheader("🚨 Recession Risk Assessment")
+    st.subheader("Recession Risk Assessment")
 
     if recession_score > 70:
-        st.error(f"⚠️ **HIGH RECESSION RISK** (Score: {recession_score}/100)")
+        st.error(f"HIGH RECESSION RISK (Score: {recession_score}/100)")
         st.markdown("""
         **Recommended Actions:**
         - Reduce equity exposure
@@ -1118,7 +1115,7 @@ def show_recession_indicator():
         - Hedge positions if appropriate
         """)
     elif recession_score > 40:
-        st.warning(f"⚠️ **MODERATE RECESSION RISK** (Score: {recession_score}/100)")
+        st.warning(f"MODERATE RECESSION RISK (Score: {recession_score}/100)")
         st.markdown("""
         **Recommended Actions:**
         - Monitor indicators closely
@@ -1127,7 +1124,7 @@ def show_recession_indicator():
         - Avoid aggressive strategies
         """)
     else:
-        st.success(f"✅ **LOW RECESSION RISK** (Score: {recession_score}/100)")
+        st.success(f"LOW RECESSION RISK (Score: {recession_score}/100)")
         st.markdown("""
         **Market Conditions:**
         - Normal market conditions
@@ -1137,32 +1134,32 @@ def show_recession_indicator():
 
     # Signals
     st.markdown("---")
-    st.subheader("📊 Technical Signals")
+    st.subheader("Technical Signals")
 
     col1, col2 = st.columns(2)
 
     with col1:
         if death_cross:
-            st.markdown("🔴 **Death Cross** - 50-MA below 200-MA (Bearish)")
+            st.markdown("**Death Cross** - 50-MA below 200-MA (Bearish)")
         else:
-            st.markdown("🟢 **Golden Cross** - 50-MA above 200-MA (Bullish)")
+            st.markdown("**Golden Cross** - 50-MA above 200-MA (Bullish)")
 
         if latest['Close'] < ma_200:
-            st.markdown("🔴 **Below 200-MA** - Bearish trend")
+            st.markdown("**Below 200-MA** - Bearish trend")
         else:
-            st.markdown("🟢 **Above 200-MA** - Bullish trend")
+            st.markdown("**Above 200-MA** - Bullish trend")
 
     with col2:
         st.markdown(f"**Stress Score:** {min(100, (volatility * 2 + abs(drawdown)) / 2):.1f}/100")
 
         if volatility > 25:
-            st.markdown("🔴 **High Volatility** - Market stress")
+            st.markdown("**High Volatility** - Market stress")
         else:
-            st.markdown("🟢 **Normal Volatility**")
+            st.markdown("**Normal Volatility**")
 
     # Price chart
     st.markdown("---")
-    st.subheader("📈 Price vs Moving Averages")
+    st.subheader("Price vs Moving Averages")
 
     fig = go.Figure()
 
@@ -1193,21 +1190,21 @@ def show_recession_indicator():
 
 def show_valuation_detector():
     """Asset valuation analysis"""
-    st.title("💰 Valuation Detector")
+    st.title("Valuation Detector")
     st.markdown("*Identify over/undervalued assets using technical indicators*")
 
     # Evaluation timestamp
     eval_time = datetime.now().strftime("%B %d, %Y at %I:%M %p")
-    st.caption(f"📅 Analysis Date: {eval_time}")
+    st.caption(f"Analysis Date: {eval_time}")
 
-    st.info("💡 **Feature:** Uses RSI, Z-Score, Bollinger Bands, and MA deviation to classify asset valuation")
+    st.info("Uses RSI, Z-Score, Bollinger Bands, and MA deviation to classify asset valuation")
 
     # Asset selector
     all_assets = list(STOCK_ETFS.keys()) + list(PRECIOUS_METALS.keys()) + list(CRYPTO_ASSETS.keys())
     downloaded_assets = [a for a in all_assets if check_asset_status(a) == "downloaded"]
 
     if not downloaded_assets:
-        st.warning("⚠️ No assets downloaded. Visit Asset Manager to download data.")
+        st.warning("No assets downloaded. Visit Asset Manager to download data.")
         return
 
     selected_asset = st.selectbox("Select Asset", downloaded_assets)
@@ -1215,7 +1212,7 @@ def show_valuation_detector():
     df = load_asset_data(selected_asset)
 
     if df is None or len(df) < 100:
-        st.warning(f"⚠️ Insufficient data for {selected_asset}")
+        st.warning(f"Insufficient data for {selected_asset}")
         return
 
     # Calculate valuation metrics
@@ -1224,7 +1221,7 @@ def show_valuation_detector():
 
     # Get latest data date
     latest_data_date = latest['Date'].strftime("%B %d, %Y") if 'Date' in latest else "Unknown"
-    st.info(f"📊 Latest Market Data: {latest_data_date} | Price: ${latest['Close']:.2f}")
+    st.info(f"Latest Market Data: {latest_data_date} | Price: ${latest['Close']:.2f}")
 
     # RSI
     delta = recent['Close'].diff()
@@ -1286,49 +1283,49 @@ def show_valuation_detector():
     # Display classification
     st.markdown("---")
     if color == "error":
-        st.error(f"### 🔴 {classification}")
+        st.error(f"### {classification}")
         st.markdown("**Recommendation:** Monitor for exit opportunities, consider taking profits")
     elif color == "success":
-        st.success(f"### 🟢 {classification}")
+        st.success(f"### {classification}")
         st.markdown("**Recommendation:** Consider accumulating or opening positions")
     else:
-        st.info(f"### 🟡 {classification}")
+        st.info(f"### {classification}")
         st.markdown("**Recommendation:** Hold current positions, wait for better entry/exit")
 
     st.markdown(f"**Valuation Score:** {valuation_score:.2f} (Range: -1.0 to +1.0)")
 
     # Metrics
     st.markdown("---")
-    st.subheader("📊 Technical Indicators")
+    st.subheader("Technical Indicators")
 
     col1, col2, col3 = st.columns(3)
 
     with col1:
         st.metric("RSI (14)", f"{latest_rsi:.1f}")
         if latest_rsi > 70:
-            st.markdown("🔴 Overbought (>70)")
+            st.markdown("Overbought (>70)")
         elif latest_rsi < 30:
-            st.markdown("🟢 Oversold (<30)")
+            st.markdown("Oversold (<30)")
         else:
-            st.markdown("🟡 Neutral (30-70)")
+            st.markdown("Neutral (30-70)")
 
     with col2:
         st.metric("Z-Score", f"{z_score:.2f}")
         if z_score > 2:
-            st.markdown("🔴 Expensive (>2)")
+            st.markdown("Expensive (>2)")
         elif z_score < -2:
-            st.markdown("🟢 Cheap (<-2)")
+            st.markdown("Cheap (<-2)")
         else:
-            st.markdown("🟡 Normal (-2 to 2)")
+            st.markdown("Normal (-2 to 2)")
 
     with col3:
         st.metric("Bollinger %", f"{bb_position:.1f}%")
         if bb_position > 80:
-            st.markdown("🔴 Upper Band")
+            st.markdown("Upper band")
         elif bb_position < 20:
-            st.markdown("🟢 Lower Band")
+            st.markdown("Lower band")
         else:
-            st.markdown("🟡 Middle Range")
+            st.markdown("Middle range")
 
     # Additional metrics
     col4, col5 = st.columns(2)
@@ -1342,7 +1339,7 @@ def show_valuation_detector():
 
     # Chart
     st.markdown("---")
-    st.subheader("📈 Price with Bollinger Bands")
+    st.subheader("Price with Bollinger Bands")
 
     fig = go.Figure()
 
@@ -1383,13 +1380,13 @@ def show_valuation_detector():
 
 def show_llm_analysis():
     """LLM-powered market analysis"""
-    st.title("🤖 LLM Market Analysis")
+    st.title("LLM Market Analysis")
     st.markdown("*AI-powered market commentary using GPT-4 or Claude*")
 
-    st.info("💡 **Feature:** Integrates with OpenAI/Anthropic to generate market analysis based on predictions, price data, and news")
+    st.info("Integrates with OpenAI/Anthropic to generate market analysis based on predictions, price data, and news")
 
     # Configuration
-    st.subheader("⚙️ Configuration")
+    st.subheader("Configuration")
 
     col1, col2 = st.columns(2)
 
@@ -1412,7 +1409,7 @@ NEWS_API_KEY=your-newsapi-key
 
     # Sample analysis
     st.markdown("---")
-    st.subheader("📊 Sample Analysis Output")
+    st.subheader("Sample Analysis Output")
 
     # Load latest prediction
     pred_file = LOGS_DIR / "labeled_predictions.csv"
@@ -1510,7 +1507,7 @@ Wait for clearer directional bias before taking action.
 
     # Commands
     st.markdown("---")
-    st.subheader("💻 Run LLM Analysis")
+    st.subheader("Run LLM Analysis")
 
     st.code("""
 # Single asset analysis with OpenAI
@@ -1526,10 +1523,10 @@ python3 newsletter_generator.py --send --assets SPY,BTC/USDT
 
 def show_portfolio_rebalancing():
     """Portfolio rebalancing optimizer"""
-    st.title("🔄 Portfolio Rebalancing Optimizer")
+    st.title("Portfolio Rebalancing Optimizer")
     st.markdown("*Find optimal rebalancing frequency for your portfolio*")
 
-    st.info("💡 **Feature:** Tests different rebalancing frequencies (daily, weekly, monthly, etc.) and identifies the optimal strategy based on returns, Sharpe ratio, and transaction costs")
+    st.info("Tests different rebalancing frequencies (daily, weekly, monthly, etc.) and identifies the optimal strategy based on returns, Sharpe ratio, and transaction costs")
 
     st.markdown("""
     ### How It Works
@@ -1552,7 +1549,7 @@ def show_portfolio_rebalancing():
 
     # Example results
     st.markdown("---")
-    st.subheader("📊 Example Results")
+    st.subheader("Example Results")
 
     example_data = {
         'Strategy': ['Buy & Hold', 'Daily', 'Weekly', 'Monthly', 'Quarterly', 'Semi-Annual', 'Annual'],
@@ -1561,7 +1558,7 @@ def show_portfolio_rebalancing():
         'Max Drawdown': ['-8.2%', '-7.1%', '-7.3%', '-7.0%', '-7.5%', '-8.0%', '-8.3%'],
         'Rebalances': [0, 1260, 260, 60, 20, 10, 5],
         'Net Return': ['45.2%', '27.6%', '41.9%', '49.6%', '48.1%', '46.5%', '45.7%'],
-        'Recommended': ['', '', '', '✅', '', '', '']
+        'Recommended': ['', '', '', 'Yes', '', '', '']
     }
 
     df_example = pd.DataFrame(example_data)
@@ -1571,7 +1568,7 @@ def show_portfolio_rebalancing():
 
     # Commands
     st.markdown("---")
-    st.subheader("💻 Run Rebalancing Analysis")
+    st.subheader("Run Rebalancing Analysis")
 
     st.code("""
 # Find optimal rebalancing period
@@ -1588,7 +1585,7 @@ python3 portfolio_rebalancer.py \\
 
 def show_forecast_results():
     """Display forecast results from PostgreSQL"""
-    st.title("📈 Forecast Results")
+    st.title("Forecast Results")
     st.markdown("*View predictions generated by the forecasting API*")
 
     # Load predictions from PostgreSQL
@@ -1598,7 +1595,7 @@ def show_forecast_results():
         dm.close()
 
         if len(predictions_df) == 0:
-            st.warning("⚠️ No forecast results available. Predictions generate daily at 4:30 PM EST.")
+            st.warning("No forecast results available. Predictions generate daily at 4:30 PM EST.")
             return
 
         # Map database columns to display format
@@ -1614,11 +1611,11 @@ def show_forecast_results():
         df['Confidence'] = df['confidence']
 
     except Exception as e:
-        st.error(f"❌ Error loading predictions from database: {e}")
+        st.error(f"Error loading predictions from database: {e}")
         return
 
     # Signal distribution
-    st.subheader("📊 Signal Distribution")
+    st.subheader("Signal Distribution")
 
     if 'Prediction' in df.columns:
         signal_counts = df['Prediction'].value_counts().sort_index()
@@ -1650,11 +1647,11 @@ def show_forecast_results():
 
     # Recent predictions
     st.markdown("---")
-    st.subheader("📅 Recent Forecasts (Last 20)")
+    st.subheader("Recent Forecasts (Last 20)")
 
     recent = df.tail(20).copy()
     if 'Prediction' in recent.columns:
-        recent['Signal'] = recent['Prediction'].map({0: '🔴 CRASH', 1: '🟡 NORMAL', 2: '🟢 SPIKE'})
+        recent['Signal'] = recent['Prediction'].map({0: 'CRASH', 1: 'NORMAL', 2: 'SPIKE'})
 
     display_cols = ['Date', 'Signal', 'Proba', 'Confidence']
     available_cols = [col for col in display_cols if col in recent.columns]
@@ -1665,7 +1662,7 @@ def show_forecast_results():
 
 def show_automation():
     """Automation and pipeline execution"""
-    st.title("🚀 Automation & Pipeline")
+    st.title("Automation & Pipeline")
     st.markdown("*Automate data downloads, training, and forecasting*")
 
     st.markdown("""
@@ -1682,7 +1679,7 @@ def show_automation():
     """)
 
     # Full pipeline command
-    st.subheader("🚀 Run Complete Pipeline")
+    st.subheader("Run Complete Pipeline")
 
     st.code("""
 python3 main.py
@@ -1692,9 +1689,9 @@ python3 main.py
     st.markdown("---")
 
     # Individual commands
-    st.subheader("🔧 Individual Commands")
+    st.subheader("Individual Commands")
 
-    tab1, tab2, tab3, tab4 = st.tabs(["📥 Download Data", "🤖 Train Models", "📈 Generate Forecasts", "📊 Validate"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Download Data", "Train Models", "Generate Forecasts", "Validate"])
 
     with tab1:
         st.markdown("**Download Commands:**")
@@ -1757,7 +1754,7 @@ python3 backtest.py
 
 def show_custom_imports():
     """Custom data import interface"""
-    st.title("📁 Custom Data Imports")
+    st.title("Custom Data Imports")
     st.markdown("*Import your own asset data for forecasting*")
 
     st.markdown("""
@@ -1783,14 +1780,14 @@ def show_custom_imports():
             else:
                 df = pd.read_excel(uploaded_file)
 
-            st.subheader("📊 Data Preview")
+            st.subheader("Data Preview")
             st.dataframe(df.head(10), use_container_width=True)
 
             st.write(f"**Rows:** {len(df):,}")
             st.write(f"**Columns:** {list(df.columns)}")
 
             # Import settings
-            st.subheader("⚙️ Import Settings")
+            st.subheader("Import Settings")
 
             col1, col2 = st.columns(2)
 
@@ -1800,7 +1797,7 @@ def show_custom_imports():
             with col2:
                 asset_type = st.selectbox("Asset Type", ["Stock", "ETF", "Crypto", "Other"])
 
-            if st.button("✅ Import Data", type="primary"):
+            if st.button("Import Data", type="primary"):
                 # Get current user (create demo user if not exists)
                 current_user_id = AuthManager.get_session_user()
 
@@ -1813,9 +1810,9 @@ def show_custom_imports():
                 )
 
                 if success:
-                    st.success(f"✅ Successfully imported {ticker} ({result} records)")
-                    st.info("💾 Saved to PostgreSQL - persists across restarts")
-                    st.info(f"👤 User-specific asset (only visible to you)")
+                    st.success(f"Successfully imported {ticker} ({result} records)")
+                    st.info("Saved to PostgreSQL - persists across restarts")
+                    st.info(f"User-specific asset (only visible to you)")
                     st.markdown("**Next Steps:**")
                     st.markdown(f"""
 - Navigate to **Market Forecast** to generate predictions for `{ticker}`
@@ -1823,15 +1820,15 @@ def show_custom_imports():
 - Data will persist even if the server restarts
                     """)
                 else:
-                    st.error(f"❌ Import failed: {result}")
+                    st.error(f"Import failed: {result}")
                     st.info("Check that your CSV has 'Date' and 'Close' columns")
 
         except Exception as e:
-            st.error(f"❌ Error reading file: {e}")
+            st.error(f"Error reading file: {e}")
 
     # CLI import
     st.markdown("---")
-    st.subheader("💻 Command Line Import")
+    st.subheader("Command Line Import")
 
     st.code("""
 # Import with validation
