@@ -1227,11 +1227,40 @@ def show_backtest_results():
             )
 
         with q_col2:
-            qc1, qc2 = st.columns(2)
-            with qc1:
-                quick_start = st.date_input("Start", value=pd.to_datetime("2023-01-01"), key="quick_start")
-            with qc2:
-                quick_end = st.date_input("End", value=pd.to_datetime("today"), key="quick_end")
+            # Quick period presets
+            st.markdown("**Time Period**")
+            period_preset = st.selectbox(
+                "Preset",
+                ["Custom", "1 Month", "3 Months", "6 Months", "YTD", "1 Year", "2 Years", "3 Years", "5 Years", "10 Years", "Max"],
+                key="quick_period_preset",
+                help="Quick select a time period or choose Custom for manual dates"
+            )
+
+            # Calculate dates based on preset
+            today = pd.to_datetime("today")
+            preset_dates = {
+                "1 Month": today - pd.DateOffset(months=1),
+                "3 Months": today - pd.DateOffset(months=3),
+                "6 Months": today - pd.DateOffset(months=6),
+                "YTD": pd.to_datetime(f"{today.year}-01-01"),
+                "1 Year": today - pd.DateOffset(years=1),
+                "2 Years": today - pd.DateOffset(years=2),
+                "3 Years": today - pd.DateOffset(years=3),
+                "5 Years": today - pd.DateOffset(years=5),
+                "10 Years": today - pd.DateOffset(years=10),
+                "Max": pd.to_datetime("2000-01-01"),
+            }
+
+            if period_preset == "Custom":
+                qc1, qc2 = st.columns(2)
+                with qc1:
+                    quick_start = st.date_input("Start", value=pd.to_datetime("2023-01-01"), key="quick_start")
+                with qc2:
+                    quick_end = st.date_input("End", value=today, key="quick_end")
+            else:
+                quick_start = preset_dates.get(period_preset, today - pd.DateOffset(years=1))
+                quick_end = today
+                st.caption(f"Period: {quick_start.strftime('%b %d, %Y')} to {quick_end.strftime('%b %d, %Y')}")
 
             quick_strategy = st.selectbox(
                 "Strategy",
@@ -1266,11 +1295,38 @@ def show_backtest_results():
 
         with adv_col2:
             st.markdown("**Timing & Rebalancing**")
-            ac1, ac2 = st.columns(2)
-            with ac1:
-                adv_start = st.date_input("Start", value=pd.to_datetime("2022-01-01"), key="adv_start")
-            with ac2:
-                adv_end = st.date_input("End", value=pd.to_datetime("today"), key="adv_end")
+
+            # Period presets for advanced backtest
+            adv_period = st.selectbox(
+                "Time Period",
+                ["Custom", "1 Month", "3 Months", "6 Months", "YTD", "1 Year", "2 Years", "3 Years", "5 Years", "10 Years", "Max"],
+                index=4,  # Default 1 Year
+                key="adv_period_preset"
+            )
+
+            today = pd.to_datetime("today")
+            adv_preset_dates = {
+                "1 Month": today - pd.DateOffset(months=1),
+                "3 Months": today - pd.DateOffset(months=3),
+                "6 Months": today - pd.DateOffset(months=6),
+                "YTD": pd.to_datetime(f"{today.year}-01-01"),
+                "1 Year": today - pd.DateOffset(years=1),
+                "2 Years": today - pd.DateOffset(years=2),
+                "3 Years": today - pd.DateOffset(years=3),
+                "5 Years": today - pd.DateOffset(years=5),
+                "10 Years": today - pd.DateOffset(years=10),
+                "Max": pd.to_datetime("2000-01-01"),
+            }
+
+            if adv_period == "Custom":
+                ac1, ac2 = st.columns(2)
+                with ac1:
+                    adv_start = st.date_input("Start", value=pd.to_datetime("2022-01-01"), key="adv_start")
+                with ac2:
+                    adv_end = st.date_input("End", value=today, key="adv_end")
+            else:
+                adv_start = adv_preset_dates.get(adv_period, today - pd.DateOffset(years=1))
+                adv_end = today
 
             rebalance_freq = st.selectbox(
                 "Rebalance Frequency",
@@ -1309,20 +1365,50 @@ def show_backtest_results():
 
     with bt_tab3:
         st.markdown("#### Strategy Comparison")
-        st.markdown("Compare multiple strategies side-by-side")
+        st.markdown("Compare multiple strategies side-by-side across different time horizons")
 
-        comp_assets = st.multiselect(
-            "Assets for Comparison",
-            available_assets,
-            default=["SPY"] if "SPY" in available_assets else available_assets[:1],
-            key="comp_assets"
-        )
+        comp_col1, comp_col2 = st.columns(2)
 
-        cc1, cc2 = st.columns(2)
-        with cc1:
-            comp_start = st.date_input("Start", value=pd.to_datetime("2023-01-01"), key="comp_start")
-        with cc2:
-            comp_end = st.date_input("End", value=pd.to_datetime("today"), key="comp_end")
+        with comp_col1:
+            comp_assets = st.multiselect(
+                "Assets for Comparison",
+                available_assets,
+                default=["SPY"] if "SPY" in available_assets else available_assets[:1],
+                key="comp_assets"
+            )
+
+        with comp_col2:
+            comp_period = st.selectbox(
+                "Time Period",
+                ["1 Month", "3 Months", "6 Months", "YTD", "1 Year", "2 Years", "3 Years", "5 Years", "10 Years", "Max", "Custom"],
+                index=4,  # Default 1 Year
+                key="comp_period"
+            )
+
+        today = pd.to_datetime("today")
+        comp_preset_dates = {
+            "1 Month": today - pd.DateOffset(months=1),
+            "3 Months": today - pd.DateOffset(months=3),
+            "6 Months": today - pd.DateOffset(months=6),
+            "YTD": pd.to_datetime(f"{today.year}-01-01"),
+            "1 Year": today - pd.DateOffset(years=1),
+            "2 Years": today - pd.DateOffset(years=2),
+            "3 Years": today - pd.DateOffset(years=3),
+            "5 Years": today - pd.DateOffset(years=5),
+            "10 Years": today - pd.DateOffset(years=10),
+            "Max": pd.to_datetime("2000-01-01"),
+        }
+
+        if comp_period == "Custom":
+            cc1, cc2 = st.columns(2)
+            with cc1:
+                comp_start = st.date_input("Start", value=pd.to_datetime("2023-01-01"), key="comp_start")
+            with cc2:
+                comp_end = st.date_input("End", value=today, key="comp_end")
+        else:
+            comp_start = comp_preset_dates.get(comp_period, today - pd.DateOffset(years=1))
+            comp_end = today
+            st.caption(f"Comparing: {comp_start.strftime('%b %d, %Y')} to {comp_end.strftime('%b %d, %Y')}")
 
         strategies_to_compare = st.multiselect(
             "Strategies to Compare",
@@ -2549,7 +2635,12 @@ def show_valuation_detector():
     with col_select:
         selected_asset = st.selectbox("Select Asset", downloaded_assets)
     with col_period:
-        analysis_period = st.selectbox("Analysis Period", ["1 Year", "6 Months", "3 Months"], index=0)
+        analysis_period = st.selectbox(
+            "Analysis Period",
+            ["1 Week", "2 Weeks", "1 Month", "3 Months", "6 Months", "1 Year", "2 Years", "5 Years", "Max"],
+            index=5,  # Default to 1 Year
+            help="Time period for valuation analysis"
+        )
 
     df = load_asset_data(selected_asset)
 
@@ -2557,8 +2648,11 @@ def show_valuation_detector():
         st.warning(f"Insufficient data for {selected_asset}")
         return
 
-    # Set period based on selection
-    period_days = {"1 Year": 252, "6 Months": 126, "3 Months": 63}
+    # Set period based on selection (trading days)
+    period_days = {
+        "1 Week": 5, "2 Weeks": 10, "1 Month": 21, "3 Months": 63,
+        "6 Months": 126, "1 Year": 252, "2 Years": 504, "5 Years": 1260, "Max": len(df)
+    }
     days = period_days.get(analysis_period, 252)
     recent = df.tail(max(days, 252))  # Need at least 252 for some calcs
     analysis_window = df.tail(days)
@@ -3678,11 +3772,58 @@ def show_forecast_results():
     st.title("Forecast Results")
     st.markdown("*AI-powered market predictions from ensemble models*")
 
+    # Time horizon selector at top
+    st.markdown("---")
+    horizon_col1, horizon_col2, horizon_col3 = st.columns([2, 2, 3])
+
+    with horizon_col1:
+        analysis_horizon = st.selectbox(
+            "Analysis Horizon",
+            ["1 Day", "1 Week", "2 Weeks", "1 Month", "3 Months", "6 Months", "1 Year", "All Time"],
+            index=3,  # Default to 1 Month
+            help="Time period for analysis and historical data"
+        )
+
+    with horizon_col2:
+        forecast_horizon = st.selectbox(
+            "Forecast Horizon",
+            ["Next Day (1d)", "Next Week (5d)", "Next Month (21d)", "Next Quarter (63d)"],
+            index=0,
+            help="Forward-looking prediction timeframe"
+        )
+
+    # Convert analysis horizon to days
+    horizon_days_map = {
+        "1 Day": 1, "1 Week": 7, "2 Weeks": 14, "1 Month": 30,
+        "3 Months": 90, "6 Months": 180, "1 Year": 365, "All Time": 3650
+    }
+    analysis_days = horizon_days_map.get(analysis_horizon, 30)
+
+    # Display forecast horizon info
+    forecast_info = {
+        "Next Day (1d)": ("1 trading day", "Day trading, overnight holds"),
+        "Next Week (5d)": ("5 trading days", "Swing trading, weekly positions"),
+        "Next Month (21d)": ("21 trading days", "Position trading, monthly rebalancing"),
+        "Next Quarter (63d)": ("63 trading days", "Long-term investing, quarterly review"),
+    }
+    fh_days, fh_use = forecast_info.get(forecast_horizon, ("1 day", ""))
+
+    with horizon_col3:
+        st.markdown(f"""
+        <div style='background: #1e3a5f; padding: 0.8rem; border-radius: 8px; margin-top: 0.5rem;'>
+            <span style='color: #94a3b8; font-size: 0.85rem;'>Showing </span>
+            <span style='color: #60a5fa; font-weight: bold;'>{analysis_horizon}</span>
+            <span style='color: #94a3b8; font-size: 0.85rem;'> of data | Forecasting </span>
+            <span style='color: #10b981; font-weight: bold;'>{fh_days}</span>
+            <span style='color: #94a3b8; font-size: 0.85rem;'> ahead</span>
+        </div>
+        """, unsafe_allow_html=True)
+
     # Load predictions from PostgreSQL
     try:
         dm = get_data_manager()
         latest_df = dm.get_latest_predictions(limit=1000)
-        history_df = dm.get_all_predictions(days=90, limit=5000)
+        history_df = dm.get_all_predictions(days=analysis_days, limit=5000)
         dm.close()
 
         if len(latest_df) == 0 and len(history_df) == 0:
