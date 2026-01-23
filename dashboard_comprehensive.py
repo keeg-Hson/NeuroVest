@@ -407,7 +407,7 @@ def show_overview():
             st.image(str(logo_path), width=250)
 
     # Clean header
-    st.markdown("# NeuroVest Forecasting API")
+    st.markdown("# 🧠 NeuroVest Forecasting API")
     st.markdown("### AI-Powered Market Predictions & Economic Analysis")
     st.markdown("---")
 
@@ -856,7 +856,7 @@ curl "http://localhost:8000/assets?asset_type=crypto"
 
 def show_asset_manager():
     """Asset download manager"""
-    st.title("Asset Manager")
+    st.title("📁 Asset Manager")
     st.markdown("*Download and manage data for all 41 supported assets*")
 
     # Asset category tabs
@@ -1007,7 +1007,7 @@ def show_asset_manager():
 
 def show_recession_indicator():
     """Recession probability analysis"""
-    st.title("Recession Probability Indicator")
+    st.title("📉 Recession Probability Indicator")
     st.markdown("*Multi-factor recession risk analysis*")
 
     st.info("Analyzes yield curves, market stress, and technical signals to assess recession risk")
@@ -1189,20 +1189,20 @@ def show_recession_indicator():
 
 
 def show_valuation_detector():
-    """Asset valuation analysis"""
-    st.title("Valuation Detector")
-    st.markdown("*Comprehensive asset valuation analysis using multiple technical indicators*")
+    """Asset valuation analysis with visual gauges and gradient indicators"""
+    st.title("📊 Valuation Detector")
+    st.markdown("*Comprehensive asset valuation analysis using technical indicators and statistical measures*")
 
     # Evaluation timestamp
     eval_time = datetime.now().strftime("%B %d, %Y at %I:%M %p")
-    st.caption(f"Analysis Date: {eval_time}")
+    st.caption(f"🕐 Analysis generated: {eval_time}")
 
     # Asset selector
     all_assets = list(STOCK_ETFS.keys()) + list(PRECIOUS_METALS.keys()) + list(CRYPTO_ASSETS.keys())
     downloaded_assets = [a for a in all_assets if check_asset_status(a) == "downloaded"]
 
     if not downloaded_assets:
-        st.warning("No assets downloaded. Visit Asset Manager to download data.")
+        st.warning("⚠️ No assets downloaded. Visit Asset Manager to download data.")
         return
 
     col_select, col_period = st.columns([2, 1])
@@ -1214,7 +1214,7 @@ def show_valuation_detector():
     df = load_asset_data(selected_asset)
 
     if df is None or len(df) < 100:
-        st.warning(f"Insufficient data for {selected_asset}")
+        st.warning(f"⚠️ Insufficient data for {selected_asset}")
         return
 
     # Set period based on selection
@@ -1226,6 +1226,66 @@ def show_valuation_detector():
 
     # Get latest data date
     latest_data_date = latest['Date'].strftime("%B %d, %Y") if 'Date' in latest else "Unknown"
+
+    # ==================== HELPER FUNCTIONS FOR VISUALS ====================
+
+    def create_gauge_chart(value, min_val, max_val, title, thresholds=None, colors=None):
+        """Create a visual gauge chart for metrics"""
+        if colors is None:
+            colors = ["#22c55e", "#eab308", "#ef4444"]  # green, yellow, red
+
+        steps = []
+        if thresholds:
+            steps = [
+                {'range': [min_val, thresholds[0]], 'color': colors[0]},
+                {'range': [thresholds[0], thresholds[1]], 'color': colors[1]},
+                {'range': [thresholds[1], max_val], 'color': colors[2]},
+            ]
+        else:
+            steps = [{'range': [min_val, max_val], 'color': "rgba(200,200,200,0.3)"}]
+
+        fig = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=value,
+            number={'font': {'size': 24}},
+            gauge={
+                'axis': {'range': [min_val, max_val], 'tickwidth': 1},
+                'bar': {'color': "rgba(50,50,50,0.8)", 'thickness': 0.2},
+                'bgcolor': "rgba(0,0,0,0)",
+                'borderwidth': 0,
+                'steps': steps,
+                'threshold': {
+                    'line': {'color': "black", 'width': 3},
+                    'thickness': 0.8,
+                    'value': value
+                }
+            },
+            title={'text': title, 'font': {'size': 12}}
+        ))
+        fig.update_layout(
+            height=160,
+            margin=dict(l=15, r=15, t=40, b=5),
+            paper_bgcolor="rgba(0,0,0,0)",
+        )
+        return fig
+
+    def get_gradient_color(value, min_val, max_val, reverse=False):
+        """Get a gradient color based on value position"""
+        normalized = (value - min_val) / (max_val - min_val) if max_val > min_val else 0.5
+        normalized = max(0, min(1, normalized))
+        if reverse:
+            normalized = 1 - normalized
+
+        if normalized < 0.25:
+            return "#22c55e"  # green
+        elif normalized < 0.45:
+            return "#86efac"  # light green
+        elif normalized < 0.55:
+            return "#fef08a"  # yellow
+        elif normalized < 0.75:
+            return "#fbbf24"  # orange
+        else:
+            return "#ef4444"  # red
 
     # ==================== CALCULATE ALL METRICS ====================
 
@@ -1424,499 +1484,638 @@ def show_valuation_detector():
     bearish_count = sum(1 for s in signals if s[3] == "bearish")
     neutral_count = sum(1 for s in signals if s[3] == "neutral")
 
-    # Classification
-    if valuation_score > 0.4:
+    # Gradient Classification (more nuanced levels)
+    if valuation_score > 0.6:
+        classification = "STRONGLY OVERVALUED"
+        classification_emoji = "🔴"
+        classification_color = "error"
+    elif valuation_score > 0.4:
         classification = "OVERVALUED"
+        classification_emoji = "🟠"
         classification_color = "error"
     elif valuation_score > 0.2:
         classification = "SLIGHTLY OVERVALUED"
+        classification_emoji = "🟡"
         classification_color = "warning"
+    elif valuation_score < -0.6:
+        classification = "STRONGLY UNDERVALUED"
+        classification_emoji = "🟢"
+        classification_color = "success"
     elif valuation_score < -0.4:
         classification = "UNDERVALUED"
+        classification_emoji = "🟢"
         classification_color = "success"
     elif valuation_score < -0.2:
         classification = "SLIGHTLY UNDERVALUED"
+        classification_emoji = "🔵"
         classification_color = "info"
     else:
         classification = "FAIRLY VALUED"
+        classification_emoji = "⚪"
         classification_color = "info"
 
-    # ==================== DISPLAY ====================
+    # ==================== PRICE HEADER ====================
 
-    # Header with price info
+    # Price change calculation
+    prev_close = recent.iloc[-2]['Close'] if len(recent) > 1 else latest['Close']
+    price_change = latest['Close'] - prev_close
+    price_change_pct = (price_change / prev_close) * 100
+
     st.markdown("---")
-    header_cols = st.columns([2, 1, 1, 1])
-    with header_cols[0]:
-        st.markdown(f"### {selected_asset}")
-        st.markdown(f"**${latest['Close']:.2f}** as of {latest_data_date}")
-    with header_cols[1]:
+    price_cols = st.columns([2.5, 1, 1, 1])
+    with price_cols[0]:
+        change_icon = "📈" if price_change >= 0 else "📉"
+        st.markdown(f"### {selected_asset} {change_icon}")
+        change_color = "green" if price_change >= 0 else "red"
+        st.markdown(f"**${latest['Close']:.2f}** <span style='color:{change_color}'>({price_change_pct:+.2f}%)</span>", unsafe_allow_html=True)
+        st.caption(f"Data as of {latest_data_date}")
+    with price_cols[1]:
         st.metric("52W High", f"${high_52w:.2f}")
-    with header_cols[2]:
+    with price_cols[2]:
         st.metric("52W Low", f"${low_52w:.2f}")
-    with header_cols[3]:
-        st.metric("52W Position", f"{range_52w_position:.1f}%")
+    with price_cols[3]:
+        st.metric("52W Position", f"{range_52w_position:.0f}%")
 
-    # Main valuation verdict
+    # ==================== MAIN VALUATION GAUGE ====================
+
     st.markdown("---")
-    verdict_cols = st.columns([2, 1, 1])
+    st.subheader("🎯 Overall Valuation Assessment")
 
-    with verdict_cols[0]:
-        if classification_color == "error":
-            st.error(f"## {classification}")
-        elif classification_color == "warning":
-            st.warning(f"## {classification}")
-        elif classification_color == "success":
-            st.success(f"## {classification}")
+    gauge_col, verdict_col = st.columns([1.2, 1])
+
+    with gauge_col:
+        # Main valuation gauge with gradient colors
+        main_gauge = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=valuation_score,
+            number={'font': {'size': 36}, 'valueformat': '+.2f'},
+            gauge={
+                'axis': {'range': [-1, 1], 'tickvals': [-1, -0.5, 0, 0.5, 1],
+                         'ticktext': ['Strong Buy', 'Buy', 'Hold', 'Sell', 'Strong Sell']},
+                'bar': {'color': "rgba(0,0,0,0)"},
+                'steps': [
+                    {'range': [-1, -0.6], 'color': "#166534"},
+                    {'range': [-0.6, -0.4], 'color': "#22c55e"},
+                    {'range': [-0.4, -0.2], 'color': "#86efac"},
+                    {'range': [-0.2, 0.2], 'color': "#fef08a"},
+                    {'range': [0.2, 0.4], 'color': "#fbbf24"},
+                    {'range': [0.4, 0.6], 'color': "#f97316"},
+                    {'range': [0.6, 1], 'color': "#dc2626"},
+                ],
+                'threshold': {
+                    'line': {'color': "black", 'width': 4},
+                    'thickness': 0.85,
+                    'value': valuation_score
+                }
+            },
+            title={'text': "Valuation Score", 'font': {'size': 14}}
+        ))
+        main_gauge.update_layout(
+            height=250,
+            margin=dict(l=20, r=20, t=50, b=10),
+            paper_bgcolor="rgba(0,0,0,0)",
+        )
+        st.plotly_chart(main_gauge, use_container_width=True)
+
+    with verdict_col:
+        # Classification with emoji
+        st.markdown(f"### {classification_emoji} {classification}")
+
+        # Signal summary
+        st.markdown("**📊 Signal Breakdown:**")
+        sig_cols = st.columns(3)
+        with sig_cols[0]:
+            st.markdown(f"🟢 **{bullish_count}**")
+            st.caption("Bullish")
+        with sig_cols[1]:
+            st.markdown(f"⚪ **{neutral_count}**")
+            st.caption("Neutral")
+        with sig_cols[2]:
+            st.markdown(f"🔴 **{bearish_count}**")
+            st.caption("Bearish")
+
+        st.markdown("---")
+
+        # Recommendation based on gradient score
+        st.markdown("**💡 Recommendation:**")
+        if valuation_score > 0.6:
+            st.error("Strong caution. Consider taking profits.")
+        elif valuation_score > 0.4:
+            st.warning("Asset appears overvalued. Exercise caution.")
+        elif valuation_score > 0.2:
+            st.info("Slightly elevated. Wait for better entry.")
+        elif valuation_score < -0.6:
+            st.success("Strong opportunity. Consider accumulating.")
+        elif valuation_score < -0.4:
+            st.success("Asset appears undervalued.")
+        elif valuation_score < -0.2:
+            st.info("Showing value characteristics.")
         else:
-            st.info(f"## {classification}")
+            st.info("Fair value. Maintain current positions.")
 
-    with verdict_cols[1]:
-        st.metric("Valuation Score", f"{valuation_score:+.2f}", help="Range: -1.0 (undervalued) to +1.0 (overvalued)")
+    # ==================== KEY INDICATORS GAUGES ====================
 
-    with verdict_cols[2]:
-        st.markdown("**Signal Summary**")
-        st.markdown(f"Bullish: {bullish_count} | Bearish: {bearish_count} | Neutral: {neutral_count}")
+    st.markdown("---")
+    st.subheader("⚡ Key Indicators at a Glance")
 
-    # Recommendation
-    if classification in ["OVERVALUED", "SLIGHTLY OVERVALUED"]:
-        st.markdown("**Recommendation:** Consider taking profits or reducing position size. Wait for pullback before adding.")
-    elif classification in ["UNDERVALUED", "SLIGHTLY UNDERVALUED"]:
-        st.markdown("**Recommendation:** Potential accumulation opportunity. Consider building position on further weakness.")
-    else:
-        st.markdown("**Recommendation:** Asset trading near fair value. Hold existing positions, wait for clearer signals.")
+    g1, g2, g3, g4 = st.columns(4)
+
+    with g1:
+        rsi_gauge = create_gauge_chart(latest_rsi, 0, 100, "RSI (14)",
+                                       thresholds=[30, 70],
+                                       colors=["#22c55e", "#fef08a", "#ef4444"])
+        st.plotly_chart(rsi_gauge, use_container_width=True)
+        rsi_label = "🔴 Overbought" if latest_rsi > 70 else "🟢 Oversold" if latest_rsi < 30 else "⚪ Neutral"
+        st.caption(rsi_label)
+
+    with g2:
+        z_clamped = max(-3, min(3, z_score))
+        z_gauge = create_gauge_chart(z_clamped, -3, 3, "Z-Score",
+                                     thresholds=[-1, 1],
+                                     colors=["#22c55e", "#fef08a", "#ef4444"])
+        st.plotly_chart(z_gauge, use_container_width=True)
+        z_label = "🔴 Expensive" if z_score > 2 else "🟢 Cheap" if z_score < -2 else "⚪ Normal"
+        st.caption(z_label)
+
+    with g3:
+        bb_gauge = create_gauge_chart(bb_position, 0, 100, "Bollinger %",
+                                      thresholds=[20, 80],
+                                      colors=["#22c55e", "#fef08a", "#ef4444"])
+        st.plotly_chart(bb_gauge, use_container_width=True)
+        bb_label = "🔴 Upper" if bb_position > 80 else "🟢 Lower" if bb_position < 20 else "⚪ Middle"
+        st.caption(bb_label)
+
+    with g4:
+        stoch_gauge = create_gauge_chart(latest_stoch_k, 0, 100, "Stochastic %K",
+                                         thresholds=[20, 80],
+                                         colors=["#22c55e", "#fef08a", "#ef4444"])
+        st.plotly_chart(stoch_gauge, use_container_width=True)
+        stoch_label = "🔴 Overbought" if latest_stoch_k > 80 else "🟢 Oversold" if latest_stoch_k < 20 else "⚪ Neutral"
+        st.caption(stoch_label)
+
+    # ==================== PRICE CHART ====================
+
+    st.markdown("---")
+    st.subheader("📈 Price Action & Trend")
+
+    # Combined price chart with BB and RSI
+    price_fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                               vertical_spacing=0.08, row_heights=[0.7, 0.3])
+
+    # Price with fill
+    price_fig.add_trace(go.Scatter(
+        x=analysis_window['Date'], y=analysis_window['Close'],
+        mode='lines', name='Price',
+        line=dict(color='#1f77b4', width=2),
+        fill='tozeroy', fillcolor='rgba(31,119,180,0.1)'
+    ), row=1, col=1)
+
+    # Bollinger Bands
+    price_fig.add_trace(go.Scatter(
+        x=analysis_window['Date'], y=upper_band.tail(days),
+        mode='lines', name='Upper BB',
+        line=dict(color='rgba(255,0,0,0.5)', width=1, dash='dot')
+    ), row=1, col=1)
+
+    price_fig.add_trace(go.Scatter(
+        x=analysis_window['Date'], y=lower_band.tail(days),
+        mode='lines', name='Lower BB',
+        line=dict(color='rgba(0,200,0,0.5)', width=1, dash='dot'),
+        fill='tonexty', fillcolor='rgba(128,128,128,0.1)'
+    ), row=1, col=1)
+
+    # Moving Averages
+    ma_50_series = recent['Close'].rolling(50).mean()
+    ma_200_series = recent['Close'].rolling(200).mean()
+
+    price_fig.add_trace(go.Scatter(
+        x=analysis_window['Date'], y=ma_50_series.tail(days),
+        mode='lines', name='50 MA',
+        line=dict(color='orange', width=1.5)
+    ), row=1, col=1)
+
+    price_fig.add_trace(go.Scatter(
+        x=analysis_window['Date'], y=ma_200_series.tail(days),
+        mode='lines', name='200 MA',
+        line=dict(color='purple', width=1.5)
+    ), row=1, col=1)
+
+    # RSI subplot
+    price_fig.add_trace(go.Scatter(
+        x=analysis_window['Date'], y=rsi_series.tail(days),
+        mode='lines', name='RSI',
+        line=dict(color='#9467bd', width=1.5)
+    ), row=2, col=1)
+
+    price_fig.add_hline(y=70, line_dash="dash", line_color="red", line_width=1, row=2, col=1)
+    price_fig.add_hline(y=30, line_dash="dash", line_color="green", line_width=1, row=2, col=1)
+    price_fig.add_hrect(y0=30, y1=70, fillcolor="rgba(128,128,128,0.1)", line_width=0, row=2, col=1)
+
+    price_fig.update_layout(
+        height=480,
+        showlegend=True,
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+        margin=dict(l=50, r=20, t=20, b=40),
+        hovermode='x unified'
+    )
+    price_fig.update_yaxes(title_text="Price ($)", row=1, col=1)
+    price_fig.update_yaxes(title_text="RSI", range=[0, 100], row=2, col=1)
+
+    st.plotly_chart(price_fig, use_container_width=True)
 
     # ==================== DETAILED METRICS TABS ====================
 
     st.markdown("---")
-    tab1, tab2, tab3, tab4 = st.tabs(["Momentum Indicators", "Trend Indicators", "Volatility Metrics", "Charts"])
+    tab1, tab2, tab3, tab4 = st.tabs(["🎯 Momentum", "📊 Trend Analysis", "📉 Volatility", "📋 Signal Summary"])
 
     with tab1:
-        st.subheader("Momentum Indicators")
-        st.markdown("*Measure the speed and magnitude of price movements*")
+        st.markdown("### Momentum Indicators")
+        st.caption("Measuring speed and strength of price movements")
 
-        # RSI Card
-        st.markdown("#### RSI (Relative Strength Index)")
-        rsi_cols = st.columns([1, 2])
-        with rsi_cols[0]:
-            st.metric("RSI (14)", f"{latest_rsi:.1f}")
-            rsi_signal = [s for s in signals if s[0] == "RSI"][0]
-            if rsi_signal[3] == "bullish":
-                st.success(f"Signal: {rsi_signal[1]}")
-            elif rsi_signal[3] == "bearish":
-                st.error(f"Signal: {rsi_signal[1]}")
-            else:
-                st.info(f"Signal: {rsi_signal[1]}")
-        with rsi_cols[1]:
-            st.markdown("""
-            **Interpretation:**
-            - RSI > 70: Overbought - momentum may be exhausted, potential reversal
-            - RSI < 30: Oversold - selling may be exhausted, potential bounce
-            - RSI 30-70: Neutral zone - trend following appropriate
+        # RSI Section with chart
+        st.markdown("#### 📊 RSI (Relative Strength Index)")
+        rsi_chart_col, rsi_info_col = st.columns([2, 1])
 
-            **Current Reading:** """ + (
-                "Strong upward momentum suggests caution for new longs" if latest_rsi > 70 else
-                "Depressed momentum may present buying opportunity" if latest_rsi < 30 else
-                "Momentum is balanced, follow the prevailing trend"
+        with rsi_chart_col:
+            rsi_fig = go.Figure()
+            rsi_fig.add_trace(go.Scatter(
+                x=analysis_window['Date'], y=rsi_series.tail(days),
+                mode='lines', fill='tozeroy',
+                line=dict(color='purple', width=2),
+                fillcolor='rgba(128,0,128,0.15)'
             ))
+            rsi_fig.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Overbought")
+            rsi_fig.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold")
+            rsi_fig.add_hrect(y0=30, y1=70, fillcolor="rgba(200,200,200,0.1)", line_width=0)
+            rsi_fig.update_layout(height=200, margin=dict(l=40, r=20, t=10, b=30),
+                                  yaxis_range=[0, 100], showlegend=False)
+            st.plotly_chart(rsi_fig, use_container_width=True)
+
+        with rsi_info_col:
+            st.metric("Current RSI", f"{latest_rsi:.1f}", delta=f"{latest_rsi - 50:.1f} from 50")
+            if latest_rsi > 80:
+                st.error("🔴 Extremely Overbought")
+            elif latest_rsi > 70:
+                st.warning("🟠 Overbought")
+            elif latest_rsi > 60:
+                st.info("🟡 Elevated")
+            elif latest_rsi < 20:
+                st.success("🟢 Extremely Oversold")
+            elif latest_rsi < 30:
+                st.success("🟢 Oversold")
+            elif latest_rsi < 40:
+                st.info("🔵 Depressed")
+            else:
+                st.info("⚪ Neutral")
 
         st.markdown("---")
 
-        # Stochastic Card
-        st.markdown("#### Stochastic Oscillator")
-        stoch_cols = st.columns([1, 2])
+        # Stochastic Section with chart
+        st.markdown("#### 📊 Stochastic Oscillator")
+        stoch_fig = go.Figure()
+        stoch_fig.add_trace(go.Scatter(x=analysis_window['Date'], y=stoch_k.tail(days),
+                                       mode='lines', name='%K', line=dict(color='blue', width=2)))
+        stoch_fig.add_trace(go.Scatter(x=analysis_window['Date'], y=stoch_d.tail(days),
+                                       mode='lines', name='%D', line=dict(color='orange', width=1.5)))
+        stoch_fig.add_hline(y=80, line_dash="dash", line_color="red")
+        stoch_fig.add_hline(y=20, line_dash="dash", line_color="green")
+        stoch_fig.add_hrect(y0=20, y1=80, fillcolor="rgba(200,200,200,0.1)", line_width=0)
+        stoch_fig.update_layout(height=180, margin=dict(l=40, r=20, t=10, b=30),
+                                yaxis_range=[0, 100], legend=dict(orientation="h", y=1.1))
+        st.plotly_chart(stoch_fig, use_container_width=True)
+
+        stoch_cols = st.columns(3)
         with stoch_cols[0]:
             st.metric("%K", f"{latest_stoch_k:.1f}")
-            st.metric("%D", f"{latest_stoch_d:.1f}")
-            stoch_signal = [s for s in signals if s[0] == "Stochastic"][0]
-            if stoch_signal[3] == "bullish":
-                st.success(f"Signal: {stoch_signal[1]}")
-            elif stoch_signal[3] == "bearish":
-                st.error(f"Signal: {stoch_signal[1]}")
-            else:
-                st.info(f"Signal: {stoch_signal[1]}")
         with stoch_cols[1]:
-            st.markdown("""
-            **Interpretation:**
-            - Both %K and %D > 80: Overbought territory
-            - Both %K and %D < 20: Oversold territory
-            - %K crossing above %D: Bullish signal
-            - %K crossing below %D: Bearish signal
+            st.metric("%D", f"{latest_stoch_d:.1f}")
+        with stoch_cols[2]:
+            cross = "🟢 Bullish" if latest_stoch_k > latest_stoch_d else "🔴 Bearish"
+            st.metric("Cross", cross)
 
-            **Current Reading:** """ + (
-                "Both lines in overbought zone, watch for bearish crossover" if latest_stoch_k > 80 and latest_stoch_d > 80 else
-                "Both lines in oversold zone, watch for bullish crossover" if latest_stoch_k < 20 and latest_stoch_d < 20 else
-                "Stochastic in neutral territory"
-            ))
+        if latest_stoch_k > 80 and latest_stoch_d > 80:
+            st.error("🔴 Both lines in overbought zone")
+        elif latest_stoch_k < 20 and latest_stoch_d < 20:
+            st.success("🟢 Both lines in oversold zone")
+        else:
+            st.info("⚪ Neutral territory")
 
         st.markdown("---")
 
-        # Williams %R Card
-        st.markdown("#### Williams %R")
-        wr_cols = st.columns([1, 2])
-        with wr_cols[0]:
-            st.metric("Williams %R", f"{latest_williams:.1f}")
-            wr_signal = [s for s in signals if s[0] == "Williams %R"][0]
-            if wr_signal[3] == "bullish":
-                st.success(f"Signal: {wr_signal[1]}")
-            elif wr_signal[3] == "bearish":
-                st.error(f"Signal: {wr_signal[1]}")
+        # CCI and Williams %R side by side
+        st.markdown("#### 📊 Additional Momentum Indicators")
+        cci_col, wr_col = st.columns(2)
+
+        with cci_col:
+            st.markdown("**CCI (20)**")
+            st.metric("Value", f"{latest_cci:.1f}")
+            if latest_cci > 200:
+                st.error("🔴 Extreme Overbought")
+            elif latest_cci > 100:
+                st.warning("🟠 Overbought")
+            elif latest_cci < -200:
+                st.success("🟢 Extreme Oversold")
+            elif latest_cci < -100:
+                st.success("🟢 Oversold")
             else:
-                st.info(f"Signal: {wr_signal[1]}")
-        with wr_cols[1]:
-            st.markdown("""
-            **Interpretation:**
-            - Williams %R > -20: Overbought (near period high)
-            - Williams %R < -80: Oversold (near period low)
-            - Range: -100 to 0
+                st.info("⚪ Normal Range")
 
-            **Current Reading:** """ + (
-                "Price near recent highs, overbought conditions" if latest_williams > -20 else
-                "Price near recent lows, oversold conditions" if latest_williams < -80 else
-                "Price in middle of recent range"
-            ))
-
-        st.markdown("---")
-
-        # CCI Card
-        st.markdown("#### CCI (Commodity Channel Index)")
-        cci_cols = st.columns([1, 2])
-        with cci_cols[0]:
-            st.metric("CCI (20)", f"{latest_cci:.1f}")
-            cci_signal = [s for s in signals if s[0] == "CCI"][0]
-            if cci_signal[3] == "bullish":
-                st.success(f"Signal: {cci_signal[1]}")
-            elif cci_signal[3] == "bearish":
-                st.error(f"Signal: {cci_signal[1]}")
+        with wr_col:
+            st.markdown("**Williams %R**")
+            st.metric("Value", f"{latest_williams:.1f}")
+            if latest_williams > -20:
+                st.error("🔴 Overbought")
+            elif latest_williams < -80:
+                st.success("🟢 Oversold")
             else:
-                st.info(f"Signal: {cci_signal[1]}")
-        with cci_cols[1]:
-            st.markdown("""
-            **Interpretation:**
-            - CCI > +200: Extremely overbought
-            - CCI > +100: Overbought, strong uptrend
-            - CCI < -100: Oversold, strong downtrend
-            - CCI < -200: Extremely oversold
+                st.info("⚪ Normal Range")
 
-            **Current Reading:** """ + (
-                "Extreme overbought - high probability of pullback" if latest_cci > 200 else
-                "Overbought - uptrend may be overextended" if latest_cci > 100 else
-                "Extreme oversold - high probability of bounce" if latest_cci < -200 else
-                "Oversold - downtrend may be overextended" if latest_cci < -100 else
-                "CCI in normal range"
-            ))
-
-    with tab2:
-        st.subheader("Trend Indicators")
-        st.markdown("*Identify price direction and trend strength*")
-
-        # Z-Score Card
-        st.markdown("#### Z-Score (Statistical Deviation)")
-        zscore_cols = st.columns([1, 2])
-        with zscore_cols[0]:
-            st.metric("Z-Score", f"{z_score:+.2f}")
-            zscore_signal = [s for s in signals if s[0] == "Z-Score"][0]
-            if zscore_signal[3] == "bullish":
-                st.success(f"Signal: {zscore_signal[1]}")
-            elif zscore_signal[3] == "bearish":
-                st.error(f"Signal: {zscore_signal[1]}")
-            else:
-                st.info(f"Signal: {zscore_signal[1]}")
-        with zscore_cols[1]:
-            st.markdown(f"""
-            **Interpretation:**
-            - Z > +2: Price 2+ std devs above mean (top ~2.5%)
-            - Z > +1: Price above average
-            - Z < -1: Price below average
-            - Z < -2: Price 2+ std devs below mean (bottom ~2.5%)
-
-            **Statistics (252-day):**
-            - Mean Price: ${mean_price:.2f}
-            - Std Dev: ${std_price:.2f}
-            - Current: ${latest['Close']:.2f}
-            """)
-
-        st.markdown("---")
-
-        # Moving Average Card
-        st.markdown("#### Moving Average Analysis")
-        ma_cols = st.columns([1, 2])
-        with ma_cols[0]:
-            st.metric("50-MA", f"${ma_50:.2f}")
-            st.metric("200-MA", f"${ma_200:.2f}")
-            st.metric("50-MA Deviation", f"{ma_50_deviation:+.1f}%")
-            st.metric("200-MA Deviation", f"{ma_200_deviation:+.1f}%")
-        with ma_cols[1]:
-            ma_cross = "Golden Cross (Bullish)" if ma_50 > ma_200 else "Death Cross (Bearish)"
-            st.markdown(f"""
-            **Interpretation:**
-            - Price > 200-MA: Long-term uptrend
-            - Price < 200-MA: Long-term downtrend
-            - 50-MA > 200-MA: Golden Cross (bullish)
-            - 50-MA < 200-MA: Death Cross (bearish)
-
-            **Current Status:**
-            - MA Cross: {ma_cross}
-            - Price is {ma_200_deviation:+.1f}% from 200-MA
-            - {"Above both MAs - bullish structure" if latest['Close'] > ma_50 and latest['Close'] > ma_200 else "Below both MAs - bearish structure" if latest['Close'] < ma_50 and latest['Close'] < ma_200 else "Between MAs - mixed signals"}
-            """)
-
-        st.markdown("---")
-
-        # MACD Card
-        st.markdown("#### MACD (Moving Average Convergence Divergence)")
-        macd_cols = st.columns([1, 2])
-        with macd_cols[0]:
-            st.metric("MACD Line", f"{latest_macd:.4f}")
-            st.metric("Signal Line", f"{latest_signal:.4f}")
-            st.metric("Histogram", f"{latest_histogram:+.4f}")
-            macd_signal = [s for s in signals if s[0] == "MACD"][0]
-            if macd_signal[3] == "bullish":
-                st.success(f"Signal: {macd_signal[1]}")
-            elif macd_signal[3] == "bearish":
-                st.error(f"Signal: {macd_signal[1]}")
-            else:
-                st.info(f"Signal: {macd_signal[1]}")
-        with macd_cols[1]:
-            st.markdown("""
-            **Interpretation:**
-            - MACD > Signal: Bullish momentum
-            - MACD < Signal: Bearish momentum
-            - Histogram expanding: Momentum increasing
-            - Histogram contracting: Momentum decreasing
-
-            **Current Reading:** """ + (
-                "MACD above signal line with positive histogram - bullish momentum" if latest_macd > latest_signal and latest_histogram > 0 else
-                "MACD below signal line with negative histogram - bearish momentum" if latest_macd < latest_signal and latest_histogram < 0 else
-                "MACD near signal line - momentum neutral/transitioning"
-            ))
-
-        st.markdown("---")
-
-        # Rate of Change Card
-        st.markdown("#### Rate of Change (Price Momentum)")
         roc_cols = st.columns(3)
         with roc_cols[0]:
+            roc_color = "green" if roc_10 > 0 else "red"
             st.metric("10-Day ROC", f"{roc_10:+.1f}%")
         with roc_cols[1]:
             st.metric("30-Day ROC", f"{roc_30:+.1f}%")
         with roc_cols[2]:
             st.metric("90-Day ROC", f"{roc_90:+.1f}%")
 
-        st.markdown("""
-        **Interpretation:** ROC measures percentage price change over specified periods.
-        Positive values indicate upward momentum, negative values indicate downward momentum.
-        Compare short vs long-term ROC to identify momentum divergences.
-        """)
+    with tab2:
+        st.markdown("### Trend Analysis")
+        st.caption("Identifying direction and strength of trends")
+
+        # Moving Average Analysis with chart
+        st.markdown("#### 📊 Moving Average Structure")
+
+        ma_fig = go.Figure()
+        ma_fig.add_trace(go.Scatter(x=analysis_window['Date'], y=analysis_window['Close'],
+                                    mode='lines', name='Price', line=dict(color='black', width=2)))
+        ma_fig.add_trace(go.Scatter(x=analysis_window['Date'], y=ma_50_series.tail(days),
+                                    mode='lines', name='50 MA', line=dict(color='blue', width=1.5)))
+        ma_fig.add_trace(go.Scatter(x=analysis_window['Date'], y=ma_200_series.tail(days),
+                                    mode='lines', name='200 MA', line=dict(color='red', width=1.5)))
+        ma_fig.update_layout(height=250, margin=dict(l=40, r=20, t=10, b=30),
+                             legend=dict(orientation="h", y=1.05))
+        st.plotly_chart(ma_fig, use_container_width=True)
+
+        ma_cols = st.columns(4)
+        with ma_cols[0]:
+            st.metric("50-MA", f"${ma_50:.2f}")
+        with ma_cols[1]:
+            st.metric("200-MA", f"${ma_200:.2f}")
+        with ma_cols[2]:
+            st.metric("Price vs 50-MA", f"{ma_50_deviation:+.1f}%")
+        with ma_cols[3]:
+            ma_status = "🟢 Golden Cross" if ma_50 > ma_200 else "🔴 Death Cross"
+            st.metric("Structure", ma_status)
+
+        # Trend interpretation
+        if latest['Close'] > ma_50 > ma_200:
+            st.success("📈 **Strong Uptrend** - Price above both MAs with bullish structure")
+        elif latest['Close'] < ma_50 < ma_200:
+            st.error("📉 **Strong Downtrend** - Price below both MAs with bearish structure")
+        elif latest['Close'] > ma_200:
+            st.info("📊 **Uptrend with Pullback** - Above 200-MA but testing shorter MAs")
+        else:
+            st.warning("📊 **Mixed** - Conflicting trend signals")
+
+        st.markdown("---")
+
+        # MACD Analysis
+        st.markdown("#### 📊 MACD")
+
+        macd_fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1, row_heights=[0.5, 0.5])
+        macd_fig.add_trace(go.Scatter(x=analysis_window['Date'], y=analysis_window['Close'],
+                                      mode='lines', name='Price', line=dict(color='black')), row=1, col=1)
+        macd_fig.add_trace(go.Scatter(x=analysis_window['Date'], y=macd_line.tail(days),
+                                      mode='lines', name='MACD', line=dict(color='blue')), row=2, col=1)
+        macd_fig.add_trace(go.Scatter(x=analysis_window['Date'], y=signal_line.tail(days),
+                                      mode='lines', name='Signal', line=dict(color='orange')), row=2, col=1)
+        hist_colors = ['green' if v >= 0 else 'red' for v in macd_histogram.tail(days)]
+        macd_fig.add_trace(go.Bar(x=analysis_window['Date'], y=macd_histogram.tail(days),
+                                  name='Histogram', marker_color=hist_colors), row=2, col=1)
+        macd_fig.update_layout(height=300, margin=dict(l=40, r=20, t=10, b=30),
+                               legend=dict(orientation="h", y=1.05))
+        st.plotly_chart(macd_fig, use_container_width=True)
+
+        macd_cols = st.columns(3)
+        with macd_cols[0]:
+            st.metric("MACD", f"{latest_macd:.4f}")
+        with macd_cols[1]:
+            st.metric("Signal", f"{latest_signal:.4f}")
+        with macd_cols[2]:
+            hist_icon = "📈" if latest_histogram > 0 else "📉"
+            st.metric("Histogram", f"{hist_icon} {latest_histogram:+.4f}")
+
+        st.markdown("---")
+
+        # Z-Score Analysis with distribution
+        st.markdown("#### 📊 Statistical Valuation (Z-Score)")
+
+        zscore_cols = st.columns([2, 1])
+        with zscore_cols[0]:
+            zscore_fig = go.Figure()
+            zscore_fig.add_trace(go.Histogram(x=recent['Close'], nbinsx=30, name='Distribution',
+                                              marker_color='rgba(100,100,200,0.5)'))
+            zscore_fig.add_vline(x=latest['Close'], line_dash="solid", line_color="red", line_width=3,
+                                 annotation_text=f"Current: ${latest['Close']:.2f}")
+            zscore_fig.add_vline(x=mean_price, line_dash="dash", line_color="blue", line_width=2,
+                                 annotation_text=f"Mean: ${mean_price:.2f}")
+            zscore_fig.update_layout(height=200, margin=dict(l=40, r=20, t=20, b=30),
+                                     showlegend=False, title_text="Price Distribution (252 days)")
+            st.plotly_chart(zscore_fig, use_container_width=True)
+
+        with zscore_cols[1]:
+            st.metric("Z-Score", f"{z_score:+.2f}")
+            st.metric("Mean Price", f"${mean_price:.2f}")
+            st.metric("Std Dev", f"${std_price:.2f}")
+
+            if z_score > 2:
+                st.error("🔴 Top ~2.5% - Expensive")
+            elif z_score < -2:
+                st.success("🟢 Bottom ~2.5% - Cheap")
+            else:
+                st.info("⚪ Within normal range")
+
+        st.markdown("---")
 
     with tab3:
-        st.subheader("Volatility & Range Metrics")
-        st.markdown("*Measure price variability and trading ranges*")
+        st.markdown("### Volatility & Range")
+        st.caption("Measuring price variability and trading ranges")
 
-        # Bollinger Bands Card
-        st.markdown("#### Bollinger Bands")
-        bb_cols = st.columns([1, 2])
+        # Bollinger Bands with chart
+        st.markdown("#### 📊 Bollinger Bands")
+
+        bb_fig = go.Figure()
+        bb_fig.add_trace(go.Scatter(x=analysis_window['Date'], y=upper_band.tail(days),
+                                    mode='lines', name='Upper', line=dict(color='red', width=1), fill=None))
+        bb_fig.add_trace(go.Scatter(x=analysis_window['Date'], y=lower_band.tail(days),
+                                    mode='lines', name='Lower', line=dict(color='green', width=1),
+                                    fill='tonexty', fillcolor='rgba(128,128,128,0.2)'))
+        bb_fig.add_trace(go.Scatter(x=analysis_window['Date'], y=sma_20.tail(days),
+                                    mode='lines', name='Middle', line=dict(color='blue', width=1, dash='dash')))
+        bb_fig.add_trace(go.Scatter(x=analysis_window['Date'], y=analysis_window['Close'],
+                                    mode='lines', name='Price', line=dict(color='black', width=2)))
+        bb_fig.update_layout(height=250, margin=dict(l=40, r=20, t=10, b=30),
+                             legend=dict(orientation="h", y=1.05))
+        st.plotly_chart(bb_fig, use_container_width=True)
+
+        bb_cols = st.columns(4)
+        band_width = ((upper_band.iloc[-1] - lower_band.iloc[-1]) / sma_20.iloc[-1]) * 100
         with bb_cols[0]:
-            st.metric("Upper Band", f"${upper_band.iloc[-1]:.2f}")
-            st.metric("Middle (SMA20)", f"${sma_20.iloc[-1]:.2f}")
-            st.metric("Lower Band", f"${lower_band.iloc[-1]:.2f}")
-            st.metric("Band Position", f"{bb_position:.1f}%")
-            bb_signal = [s for s in signals if s[0] == "Bollinger %"][0]
-            if bb_signal[3] == "bullish":
-                st.success(f"Signal: {bb_signal[1]}")
-            elif bb_signal[3] == "bearish":
-                st.error(f"Signal: {bb_signal[1]}")
-            else:
-                st.info(f"Signal: {bb_signal[1]}")
+            st.metric("Upper", f"${upper_band.iloc[-1]:.2f}")
         with bb_cols[1]:
-            band_width = ((upper_band.iloc[-1] - lower_band.iloc[-1]) / sma_20.iloc[-1]) * 100
-            st.markdown(f"""
-            **Interpretation:**
-            - Price near upper band (>80%): Overbought/strong uptrend
-            - Price near lower band (<20%): Oversold/strong downtrend
-            - Band Width: {band_width:.1f}% (wider = higher volatility)
+            st.metric("Middle", f"${sma_20.iloc[-1]:.2f}")
+        with bb_cols[2]:
+            st.metric("Lower", f"${lower_band.iloc[-1]:.2f}")
+        with bb_cols[3]:
+            st.metric("Width", f"{band_width:.1f}%")
 
-            **Current Reading:**
-            - Price at {bb_position:.1f}% of band range
-            - {"Near upper band - potential resistance" if bb_position > 80 else "Near lower band - potential support" if bb_position < 20 else "Mid-band - no extreme reading"}
-            """)
+        # Band position gauge
+        st.markdown(f"**Band Position: {bb_position:.1f}%**")
+        bb_bar = go.Figure(go.Indicator(
+            mode="gauge",
+            value=bb_position,
+            gauge={
+                'axis': {'range': [0, 100]},
+                'bar': {'color': "black", 'thickness': 0.2},
+                'steps': [
+                    {'range': [0, 20], 'color': "#22c55e"},
+                    {'range': [20, 80], 'color': "#fef08a"},
+                    {'range': [80, 100], 'color': "#ef4444"},
+                ],
+                'threshold': {'line': {'color': "black", 'width': 3}, 'thickness': 0.8, 'value': bb_position}
+            }
+        ))
+        bb_bar.update_layout(height=80, margin=dict(l=20, r=20, t=10, b=10))
+        st.plotly_chart(bb_bar, use_container_width=True)
 
         st.markdown("---")
 
-        # ATR Card
-        st.markdown("#### ATR (Average True Range)")
-        atr_cols = st.columns([1, 2])
-        with atr_cols[0]:
+        # ATR and Volatility
+        st.markdown("#### 📈 Volatility Metrics")
+
+        vol_cols = st.columns(3)
+        with vol_cols[0]:
             st.metric("ATR (14)", f"${latest_atr:.2f}")
+        with vol_cols[1]:
             st.metric("ATR %", f"{atr_percent:.2f}%")
-        with atr_cols[1]:
-            st.markdown(f"""
-            **Interpretation:**
-            - ATR measures average daily price movement
-            - Higher ATR = Higher volatility
-            - ATR % shows volatility relative to price
-
-            **Current Reading:**
-            - Average daily range: ${latest_atr:.2f}
-            - Volatility: {atr_percent:.2f}% of price
-            - {"High volatility - use wider stops" if atr_percent > 3 else "Moderate volatility" if atr_percent > 1.5 else "Low volatility - tighter ranges expected"}
-            """)
+        with vol_cols[2]:
+            vol_level = "🔴 High" if atr_percent > 3 else "🟡 Moderate" if atr_percent > 1.5 else "🟢 Low"
+            st.metric("Volatility", vol_level)
 
         st.markdown("---")
 
-        # 52-Week Range Card
-        st.markdown("#### 52-Week Range Analysis")
-        range_cols = st.columns([1, 2])
+        # 52-Week Range with gauge
+        st.markdown("#### 📊 52-Week Range")
+
+        range_gauge = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=range_52w_position,
+            number={'suffix': '%', 'font': {'size': 28}},
+            gauge={
+                'axis': {'range': [0, 100]},
+                'bar': {'color': "rgba(0,0,0,0)"},
+                'steps': [
+                    {'range': [0, 10], 'color': "#166534"},
+                    {'range': [10, 25], 'color': "#22c55e"},
+                    {'range': [25, 75], 'color': "#fef08a"},
+                    {'range': [75, 90], 'color': "#f97316"},
+                    {'range': [90, 100], 'color': "#dc2626"},
+                ],
+                'threshold': {'line': {'color': "black", 'width': 4}, 'thickness': 0.8, 'value': range_52w_position}
+            },
+            title={'text': "Position in 52W Range", 'font': {'size': 14}}
+        ))
+        range_gauge.update_layout(height=200, margin=dict(l=20, r=20, t=40, b=10))
+        st.plotly_chart(range_gauge, use_container_width=True)
+
+        range_cols = st.columns(3)
+        from_high = ((latest['Close'] - high_52w) / high_52w) * 100
+        from_low = ((latest['Close'] - low_52w) / low_52w) * 100
         with range_cols[0]:
-            st.metric("52W High", f"${high_52w:.2f}")
-            st.metric("52W Low", f"${low_52w:.2f}")
-            st.metric("Range Position", f"{range_52w_position:.1f}%")
-            range_signal = [s for s in signals if s[0] == "52W Range"][0]
-            if range_signal[3] == "bullish":
-                st.success(f"Signal: {range_signal[1]}")
-            elif range_signal[3] == "bearish":
-                st.error(f"Signal: {range_signal[1]}")
-            else:
-                st.info(f"Signal: {range_signal[1]}")
+            st.metric("From High", f"{from_high:+.1f}%")
         with range_cols[1]:
-            from_high = ((latest['Close'] - high_52w) / high_52w) * 100
-            from_low = ((latest['Close'] - low_52w) / low_52w) * 100
-            st.markdown(f"""
-            **Current Position:**
-            - {from_high:+.1f}% from 52-week high
-            - {from_low:+.1f}% from 52-week low
-            - Trading at {range_52w_position:.1f}% of annual range
+            st.metric("From Low", f"+{from_low:.1f}%")
+        with range_cols[2]:
+            range_size = ((high_52w - low_52w) / low_52w) * 100
+            st.metric("Range Size", f"{range_size:.1f}%")
 
-            **Interpretation:**
-            - Near 52W high (>90%): Strong momentum but extended
-            - Near 52W low (<10%): Weak momentum but potentially oversold
-            """)
-
-        # Volume section (if available)
+        # Volume (if available)
         if has_volume:
             st.markdown("---")
-            st.markdown("#### Volume Analysis")
-            vol_cols = st.columns([1, 2])
-            with vol_cols[0]:
+            st.markdown("#### 📊 Volume Analysis")
+            v1, v2 = st.columns(2)
+            with v1:
                 st.metric("Volume Ratio", f"{volume_ratio:.2f}x")
-                st.metric("OBV Trend", obv_trend)
-            with vol_cols[1]:
-                st.markdown(f"""
-                **Interpretation:**
-                - Volume Ratio: Current volume vs 20-day average
-                - Ratio > 1.5: High volume (strong conviction)
-                - Ratio < 0.5: Low volume (weak conviction)
-
-                **OBV (On-Balance Volume):**
-                - OBV rising: Accumulation (buying pressure)
-                - OBV falling: Distribution (selling pressure)
-                - Current trend: {obv_trend}
-                """)
+                if volume_ratio > 1.5:
+                    st.success("🟢 High volume - Strong conviction")
+                elif volume_ratio < 0.5:
+                    st.warning("🟡 Low volume - Weak conviction")
+                else:
+                    st.info("⚪ Normal volume")
+            with v2:
+                obv_icon = "📈" if obv_trend == "Bullish" else "📉"
+                st.metric("OBV Trend", f"{obv_icon} {obv_trend}")
 
     with tab4:
-        st.subheader("Technical Charts")
+        st.markdown("### 📋 Signal Summary")
 
-        chart_type = st.selectbox("Select Chart", [
-            "Price with Bollinger Bands",
-            "RSI History",
-            "MACD",
-            "Stochastic Oscillator",
-            "Moving Averages"
-        ])
+        # Create signal table with visual indicators
+        signal_data = []
+        for sig in signals:
+            name, reading, score, direction = sig[0], sig[1], sig[2], sig[3]
+            emoji = "🟢" if direction == "bullish" else "🔴" if direction == "bearish" else "⚪"
+            signal_data.append({
+                "": emoji,
+                "Indicator": name,
+                "Reading": reading,
+                "Score": f"{score:+.2f}",
+                "Signal": direction.upper()
+            })
 
-        if chart_type == "Price with Bollinger Bands":
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=analysis_window['Close'],
-                                     mode='lines', name='Price', line=dict(color='black', width=2)))
-            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=upper_band.tail(days),
-                                     mode='lines', name='Upper BB', line=dict(color='red', width=1, dash='dash')))
-            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=sma_20.tail(days),
-                                     mode='lines', name='SMA(20)', line=dict(color='blue', width=1)))
-            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=lower_band.tail(days),
-                                     mode='lines', name='Lower BB', line=dict(color='green', width=1, dash='dash')))
-            fig.update_layout(title=f"{selected_asset} - Bollinger Bands", height=500)
-            st.plotly_chart(fig, use_container_width=True)
+        signal_df = pd.DataFrame(signal_data)
+        st.dataframe(signal_df, use_container_width=True, hide_index=True)
 
-        elif chart_type == "RSI History":
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=rsi_series.tail(days),
-                                     mode='lines', name='RSI', line=dict(color='purple', width=2)))
-            fig.add_hline(y=70, line_dash="dash", line_color="red", annotation_text="Overbought (70)")
-            fig.add_hline(y=30, line_dash="dash", line_color="green", annotation_text="Oversold (30)")
-            fig.add_hline(y=50, line_dash="dot", line_color="gray")
-            fig.update_layout(title=f"{selected_asset} - RSI (14)", height=400, yaxis_range=[0, 100])
-            st.plotly_chart(fig, use_container_width=True)
+        # Grouped signals
+        st.markdown("---")
+        sig_col1, sig_col2, sig_col3 = st.columns(3)
 
-        elif chart_type == "MACD":
-            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1,
-                               row_heights=[0.6, 0.4])
-            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=analysis_window['Close'],
-                                     mode='lines', name='Price', line=dict(color='black')), row=1, col=1)
-            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=macd_line.tail(days),
-                                     mode='lines', name='MACD', line=dict(color='blue')), row=2, col=1)
-            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=signal_line.tail(days),
-                                     mode='lines', name='Signal', line=dict(color='orange')), row=2, col=1)
-            colors = ['green' if val >= 0 else 'red' for val in macd_histogram.tail(days)]
-            fig.add_trace(go.Bar(x=analysis_window['Date'], y=macd_histogram.tail(days),
-                                 name='Histogram', marker_color=colors), row=2, col=1)
-            fig.update_layout(title=f"{selected_asset} - MACD", height=600)
-            st.plotly_chart(fig, use_container_width=True)
+        with sig_col1:
+            st.markdown("**🟢 Bullish Signals**")
+            bullish = [s for s in signals if s[3] == "bullish"]
+            for s in bullish:
+                st.markdown(f"- {s[0]}: {s[1]}")
+            if not bullish:
+                st.caption("None")
 
-        elif chart_type == "Stochastic Oscillator":
-            fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1,
-                               row_heights=[0.6, 0.4])
-            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=analysis_window['Close'],
-                                     mode='lines', name='Price', line=dict(color='black')), row=1, col=1)
-            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=stoch_k.tail(days),
-                                     mode='lines', name='%K', line=dict(color='blue')), row=2, col=1)
-            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=stoch_d.tail(days),
-                                     mode='lines', name='%D', line=dict(color='orange')), row=2, col=1)
-            fig.add_hline(y=80, line_dash="dash", line_color="red", row=2, col=1)
-            fig.add_hline(y=20, line_dash="dash", line_color="green", row=2, col=1)
-            fig.update_layout(title=f"{selected_asset} - Stochastic Oscillator", height=600)
-            st.plotly_chart(fig, use_container_width=True)
+        with sig_col2:
+            st.markdown("**⚪ Neutral Signals**")
+            neutral = [s for s in signals if s[3] == "neutral"]
+            for s in neutral:
+                st.markdown(f"- {s[0]}: {s[1]}")
+            if not neutral:
+                st.caption("None")
 
-        elif chart_type == "Moving Averages":
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=analysis_window['Close'],
-                                     mode='lines', name='Price', line=dict(color='black', width=2)))
-            ma_50_series = recent['Close'].rolling(50).mean()
-            ma_200_series = recent['Close'].rolling(200).mean()
-            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=ma_50_series.tail(days),
-                                     mode='lines', name='50-MA', line=dict(color='blue', width=1)))
-            fig.add_trace(go.Scatter(x=analysis_window['Date'], y=ma_200_series.tail(days),
-                                     mode='lines', name='200-MA', line=dict(color='red', width=1)))
-            fig.update_layout(title=f"{selected_asset} - Moving Averages", height=500)
-            st.plotly_chart(fig, use_container_width=True)
-
-    # ==================== SIGNAL SUMMARY TABLE ====================
-
-    st.markdown("---")
-    st.subheader("Complete Signal Summary")
-
-    signal_data = []
-    for name, reading, score, direction in signals:
-        signal_data.append({
-            "Indicator": name,
-            "Reading": reading,
-            "Score": f"{score:+.2f}",
-            "Signal": direction.upper()
-        })
-
-    signal_df = pd.DataFrame(signal_data)
-    st.dataframe(signal_df, use_container_width=True, hide_index=True)
+        with sig_col3:
+            st.markdown("**🔴 Bearish Signals**")
+            bearish = [s for s in signals if s[3] == "bearish"]
+            for s in bearish:
+                st.markdown(f"- {s[0]}: {s[1]}")
+            if not bearish:
+                st.caption("None")
 
     # Disclaimer
     st.markdown("---")
     st.caption("""
-    **Disclaimer:** This analysis is for informational purposes only and does not constitute financial advice.
-    Technical indicators are based on historical data and may not predict future performance.
-    Always conduct your own research and consider consulting a financial advisor before making investment decisions.
+    ⚠️ **Disclaimer:** This analysis is for informational purposes only and does not constitute financial advice.
+    Technical indicators reflect historical patterns and may not predict future performance.
+    Always conduct your own research before making investment decisions.
     """)
 
 
 def show_llm_analysis():
     """LLM-powered market analysis"""
-    st.title("LLM Market Analysis")
+    st.title("🤖 LLM Market Analysis")
     st.markdown("*AI-powered market commentary using GPT-4 or Claude*")
 
     st.info("Integrates with OpenAI/Anthropic to generate market analysis based on predictions, price data, and news")
@@ -2059,7 +2258,7 @@ python3 newsletter_generator.py --send --assets SPY,BTC/USDT
 
 def show_portfolio_rebalancing():
     """Portfolio rebalancing optimizer"""
-    st.title("Portfolio Rebalancing Optimizer")
+    st.title("⚖️ Portfolio Rebalancing Optimizer")
     st.markdown("*Find optimal rebalancing frequency for your portfolio*")
 
     st.info("Tests different rebalancing frequencies (daily, weekly, monthly, etc.) and identifies the optimal strategy based on returns, Sharpe ratio, and transaction costs")
@@ -2121,7 +2320,7 @@ python3 portfolio_rebalancer.py \\
 
 def show_forecast_results():
     """Display forecast results from PostgreSQL"""
-    st.title("Forecast Results")
+    st.title("📈 Forecast Results")
     st.markdown("*View predictions generated by the forecasting API*")
 
     # Load predictions from PostgreSQL
@@ -2198,7 +2397,7 @@ def show_forecast_results():
 
 def show_automation():
     """Automation and pipeline execution"""
-    st.title("Automation & Pipeline")
+    st.title("⚙️ Automation & Pipeline")
     st.markdown("*Automate data downloads, training, and forecasting*")
 
     st.markdown("""
@@ -2290,7 +2489,7 @@ python3 backtest.py
 
 def show_custom_imports():
     """Custom data import interface"""
-    st.title("Custom Data Imports")
+    st.title("📥 Custom Data Imports")
     st.markdown("*Import your own asset data for forecasting*")
 
     st.markdown("""
