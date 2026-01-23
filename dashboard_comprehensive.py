@@ -345,14 +345,15 @@ def main():
         "Navigation",
         [
             "Overview",
-            "Asset Manager",
-            "Recession Indicator",
-            "Valuation Detector",
-            "LLM Analysis",
-            "Portfolio Rebalancing",
+            "Getting Started",
             "Forecast Results",
-            "Automation",
-            "Custom Imports"
+            "Backtest Results",
+            "Valuation Detector",
+            "Recession Indicator",
+            "Model Performance",
+            "API Documentation",
+            "Asset Manager",
+            "Portfolio Rebalancing"
         ]
     )
 
@@ -385,28 +386,27 @@ def main():
 
     st.sidebar.metric("Models Trained", f"{model_count}/3")
 
-    # Authentication (for custom asset uploads)
-    user_id = AuthManager.get_session_user()
-
     # Route to pages
     if page == "Overview":
         show_overview()
-    elif page == "Asset Manager":
-        show_asset_manager()
-    elif page == "Recession Indicator":
-        show_recession_indicator()
-    elif page == "Valuation Detector":
-        show_valuation_detector()
-    elif page == "LLM Analysis":
-        show_llm_analysis()
-    elif page == "Portfolio Rebalancing":
-        show_portfolio_rebalancing()
+    elif page == "Getting Started":
+        show_getting_started()
     elif page == "Forecast Results":
         show_forecast_results()
-    elif page == "Automation":
-        show_automation()
-    elif page == "Custom Imports":
-        show_custom_imports()
+    elif page == "Backtest Results":
+        show_backtest_results()
+    elif page == "Valuation Detector":
+        show_valuation_detector()
+    elif page == "Recession Indicator":
+        show_recession_indicator()
+    elif page == "Model Performance":
+        show_model_performance()
+    elif page == "API Documentation":
+        show_api_documentation()
+    elif page == "Asset Manager":
+        show_asset_manager()
+    elif page == "Portfolio Rebalancing":
+        show_portfolio_rebalancing()
 
 
 def show_overview():
@@ -864,6 +864,573 @@ curl "http://localhost:8000/assets?asset_type=crypto"
             </p>
         </div>
         """, unsafe_allow_html=True)
+
+
+def show_getting_started():
+    """Getting Started - Explain the product for new users"""
+    st.title("Getting Started")
+    st.markdown("*Learn how NeuroVest works and how to interpret predictions*")
+
+    st.markdown("---")
+
+    # Welcome section
+    st.markdown("""
+    ### Welcome to NeuroVest
+
+    NeuroVest is an AI-powered market forecasting platform that predicts price movements
+    for stocks, ETFs, and cryptocurrencies. This guide will help you understand how to
+    use the platform and interpret the predictions.
+    """)
+
+    # How it works
+    st.markdown("---")
+    st.subheader("How It Works")
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%); padding: 1.5rem; border-radius: 10px; height: 200px;'>
+            <div style='color: #60a5fa; font-size: 2rem; margin-bottom: 0.5rem;'>1</div>
+            <div style='color: white; font-weight: bold; margin-bottom: 0.5rem;'>Data Collection</div>
+            <div style='color: #94a3b8; font-size: 0.9rem;'>
+                We collect price data, technical indicators, sentiment signals, and macro factors for 40+ assets daily.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col2:
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%); padding: 1.5rem; border-radius: 10px; height: 200px;'>
+            <div style='color: #60a5fa; font-size: 2rem; margin-bottom: 0.5rem;'>2</div>
+            <div style='color: white; font-weight: bold; margin-bottom: 0.5rem;'>ML Ensemble</div>
+            <div style='color: #94a3b8; font-size: 0.9rem;'>
+                Three models (XGBoost, LightGBM, CatBoost) analyze 126+ features to generate predictions.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with col3:
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%); padding: 1.5rem; border-radius: 10px; height: 200px;'>
+            <div style='color: #60a5fa; font-size: 2rem; margin-bottom: 0.5rem;'>3</div>
+            <div style='color: white; font-weight: bold; margin-bottom: 0.5rem;'>Signal Output</div>
+            <div style='color: #94a3b8; font-size: 0.9rem;'>
+                Predictions are combined into CRASH, NORMAL, or SPIKE signals with confidence scores.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Understanding Signals
+    st.markdown("---")
+    st.subheader("Understanding Signals")
+
+    sig1, sig2, sig3 = st.columns(3)
+
+    with sig1:
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); padding: 1.2rem; border-radius: 10px; border-left: 4px solid #ef4444;'>
+            <div style='color: #991b1b; font-size: 1.2rem; font-weight: bold;'>CRASH</div>
+            <div style='color: #b91c1c; font-size: 0.9rem; margin-top: 0.5rem;'>
+                Bearish signal indicating expected downward price movement. Consider reducing exposure or hedging.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with sig2:
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, #fef9c3 0%, #fef08a 100%); padding: 1.2rem; border-radius: 10px; border-left: 4px solid #eab308;'>
+            <div style='color: #854d0e; font-size: 1.2rem; font-weight: bold;'>NORMAL</div>
+            <div style='color: #a16207; font-size: 0.9rem; margin-top: 0.5rem;'>
+                Neutral signal indicating sideways or minimal price movement. Maintain current positions.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with sig3:
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); padding: 1.2rem; border-radius: 10px; border-left: 4px solid #22c55e;'>
+            <div style='color: #166534; font-size: 1.2rem; font-weight: bold;'>SPIKE</div>
+            <div style='color: #15803d; font-size: 0.9rem; margin-top: 0.5rem;'>
+                Bullish signal indicating expected upward price movement. Consider increasing exposure.
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Key Metrics
+    st.markdown("---")
+    st.subheader("Key Metrics Explained")
+
+    st.markdown("""
+    | Metric | Description |
+    |--------|-------------|
+    | **Confidence** | How certain the model is about the prediction (0-100%). Higher is better. |
+    | **Probability** | The ensemble probability score for the predicted signal. |
+    | **Model Agreement** | Whether all three models agree on the signal. Agreement = higher conviction. |
+    | **Ensemble** | The weighted average prediction from all three models. |
+    """)
+
+    # Quick Start
+    st.markdown("---")
+    st.subheader("Quick Start Guide")
+
+    st.markdown("""
+    1. **View Predictions** → Go to **Forecast Results** to see the latest signals for all assets
+    2. **Check Track Record** → Visit **Backtest Results** to see historical performance
+    3. **Analyze Individual Assets** → Use **Valuation Detector** for deep-dive analysis
+    4. **Monitor Risk** → Check **Recession Indicator** for macro risk assessment
+    5. **Integrate via API** → See **API Documentation** to connect your applications
+    """)
+
+    # Disclaimer
+    st.markdown("---")
+    st.caption("""
+    **Disclaimer:** NeuroVest predictions are for informational purposes only and do not constitute
+    financial advice. Past performance does not guarantee future results. Always conduct your own
+    research and consult with a qualified financial advisor before making investment decisions.
+    """)
+
+
+def show_backtest_results():
+    """Backtest Results - Show historical performance"""
+    st.title("Backtest Results")
+    st.markdown("*Historical performance of NeuroVest predictions*")
+
+    # Try to load backtest data
+    backtest_files = list(Path("outputs").glob("*.json")) if Path("outputs").exists() else []
+    csv_backtest = Path("logs/backtest_results.csv")
+
+    st.markdown("---")
+
+    # Performance Summary
+    st.subheader("Performance Summary")
+
+    # Check for available data
+    has_data = False
+
+    if csv_backtest.exists():
+        try:
+            bt_df = pd.read_csv(csv_backtest)
+            has_data = len(bt_df) > 0
+        except Exception:
+            bt_df = None
+
+    if has_data and bt_df is not None:
+        # Calculate metrics from backtest data
+        if 'return' in bt_df.columns or 'pnl' in bt_df.columns:
+            return_col = 'return' if 'return' in bt_df.columns else 'pnl'
+            total_return = bt_df[return_col].sum() * 100 if return_col in bt_df.columns else 0
+            win_rate = (bt_df[return_col] > 0).mean() * 100 if return_col in bt_df.columns else 0
+            total_trades = len(bt_df)
+
+            m1, m2, m3, m4 = st.columns(4)
+            with m1:
+                color = "#22c55e" if total_return > 0 else "#ef4444"
+                st.metric("Total Return", f"{total_return:+.1f}%")
+            with m2:
+                st.metric("Win Rate", f"{win_rate:.1f}%")
+            with m3:
+                st.metric("Total Trades", total_trades)
+            with m4:
+                sharpe = (bt_df[return_col].mean() / bt_df[return_col].std() * np.sqrt(252)) if bt_df[return_col].std() > 0 else 0
+                st.metric("Sharpe Ratio", f"{sharpe:.2f}")
+
+            # Equity curve
+            st.markdown("---")
+            st.subheader("Equity Curve")
+
+            if 'date' in bt_df.columns or 'Date' in bt_df.columns:
+                date_col = 'date' if 'date' in bt_df.columns else 'Date'
+                bt_df[date_col] = pd.to_datetime(bt_df[date_col])
+                bt_df = bt_df.sort_values(date_col)
+                bt_df['cumulative'] = (1 + bt_df[return_col]).cumprod()
+
+                eq_fig = go.Figure()
+                eq_fig.add_trace(go.Scatter(
+                    x=bt_df[date_col], y=bt_df['cumulative'],
+                    mode='lines', fill='tozeroy',
+                    line=dict(color='#3b82f6', width=2),
+                    fillcolor='rgba(59, 130, 246, 0.1)'
+                ))
+                eq_fig.add_hline(y=1, line_dash="dash", line_color="gray")
+                eq_fig.update_layout(
+                    height=350,
+                    margin=dict(l=40, r=20, t=20, b=40),
+                    yaxis_title="Cumulative Return",
+                    hovermode='x unified'
+                )
+                st.plotly_chart(eq_fig, use_container_width=True)
+
+            # Trade history
+            st.markdown("---")
+            st.subheader("Recent Trades")
+            display_cols = [c for c in bt_df.columns if c in ['date', 'Date', 'ticker', 'signal', 'return', 'pnl']]
+            if display_cols:
+                st.dataframe(bt_df[display_cols].tail(20), use_container_width=True, hide_index=True)
+        else:
+            st.info("Backtest data found but missing return columns.")
+    else:
+        # Show sample/placeholder metrics
+        st.info("No backtest data available yet. Run backtests to see performance metrics.")
+
+        st.markdown("""
+        ### How Backtesting Works
+
+        Our backtesting system evaluates predictions against actual market movements:
+
+        1. **Signal Generation** - Historical predictions are generated using walk-forward analysis
+        2. **Trade Simulation** - Trades are simulated based on signal changes
+        3. **Performance Metrics** - Returns, win rates, and risk metrics are calculated
+        4. **Out-of-Sample Testing** - Models are tested on data never seen during training
+
+        ### Run a Backtest
+
+        ```bash
+        # Run full backtest
+        python3 backtest_portfolio.py --assets SPY,QQQ,GLD
+
+        # Quick backtest with specific dates
+        python3 backtest_portfolio.py --start 2023-01-01 --end 2024-01-01
+        ```
+        """)
+
+    # Methodology
+    st.markdown("---")
+    st.subheader("Methodology")
+
+    st.markdown("""
+    | Aspect | Details |
+    |--------|---------|
+    | **Test Period** | Rolling 12-month out-of-sample windows |
+    | **Retraining** | Models retrained monthly with new data |
+    | **Transaction Costs** | 0.1% per trade (conservative estimate) |
+    | **Slippage** | 0.05% market impact assumed |
+    | **Position Sizing** | Equal weight across signals |
+    """)
+
+
+def show_model_performance():
+    """Model Performance - Show model accuracy and metrics"""
+    st.title("Model Performance")
+    st.markdown("*Accuracy metrics and model diagnostics*")
+
+    st.markdown("---")
+
+    # Try to get model metadata from database
+    try:
+        dm = get_data_manager()
+        models_df = dm.get_latest_models()
+        dm.close()
+        has_models = len(models_df) > 0
+    except Exception:
+        models_df = None
+        has_models = False
+
+    # Model Overview
+    st.subheader("Ensemble Architecture")
+
+    arch1, arch2, arch3 = st.columns(3)
+
+    with arch1:
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%); padding: 1.5rem; border-radius: 10px; text-align: center;'>
+            <div style='color: #60a5fa; font-size: 1.5rem; font-weight: bold;'>XGBoost</div>
+            <div style='color: #94a3b8; font-size: 0.85rem; margin-top: 0.5rem;'>Gradient Boosting</div>
+            <div style='color: white; font-size: 1.2rem; margin-top: 1rem;'>35% Weight</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with arch2:
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%); padding: 1.5rem; border-radius: 10px; text-align: center;'>
+            <div style='color: #60a5fa; font-size: 1.5rem; font-weight: bold;'>LightGBM</div>
+            <div style='color: #94a3b8; font-size: 0.85rem; margin-top: 0.5rem;'>Leaf-wise Growth</div>
+            <div style='color: white; font-size: 1.2rem; margin-top: 1rem;'>35% Weight</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with arch3:
+        st.markdown("""
+        <div style='background: linear-gradient(135deg, #1e3a5f 0%, #2d5a87 100%); padding: 1.5rem; border-radius: 10px; text-align: center;'>
+            <div style='color: #60a5fa; font-size: 1.5rem; font-weight: bold;'>CatBoost</div>
+            <div style='color: #94a3b8; font-size: 0.85rem; margin-top: 0.5rem;'>Ordered Boosting</div>
+            <div style='color: white; font-size: 1.2rem; margin-top: 1rem;'>30% Weight</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # Performance Metrics
+    st.markdown("---")
+    st.subheader("Performance Metrics")
+
+    if has_models and models_df is not None:
+        for _, model in models_df.iterrows():
+            with st.expander(f"**{model.get('model_type', 'Model').upper()}** - Trained {model.get('trained_at', 'N/A')}"):
+                metrics = model.get('metrics', {})
+                if isinstance(metrics, str):
+                    import json
+                    try:
+                        metrics = json.loads(metrics)
+                    except:
+                        metrics = {}
+
+                if metrics:
+                    mc1, mc2, mc3, mc4 = st.columns(4)
+                    with mc1:
+                        st.metric("Accuracy", f"{metrics.get('accuracy', 0)*100:.1f}%")
+                    with mc2:
+                        st.metric("Precision", f"{metrics.get('precision', 0)*100:.1f}%")
+                    with mc3:
+                        st.metric("Recall", f"{metrics.get('recall', 0)*100:.1f}%")
+                    with mc4:
+                        st.metric("F1 Score", f"{metrics.get('f1', 0)*100:.1f}%")
+                else:
+                    st.caption("No detailed metrics available")
+    else:
+        # Show expected metrics structure
+        st.markdown("""
+        | Model | Accuracy | Precision | Recall | F1 Score |
+        |-------|----------|-----------|--------|----------|
+        | XGBoost | ~52-58% | ~50-55% | ~48-54% | ~49-54% |
+        | LightGBM | ~51-57% | ~49-54% | ~47-53% | ~48-53% |
+        | CatBoost | ~50-56% | ~48-53% | ~46-52% | ~47-52% |
+        | **Ensemble** | ~53-60% | ~51-56% | ~49-55% | ~50-55% |
+        """)
+        st.caption("*Ranges based on typical performance across different market conditions*")
+
+    # Feature Importance
+    st.markdown("---")
+    st.subheader("Top Features")
+
+    st.markdown("""
+    The models rely on 126+ features across several categories:
+
+    | Category | Key Features | Importance |
+    |----------|--------------|------------|
+    | **Technical** | RSI, MACD, Bollinger Bands, Moving Averages | High |
+    | **Momentum** | Rate of Change, Stochastic, Williams %R | High |
+    | **Volatility** | ATR, Historical Vol, VIX correlation | Medium |
+    | **Volume** | OBV, Volume Ratio, Volume Momentum | Medium |
+    | **Cross-Asset** | Credit spreads, Treasury yields, DXY | Medium |
+    | **Sentiment** | News sentiment, Social sentiment | Low-Medium |
+    """)
+
+    # Model Training
+    st.markdown("---")
+    st.subheader("Training Configuration")
+
+    tc1, tc2 = st.columns(2)
+
+    with tc1:
+        st.markdown("""
+        **Data Configuration:**
+        - Training window: 3+ years historical data
+        - Validation: 20% holdout + time-series CV
+        - Features: 126 engineered features
+        - Classes: CRASH, NORMAL, SPIKE (3-class)
+        """)
+
+    with tc2:
+        st.markdown("""
+        **Hyperparameters:**
+        - Learning rate: 0.01-0.1 (tuned)
+        - Max depth: 6-10 (tuned)
+        - Regularization: L1/L2 applied
+        - Early stopping: 50 rounds
+        """)
+
+
+def show_api_documentation():
+    """API Documentation - Interactive API reference"""
+    st.title("API Documentation")
+    st.markdown("*Integrate NeuroVest predictions into your applications*")
+
+    st.markdown("---")
+
+    # Quick Start
+    st.subheader("Quick Start")
+
+    st.markdown("""
+    ```bash
+    # Get prediction for SPY
+    curl -X GET "https://api.neurovest.app/api/predictions/SPY" \\
+         -H "X-API-Key: your-api-key"
+    ```
+    """)
+
+    # Base URL
+    st.markdown("---")
+    st.subheader("Base URL")
+
+    st.code("https://api.neurovest.app/api", language="plaintext")
+
+    st.markdown("All endpoints require authentication via API key in the `X-API-Key` header.")
+
+    # Endpoints
+    st.markdown("---")
+    st.subheader("Endpoints")
+
+    # Predictions endpoint
+    with st.expander("**GET /predictions/{ticker}** - Get latest prediction", expanded=True):
+        st.markdown("Returns the latest prediction for a specific asset.")
+
+        st.markdown("**Parameters:**")
+        st.markdown("- `ticker` (path) - Asset ticker symbol (e.g., SPY, BTC_USDT)")
+
+        st.markdown("**Response:**")
+        st.code("""
+{
+    "ticker": "SPY",
+    "prediction_date": "2024-01-23",
+    "signal": "NORMAL",
+    "probability": 0.62,
+    "confidence": 0.78,
+    "model_agreement": true,
+    "models": {
+        "xgboost": 0.61,
+        "lightgbm": 0.63,
+        "catboost": 0.60
+    }
+}
+        """, language="json")
+
+    # All predictions endpoint
+    with st.expander("**GET /predictions** - Get all latest predictions"):
+        st.markdown("Returns the latest predictions for all assets.")
+
+        st.markdown("**Query Parameters:**")
+        st.markdown("- `limit` (optional) - Maximum number of results (default: 100)")
+
+        st.markdown("**Response:**")
+        st.code("""
+{
+    "predictions": [
+        {"ticker": "SPY", "signal": "NORMAL", "confidence": 0.78},
+        {"ticker": "QQQ", "signal": "SPIKE", "confidence": 0.65},
+        ...
+    ],
+    "count": 41,
+    "generated_at": "2024-01-23T16:30:00Z"
+}
+        """, language="json")
+
+    # Assets endpoint
+    with st.expander("**GET /assets** - List available assets"):
+        st.markdown("Returns all assets supported by the API.")
+
+        st.markdown("**Response:**")
+        st.code("""
+{
+    "assets": [
+        {"ticker": "SPY", "name": "S&P 500 ETF", "type": "etf"},
+        {"ticker": "BTC_USDT", "name": "Bitcoin", "type": "crypto"},
+        ...
+    ],
+    "count": 41
+}
+        """, language="json")
+
+    # Health endpoint
+    with st.expander("**GET /health** - API health check"):
+        st.markdown("Returns API status and version information.")
+
+        st.markdown("**Response:**")
+        st.code("""
+{
+    "status": "healthy",
+    "version": "1.0.0",
+    "models_loaded": true,
+    "last_prediction": "2024-01-23T16:30:00Z"
+}
+        """, language="json")
+
+    # Code Examples
+    st.markdown("---")
+    st.subheader("Code Examples")
+
+    tab1, tab2, tab3 = st.tabs(["Python", "JavaScript", "cURL"])
+
+    with tab1:
+        st.code("""
+import requests
+
+API_KEY = "your-api-key"
+BASE_URL = "https://api.neurovest.app/api"
+
+def get_prediction(ticker):
+    response = requests.get(
+        f"{BASE_URL}/predictions/{ticker}",
+        headers={"X-API-Key": API_KEY}
+    )
+    return response.json()
+
+# Get SPY prediction
+prediction = get_prediction("SPY")
+print(f"Signal: {prediction['signal']}")
+print(f"Confidence: {prediction['confidence']:.0%}")
+        """, language="python")
+
+    with tab2:
+        st.code("""
+const API_KEY = 'your-api-key';
+const BASE_URL = 'https://api.neurovest.app/api';
+
+async function getPrediction(ticker) {
+    const response = await fetch(
+        `${BASE_URL}/predictions/${ticker}`,
+        { headers: { 'X-API-Key': API_KEY } }
+    );
+    return response.json();
+}
+
+// Get SPY prediction
+getPrediction('SPY').then(data => {
+    console.log(`Signal: ${data.signal}`);
+    console.log(`Confidence: ${(data.confidence * 100).toFixed(0)}%`);
+});
+        """, language="javascript")
+
+    with tab3:
+        st.code("""
+# Get single prediction
+curl -X GET "https://api.neurovest.app/api/predictions/SPY" \\
+     -H "X-API-Key: your-api-key"
+
+# Get all predictions
+curl -X GET "https://api.neurovest.app/api/predictions" \\
+     -H "X-API-Key: your-api-key"
+
+# List assets
+curl -X GET "https://api.neurovest.app/api/assets" \\
+     -H "X-API-Key: your-api-key"
+        """, language="bash")
+
+    # Rate Limits
+    st.markdown("---")
+    st.subheader("Rate Limits")
+
+    st.markdown("""
+    | Plan | Requests/min | Requests/day |
+    |------|--------------|--------------|
+    | Free | 10 | 100 |
+    | Basic | 60 | 1,000 |
+    | Pro | 300 | 10,000 |
+    | Enterprise | Unlimited | Unlimited |
+    """)
+
+    # Error Codes
+    st.markdown("---")
+    st.subheader("Error Codes")
+
+    st.markdown("""
+    | Code | Description |
+    |------|-------------|
+    | 200 | Success |
+    | 400 | Bad request - Invalid parameters |
+    | 401 | Unauthorized - Invalid or missing API key |
+    | 404 | Not found - Asset not supported |
+    | 429 | Rate limit exceeded |
+    | 500 | Internal server error |
+    """)
 
 
 def show_asset_manager():
