@@ -3,7 +3,7 @@
 
 **Production-grade ensemble ML forecasting API for quantitative analysts**
 
-Delivers calibrated probability forecasts across 25 financial assets using XGBoost, LightGBM, and CatBoost. Deploy-ready with 99.2% uptime and sub-200ms API response times.
+Delivers calibrated probability forecasts across 41 financial assets using XGBoost, LightGBM, and CatBoost. Deploy-ready with 99.2% uptime and sub-200ms API response times.
 
 🔗 **Live Production API:** https://neurovestdemo.up.railway.app
 
@@ -281,12 +281,6 @@ MIT License - free for public and commercial use. Attribution appreciated.
 
 ## 👤 Author
 
-Built by [**Keegan Hutchinson**](https://github.com/keeg-Hson)  
-Feedback, contributions, and collaboration are always welcome.
+Made with ❤️ by [**Keegan Hutchinson**](https://github.com/keeg-Hson)  
+Feedback, contributions, and collaboration are always welcome!
 
-> NeuroVest - Invest with intelligence.
-
-
-
-
->>>>>>> f1644007
