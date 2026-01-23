@@ -4,7 +4,7 @@ prediction_log.txt
 /logs/
 /backups/
 
-models/
+/models/
 
 # local env
 .venv/
