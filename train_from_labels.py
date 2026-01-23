@@ -196,7 +196,11 @@ def train_model() -> None:
         auc_keep = auc_base
         print("[train] keeping BASE model")
 
+<<<<<<< HEAD
     # --- Threshold by balanced accuracy on holdout probabilities ---
+=======
+    # --- Threshold by balanced accuracy on holdout probs we kept ---
+>>>>>>> f1644007
     best_thr, best_bal, best_acc = _threshold_sweep_balacc(y_test.to_numpy(), p1_keep)
 
     # --- Save model & features ---

@@ -64,6 +64,7 @@ def run_predictions(backfill: bool = True) -> None:
 # =============================================================================
 def _resolve_model_path() -> tuple[Path, str]:
     variant = os.getenv("PREDICT_VARIANT", "forward_returns").strip().lower()
+<<<<<<< HEAD
 
     # Check for multi-asset model first (60% accuracy vs 58% single-asset)
     multi_asset_path = MODELS_DIR / "xgboost_multi_asset.pkl"
@@ -71,6 +72,8 @@ def _resolve_model_path() -> tuple[Path, str]:
         return multi_asset_path, "multi_asset"
 
     # Fallback to single-asset models
+=======
+>>>>>>> f1644007
     if variant.startswith("forward"):
         return (MODELS_DIR / "market_crash_model_fwd.pkl"), "forward"
     return (MODELS_DIR / "market_crash_model.pkl"), "generic"
@@ -84,12 +87,16 @@ def _load_model_and_features(path: Path, variant: str) -> tuple[object, list[str
     if isinstance(obj, dict) and "model" in obj:
         return obj["model"], list(obj.get("features", []))
     # Legacy: bare estimator; fallback to saved feature list file
+<<<<<<< HEAD
     if variant == "multi_asset":
         ftxt = MODELS_DIR / "multi_asset_features.txt"
     elif variant == "forward":
         ftxt = MODELS_DIR / "input_features_fwd.txt"
     else:
         ftxt = MODELS_DIR / "input_features.txt"
+=======
+    ftxt = MODELS_DIR / ("input_features_fwd.txt" if variant == "forward" else "input_features.txt")
+>>>>>>> f1644007
     saved_feats = []
     if ftxt.exists():
         saved_feats = [ln.strip() for ln in ftxt.read_text().splitlines() if ln.strip()]
@@ -147,9 +154,14 @@ def _load_thresholds(variant: str) -> dict[str, float]:
         except Exception:
             pass
 
+<<<<<<< HEAD
     # 5) Fall back to PREDICT_CFG default (single source of truth)
     from config import PREDICTION_THRESHOLD
     t = float(PREDICT_CFG.get("p_min", PREDICTION_THRESHOLD))
+=======
+    # 5) Fall back to PREDICT_CFG default
+    t = float(PREDICT_CFG.get("p_min", 0.55))
+>>>>>>> f1644007
     t = max(0.10, min(0.90, t))
     print(f"[debug] using default threshold {t:.6f} (PREDICT_CFG/default)")
     print("[debug] invert_proba=False")
@@ -160,7 +172,11 @@ def _load_thresholds(variant: str) -> dict[str, float]:
 # Feature engineering — identical to training
 # =============================================================================
 def _build_inference_features_from_prices(
+<<<<<<< HEAD
     raw_df: pd.DataFrame, saved_feats: list[str], variant: str = "forward"
+=======
+    raw_df: pd.DataFrame, saved_feats: list[str]
+>>>>>>> f1644007
 ) -> pd.DataFrame:
     """
     Uses utils.add_features + utils.finalize_features, then aligns to the saved schema.
@@ -169,12 +185,15 @@ def _build_inference_features_from_prices(
     df_feat, all_cols = add_features(raw_df)
     cols = saved_feats if saved_feats else all_cols
     df_feat = finalize_features(df_feat, cols)
+<<<<<<< HEAD
 
     # Add asset_type features for multi-asset models (SPY = stock)
     if variant == "multi_asset":
         df_feat["asset_type_stock"] = 1
         df_feat["asset_type_crypto"] = 0
 
+=======
+>>>>>>> f1644007
     if "Date" not in df_feat.columns:
         df_feat = df_feat.reset_index().rename(columns={"index": "Date"})
     return df_feat
@@ -364,7 +383,11 @@ def _backfill_full(model, saved_feats: list[str], variant: str) -> None:
     raw["Date"] = pd.to_datetime(raw["Date"], errors="coerce")
     raw = raw.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
 
+<<<<<<< HEAD
     feat = _build_inference_features_from_prices(raw, saved_feats, variant)
+=======
+    feat = _build_inference_features_from_prices(raw, saved_feats)
+>>>>>>> f1644007
     X = _align_features(feat, saved_feats)
     _feature_coverage_guard(X, saved_feats)
 
@@ -451,7 +474,11 @@ def live_predict() -> tuple[int, float, pd.Timestamp]:
     model, saved_feats = _load_model_and_features(model_path, variant)
     _assert_binary_model(model)
 
+<<<<<<< HEAD
     feat = _build_inference_features_from_prices(raw, saved_feats, variant)
+=======
+    feat = _build_inference_features_from_prices(raw, saved_feats)
+>>>>>>> f1644007
     X = _align_features(feat, saved_feats)
     _feature_coverage_guard(X, saved_feats)
 
@@ -485,7 +512,11 @@ def main(argv: list[str] | None = None) -> int:
     raw["Date"] = pd.to_datetime(raw["Date"], errors="coerce")
     raw = raw.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
 
+<<<<<<< HEAD
     feat = _build_inference_features_from_prices(raw, saved_feats, variant)
+=======
+    feat = _build_inference_features_from_prices(raw, saved_feats)
+>>>>>>> f1644007
     X = _align_features(feat, saved_feats)
     _feature_coverage_guard(X, saved_feats)
 

@@ -57,6 +57,7 @@ def _canonicalize(df: pd.DataFrame) -> pd.DataFrame:
         raise ValueError("No 'Date' column found to canonicalize.")
 
     d["Date"] = pd.to_datetime(d["Date"], errors="coerce")
+<<<<<<< HEAD
 
     # Only drop NaN dates if there are any valid dates
     if not d["Date"].isna().all():
@@ -65,6 +66,10 @@ def _canonicalize(df: pd.DataFrame) -> pd.DataFrame:
     else:
         # If all dates are NaN, return empty dataframe with correct structure
         return pd.DataFrame(columns=CANON_COLS)
+=======
+    d = d.dropna(subset=["Date"])
+    d["Date"] = d["Date"].dt.tz_localize(None)
+>>>>>>> f1644007
 
     # If columns missing, create placeholders so downstream is stable
     for c in CANON_COLS:
@@ -100,12 +105,18 @@ def _read_existing() -> pd.DataFrame | None:
 
 def _write(df: pd.DataFrame, msg_prefix: str) -> None:
     df.to_csv(CSV_PATH, index=False)
+<<<<<<< HEAD
     if len(df) == 0:
         print(f"{msg_prefix} → {CSV_PATH}  rows=0  (empty)")
     else:
         print(
             f"{msg_prefix} → {CSV_PATH}  rows={len(df)}  range={df['Date'].min().date()} → {df['Date'].max().date()}"
         )
+=======
+    print(
+        f"{msg_prefix} → {CSV_PATH}  rows={len(df)}  range={df['Date'].min().date()} → {df['Date'].max().date()}"
+    )
+>>>>>>> f1644007
 
 
 def _bootstrap() -> pd.DataFrame | None:
@@ -121,6 +132,7 @@ def _bootstrap() -> pd.DataFrame | None:
     if df is None or df.empty:
         print("❌ Could not download initial SPY history.")
         return None
+<<<<<<< HEAD
 
     # Reset index and ensure it's named 'Date'
     df = df.reset_index()
@@ -138,12 +150,18 @@ def _bootstrap() -> pd.DataFrame | None:
     if available_cols:
         df = df[available_cols]
 
+=======
+    df = df.reset_index()
+    df = df.rename(columns={"Adj Close": "Adj Close"})  # explicit for clarity
+    df = df[["Date", "Open", "High", "Low", "Close", "Adj Close", "Volume"]]
+>>>>>>> f1644007
     df = _canonicalize(df)
     _write(df, "✅ Created")
     return df
 
 
 def _append_new_rows(base_df: pd.DataFrame) -> pd.DataFrame:
+<<<<<<< HEAD
     # Handle empty dataframe - need to bootstrap instead
     if len(base_df) == 0:
         print("⚠️  Base dataframe is empty - bootstrapping instead...")
@@ -158,6 +176,10 @@ def _append_new_rows(base_df: pd.DataFrame) -> pd.DataFrame:
         return _bootstrap() or base_df
 
     last_date = last_date_ts.date()
+=======
+    # Last available date
+    last_date = pd.to_datetime(base_df["Date"]).max().date()
+>>>>>>> f1644007
     # Start next business day after last_date
     start = (pd.Timestamp(last_date) + BDay(1)).date()
     end = date.today() + timedelta(days=1)  # exclusive end
@@ -183,6 +205,7 @@ def _append_new_rows(base_df: pd.DataFrame) -> pd.DataFrame:
         print("ℹ️ No new SPY data returned by yfinance.")
         return base_df
 
+<<<<<<< HEAD
     # Handle MultiIndex columns from newer yfinance versions
     if isinstance(newdf.columns, pd.MultiIndex):
         newdf.columns = [col[0] if isinstance(col, tuple) else col for col in newdf.columns]
@@ -201,6 +224,10 @@ def _append_new_rows(base_df: pd.DataFrame) -> pd.DataFrame:
         return base_df
 
     newdf = newdf[required_cols]
+=======
+    newdf = newdf.reset_index()
+    newdf = newdf[["Date", "Open", "High", "Low", "Close", "Adj Close", "Volume"]]
+>>>>>>> f1644007
     newdf = _canonicalize(newdf)
 
     merged = pd.concat([base_df, newdf], ignore_index=True)
@@ -233,10 +260,14 @@ def main() -> int:
         return 0
 
     # Try to append fresh rows; never hard-fail
+<<<<<<< HEAD
     updated_df = _append_new_rows(base_df)
     # If we got a different dataframe back (e.g., from bootstrap), write it
     if updated_df is not base_df and updated_df is not None:
         _write(updated_df, "✅ Updated")
+=======
+    _append_new_rows(base_df)
+>>>>>>> f1644007
     return 0
 
 
