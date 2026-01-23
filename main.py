@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 #!/usr/bin/env python3
 """
 NeuroVest Main Entry Point
@@ -966,7 +965,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-=======
 # main.py
 # -----------MARKET PREDICTION ALGORITHM-----------
 # ADDITIONAL: INSTALL LIBRARIES ON LOCAL MACHINE (OR FROM TERMINAL TO REPO DIRECTLY? LOOK INTO THIS)
@@ -1640,4 +1638,3 @@ if __name__ == "__main__":
 # -add a feature to compare predicted vs. real time valuations
 # plot: volatility spikes, RSI over time
 # crash confidence trend over time (based on predioction log)
->>>>>>> f1644007

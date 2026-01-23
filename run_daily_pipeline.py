@@ -14,17 +14,14 @@ def update_data():
 
 
 def run_prediction():
-<<<<<<< HEAD
     # Use ensemble predictor (XGBoost + LightGBM + CatBoost) for +1% accuracy
     # vs single model predict.py
     print(f"[⏳] {datetime.now()} - Running ensemble predictor...")
     subprocess.run(["python3", "predict_multi_asset_ensemble.py"], check=True)
     print(f"[✅] {datetime.now()} - Ensemble prediction complete.")
-=======
     print(f"[⏳] {datetime.now()} - Running predict.py...")
     subprocess.run(["python3", "predict.py"], check=True)
     print(f"[✅] {datetime.now()} - Prediction complete.")
->>>>>>> f1644007
 
 
 # Setup scheduler

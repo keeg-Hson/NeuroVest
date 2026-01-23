@@ -78,11 +78,8 @@ from xgboost import XGBClassifier
 
 socket.setdefaulttimeout(float(os.getenv("NET_TIMEOUT", 3)))
 
-<<<<<<< HEAD
 from config import MODELS_DIR, LOGS_DIR, TRAIN_CFG
-=======
 from config import MODELS_DIR, TRAIN_CFG
->>>>>>> f1644007
 from utils import (
     add_features,
     add_forward_returns_and_labels,
@@ -124,12 +121,9 @@ class PurgedWalkForwardSplit(BaseCrossValidator):
         if n <= self.min_train_size + 1:
             return 0
         test_size = self._resolved_test_size(n)
-<<<<<<< HEAD
         # FIX: Match the fix in split() method
         start_test = self.min_train_size + self.embargo
-=======
         start_test = self.min_train_size
->>>>>>> f1644007
         made = 0
         for _ in range(self.n_splits):
             test_start = start_test
@@ -145,14 +139,11 @@ class PurgedWalkForwardSplit(BaseCrossValidator):
     def split(self, X, y=None, groups=None):
         n = len(X)
         test_size = self._resolved_test_size(n)
-<<<<<<< HEAD
         # FIX: Start test after min_train_size + embargo to ensure first split is valid
         # Previous: start_test = self.min_train_size caused first split to fail
         # Now: start_test = self.min_train_size + self.embargo ensures train_end >= min_train_size
         start_test = self.min_train_size + self.embargo
-=======
         start_test = self.min_train_size
->>>>>>> f1644007
         made = 0
         for _ in range(self.n_splits):
             test_start = start_test
@@ -402,11 +393,8 @@ def pick_threshold_from_oof(pipe, X, y, cv, pos_label=1):
 
 
 # ====================== Top-signal utilities ======================
-<<<<<<< HEAD
 def _load_top_signals(path = None) -> list[str]:
-=======
 def _load_top_signals(path: str = "logs/top_signals.txt") -> list[str]:
->>>>>>> f1644007
     """
     Loads top feature names from analyze_signals/select_top_signals output.
 
@@ -415,13 +403,10 @@ def _load_top_signals(path: str = "logs/top_signals.txt") -> list[str]:
 
     Lines starting with "Top" or empty lines are ignored.
     """
-<<<<<<< HEAD
     if path is None:
         path = LOGS_DIR / "top_signals.txt"
     p = Path(path)
-=======
     p = os.path.join(path)
->>>>>>> f1644007
     try:
         with open(p) as f:
             lines = f.readlines()
@@ -552,11 +537,8 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             pos_threshold=TRAIN_CFG["pos_threshold"],
         )
 
-<<<<<<< HEAD
         INPUT_SCHEMA_FPATH = MODELS_DIR / "input_features_fwd.txt"
-=======
         INPUT_SCHEMA_FPATH = "models/input_features_fwd.txt"
->>>>>>> f1644007
 
         def _clean_names(names):
             return [c for c in names if c not in FWD_BLACKLIST]
@@ -620,27 +602,21 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         use_kbest = X.shape[1] >= 2
         if use_kbest:
             max_k = X.shape[1]
-<<<<<<< HEAD
             # Optimized for ~114 features (Nov 2025): Focus on 30-60 range
             # Analysis showed 20-30 features was too aggressive for expanded feature set
             k_choices = sorted(set([30, 40, 50, 60, max(30, max_k // 2), max_k]))
             k_choices = [k for k in k_choices if 5 <= k <= max_k]
             # Ensure minimum choices for smaller feature sets
-=======
             # Expanded feature set: allow more features to improve model capacity
             k_choices = sorted(set([15, 20, 25, 30, max(15, max_k // 2), max_k]))
             k_choices = [k for k in k_choices if 5 <= k <= max_k]
             # Ensure we have at least some choices even with smaller feature sets
->>>>>>> f1644007
             if not k_choices:
                 k_choices = sorted(set([min(5, max_k), min(10, max_k), max_k]))
             print(f"🔧 Feature selection k_choices: {k_choices}")
 
-<<<<<<< HEAD
             # Optional: Pre-filter with tree-based importance for large feature sets
-=======
             # Optional: Pre-filter with tree-based importance if we have many features
->>>>>>> f1644007
             use_tree_prefilter = X.shape[1] > 40
             if use_tree_prefilter:
                 print("🌲 Using tree-based feature pre-filtering (ExtraTrees importance)")
@@ -665,7 +641,6 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
                     ("clf", XGBClassifier(**xgb_common, **xgb_obj)),
                 ]
             pipe = Pipeline(steps=steps)
-<<<<<<< HEAD
             # FIX: Reduced hyperparameter grid to prevent overfitting
             # Previous: 118,098 combinations (massive overfitting!)
             # Current: ~48 combinations (focus on key parameters)
@@ -680,7 +655,6 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
                 "clf__gamma": [0],  # Fix to 0 (usually best)
                 "clf__reg_alpha": [0, 0.05],  # L1 regularization - keep 2 values
                 "clf__reg_lambda": [1.5],  # L2 regularization - fix to middle
-=======
             # Enhanced hyperparameter grid with regularization and better exploration
             param_grid = {
                 "kbest__k": k_choices,
@@ -701,7 +675,6 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
                     1.5,
                     3.0,
                 ],  # L2 regularization - lower starting point for 80+ features
->>>>>>> f1644007
             }
             print(
                 f"🔧 Hyperparameter grid size: {np.prod([len(v) for v in param_grid.values()])} combinations"
@@ -714,7 +687,6 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
                 ("clf", XGBClassifier(**xgb_common, **xgb_obj)),
             ]
             pipe = Pipeline(steps=steps)
-<<<<<<< HEAD
             # FIX: Reduced hyperparameter grid (no KBest version)
             # Previous: 3^9 = 19,683 combinations
             # Current: ~8 combinations
@@ -728,7 +700,6 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
                 "clf__gamma": [0],  # Fix to 0
                 "clf__reg_alpha": [0, 0.05],  # L1 regularization - keep 2 values
                 "clf__reg_lambda": [1.5],  # L2 regularization - fix to middle
-=======
             # Enhanced hyperparameter grid (no KBest) with regularization
             param_grid = {
                 "clf__n_estimators": [300, 500, 700],
@@ -740,7 +711,6 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
                 "clf__gamma": [0, 0.5, 1.0],
                 "clf__reg_alpha": [0, 0.1, 0.5],
                 "clf__reg_lambda": [1.0, 2.0, 5.0],
->>>>>>> f1644007
             }
             print(
                 f"🔧 Hyperparameter grid size: {np.prod([len(v) for v in param_grid.values()])} combinations"
@@ -835,11 +805,8 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         label_values = sorted(pd.Series(y).unique().tolist())
         label_map = {int(v): int(v) for v in label_values}
         inv_label_map = {int(v): int(v) for v in label_values}
-<<<<<<< HEAD
         with open(MODELS_DIR / "label_map_fwd.json", "w") as f:
-=======
         with open("models/label_map_fwd.json", "w") as f:
->>>>>>> f1644007
             json.dump(
                 {
                     "label_map": {str(k): int(v) for k, v in label_map.items()},
@@ -848,11 +815,8 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
                 f,
                 indent=2,
             )
-<<<<<<< HEAD
         print(f"💾 [FWD] Label maps → {MODELS_DIR}/label_map_fwd.json")
-=======
         print("💾 [FWD] Label maps → models/label_map_fwd.json")
->>>>>>> f1644007
 
         try:
             best_pipe_for_oof = grid_search.best_estimator_
@@ -874,17 +838,14 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             "recall_oof": float(metr.get("recall", 0.0)),
             "f1_oof": float(metr.get("f1", 0.0)),
         }
-<<<<<<< HEAD
         with open(MODELS_DIR / "thresholds_fwd.json", "w") as f:
             json.dump(thr_payload, f, indent=2)
         print(
             f"💾 [FWD] Thresholds → {MODELS_DIR}/thresholds_fwd.json: "
-=======
         with open("models/thresholds_fwd.json", "w") as f:
             json.dump(thr_payload, f, indent=2)
         print(
             f"💾 [FWD] Thresholds → models/thresholds_fwd.json: "
->>>>>>> f1644007
             f"t={t_star:.3f} (P_oof={thr_payload['precision_oof']:.3f}, "
             f"R_oof={thr_payload['recall_oof']:.3f}, F1_oof={thr_payload['f1_oof']:.3f})"
         )
@@ -942,19 +903,16 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     df = df[df["Event"] != 0].copy()
 
     try:
-<<<<<<< HEAD
         with open(MODELS_DIR / "input_features.txt") as f:
             input_cols = [line.strip() for line in f if line.strip()]
     except Exception as e:
         print(
             f"⚠️ {MODELS_DIR}/input_features.txt missing or unreadable ({e}); using available columns as-is."
-=======
         with open("models/input_features.txt") as f:
             input_cols = [line.strip() for line in f if line.strip()]
     except Exception as e:
         print(
             f"⚠️ models/input_features.txt missing or unreadable ({e}); using available columns as-is."
->>>>>>> f1644007
         )
         input_cols = [c for c in df.columns if c not in ("Event",)]
 
@@ -965,19 +923,16 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     X = df[input_cols].astype(float).replace([np.inf, -np.inf], np.nan)
     y_orig = df["Event"]
 
-<<<<<<< HEAD
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     pd.Series(list(X.columns), dtype=str).to_csv(
         MODELS_DIR / "input_features.txt", index=False, header=False
     )
     print(f"💾 Input feature columns saved to {MODELS_DIR}/input_features.txt")
-=======
     os.makedirs("models", exist_ok=True)
     pd.Series(list(X.columns), dtype=str).to_csv(
         "models/input_features.txt", index=False, header=False
     )
     print("💾 Input feature columns saved to models/input_features.txt")
->>>>>>> f1644007
 
     label_values = sorted(y_orig.unique())
     label_map = {lab: i for i, lab in enumerate(label_values)}
@@ -993,11 +948,8 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     print("\n📊 Encoded class distribution (0..K-1):")
     print(y.value_counts())
 
-<<<<<<< HEAD
     with open(MODELS_DIR / "label_map.json", "w") as f:
-=======
     with open("models/label_map.json", "w") as f:
->>>>>>> f1644007
         json.dump(
             {
                 "label_map": {str(k): int(v) for k, v in label_map.items()},
@@ -1006,18 +958,15 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             f,
             indent=2,
         )
-<<<<<<< HEAD
     print(f"💾 Saved label maps to {MODELS_DIR}/label_map.json")
 
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     model_path = MODELS_DIR / "market_crash_model.pkl"
-=======
     print("💾 Saved label maps to models/label_map.json")
 
     MODEL_DIR = "models"
     os.makedirs(MODEL_DIR, exist_ok=True)
     model_path = os.path.join(MODEL_DIR, "market_crash_model.pkl")
->>>>>>> f1644007
 
     if X.shape[0] == 0:
         raise RuntimeError("Empty training matrix after cleaning.")
@@ -1207,14 +1156,11 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         shap_df = pd.DataFrame({"feature": feat_names, "mean_abs_shap": mean_abs}).sort_values(
             "mean_abs_shap", ascending=False
         )
-<<<<<<< HEAD
         LOGS_DIR.mkdir(parents=True, exist_ok=True)
         shap_df.to_csv(LOGS_DIR / "shap_importance.csv", index=False)
         print(f"💾 Wrote SHAP importances → {LOGS_DIR}/shap_importance.csv")
-=======
         shap_df.to_csv("logs/shap_importance.csv", index=False)
         print("💾 Wrote SHAP importances → logs/shap_importance.csv")
->>>>>>> f1644007
 
     except ModuleNotFoundError:
         print("ℹ️ SHAP not installed — falling back to permutation importance.")
@@ -1226,14 +1172,11 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             shap_df = pd.DataFrame(
                 {"feature": list(X.columns), "mean_abs_shap": mean_abs}
             ).sort_values("mean_abs_shap", ascending=False)
-<<<<<<< HEAD
             LOGS_DIR.mkdir(parents=True, exist_ok=True)
             shap_df.to_csv(LOGS_DIR / "shap_importance.csv", index=False)
             print(f"💾 Wrote permutation importance → {LOGS_DIR}/shap_importance.csv")
-=======
             shap_df.to_csv("logs/shap_importance.csv", index=False)
             print("💾 Wrote permutation importance → logs/shap_importance.csv")
->>>>>>> f1644007
         except Exception as e2:
             print(f"⚠️ Permutation importance also failed: {e2}")
     except Exception as e:
@@ -1253,21 +1196,18 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     except Exception as e:
         print(f"⚠️ Could not extract KBest-selected columns ({e}); using all input columns.")
 
-<<<<<<< HEAD
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     pd.Series(selected_cols, dtype=str).to_csv(
         MODELS_DIR / "selected_features.txt", index=False, header=False
     )
     print(
         f"💾 Selected feature columns saved to {MODELS_DIR}/selected_features.txt ({len(selected_cols)} cols)"
-=======
     os.makedirs("models", exist_ok=True)
     pd.Series(selected_cols, dtype=str).to_csv(
         "models/selected_features.txt", index=False, header=False
     )
     print(
         f"💾 Selected feature columns saved to models/selected_features.txt ({len(selected_cols)} cols)"
->>>>>>> f1644007
     )
 
     y_pred = best_model.predict(X)
@@ -1327,12 +1267,9 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
                 best_prec = precision_score(y_pos, y_hat, zero_division=0)
                 best_rec = recall_score(y_pos, y_hat, zero_division=0)
 
-<<<<<<< HEAD
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
         with open(MODELS_DIR / "thresholds.json", "w") as f:
-=======
         with open("models/thresholds.json", "w") as f:
->>>>>>> f1644007
             json.dump(
                 {
                     "pos_orig": int(pos_orig),
@@ -1348,25 +1285,19 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
                 indent=2,
             )
         print(
-<<<<<<< HEAD
             f"💾 Saved decision threshold → {MODELS_DIR}/thresholds.json: "
-=======
             f"💾 Saved decision threshold → models/thresholds.json: "
->>>>>>> f1644007
             f"t={best_t:.3f} (Crash: P={best_prec:.3f}, R={best_rec:.3f}, F1={best_f1:.3f})"
         )
     except Exception as e:
         print(f"⚠️ AP (per-class) skipped: {e}")
 
     grid_results = pd.DataFrame(grid_search.cv_results_)
-<<<<<<< HEAD
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
     grid_results.to_csv(LOGS_DIR / "gridsearch_xgb_results.csv", index=False)
     print(f"📊 Grid search results saved to {LOGS_DIR}/gridsearch_xgb_results.csv")
-=======
     grid_results.to_csv("logs/gridsearch_xgb_results.csv", index=False)
     print("📊 Grid search results saved to logs/gridsearch_xgb_results.csv")
->>>>>>> f1644007
     return True
 
 

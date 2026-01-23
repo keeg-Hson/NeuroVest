@@ -438,21 +438,15 @@ def fetch_news_sentiment(
         elif r.status_code == 401:
             print("❌ NewsAPI 401: invalid key — skipping.")
             return _load_daily_sent(CACHE_NEWS_SENT, "News_Sentiment")
-<<<<<<< HEAD
         elif r.status_code == 429:
             print("⚠️  NewsAPI 429: rate limit exceeded — using cached sentiment (this is normal).")
             return _load_daily_sent(CACHE_NEWS_SENT, "News_Sentiment")
-=======
->>>>>>> f1644007
         else:
             r.raise_for_status()
             articles = r.json().get("articles", [])
     except Exception as e:
         print(f"❌ Failed to fetch news: {e}")
-<<<<<<< HEAD
         print("   ℹ️  Using cached sentiment data instead.")
-=======
->>>>>>> f1644007
         return _load_daily_sent(CACHE_NEWS_SENT, "News_Sentiment")
 
     rows = []

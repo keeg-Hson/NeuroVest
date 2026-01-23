@@ -72,10 +72,7 @@ def init_labeled_log_file():
 # --- Feature List ---
 def get_feature_list():
     return [
-<<<<<<< HEAD
         # Core technical features
-=======
->>>>>>> f1644007
         "MA_20",
         "EMA_12",
         "EMA_26",
@@ -108,7 +105,6 @@ def get_feature_list():
         "VWAP_Dev",
         "Ret_Skew_20",
         "Ret_Kurt_20",
-<<<<<<< HEAD
         # Removed zero-importance sentiment features (analysis Nov 2025):
         # "Sent_x_Vol", "RSI_x_NewsZ", "RSI_x_RedditZ"
         # Enhanced features from importance analysis
@@ -247,11 +243,9 @@ def get_feature_list():
         "Rate_Change_3m_x_MA200_Slope",  # Fed policy × Market trend
         "DXY_Level_x_Return_Lag5",  # Dollar strength × Returns
         "Yield_10Y_x_Price_vs_MA200",  # Interest rates × Market position
-=======
         "Sent_x_Vol",
         "RSI_x_NewsZ",
         "RSI_x_RedditZ",
->>>>>>> f1644007
     ]
 
 
@@ -604,11 +598,8 @@ def add_features(df):
     d["Gap_Pct"] = (d["Open"] - d["Close"].shift(1)) / d["Close"].shift(1)
 
     # OBV and volume-based features
-<<<<<<< HEAD
     # OBV is a cumulative indicator - cumsum() is the correct implementation
     # (not data leakage because it only uses PAST data, not future)
-=======
->>>>>>> f1644007
     price_diff = d["Close"].diff()
     direction = np.sign(price_diff).fillna(0.0)
     d["OBV"] = (direction * d["Volume"].fillna(0.0)).cumsum()
@@ -642,11 +633,8 @@ def add_features(df):
     d["Ret_Kurt_20"] = d["Daily_Return"].rolling(20).kurt()
 
     # VWAP and deviation
-<<<<<<< HEAD
     # VWAP is a cumulative indicator - cumsum() is the correct implementation
     # (not data leakage because it only uses PAST data, not future)
-=======
->>>>>>> f1644007
     typical_price = (d["High"] + d["Low"] + d["Close"]) / 3.0
     cum_vol = d["Volume"].replace(0, np.nan).cumsum()
     d["VWAP"] = (typical_price * d["Volume"]).cumsum() / cum_vol
@@ -670,7 +658,6 @@ def add_features(df):
     except Exception:
         pass
 
-<<<<<<< HEAD
     # ==========================================================================
     # Pre-computed features integration (cross-asset, sentiment, macro)
     # ==========================================================================
@@ -744,8 +731,6 @@ def add_features(df):
         # Fail gracefully - macro features are optional
         pass
 
-=======
->>>>>>> f1644007
     # Advanced feature engineering: multi-timeframe and enhanced interactions
     # 1. Multi-timeframe returns and volatility
     for window in [5, 10, 50]:
@@ -818,7 +803,6 @@ def add_features(df):
     if "MACD" in d.columns and "RSI" in d.columns:
         d["MACD_x_RSI"] = d["MACD"] * d["RSI"]
 
-<<<<<<< HEAD
     # =============================================================================
     # ENHANCED FEATURES - Based on Feature Importance Analysis
     # Top features identified: BB_Width, Return_Lag1, Return_Lag3, RSI, OBV
@@ -1089,8 +1073,6 @@ def add_features(df):
     if "Yield_10Y" in d.columns and "Price_vs_MA200" in d.columns:
         d["Yield_10Y_x_Price_vs_MA200"] = d["Yield_10Y"] * d["Price_vs_MA200"]
 
-=======
->>>>>>> f1644007
     # Build the rich feature set: technical core + macro/sentiment extras
     core_features = get_feature_list()
     extra_features = [
@@ -1109,14 +1091,11 @@ def add_features(df):
     candidate_features = list(dict.fromkeys(core_features + extra_features))
     feature_cols = [c for c in candidate_features if c in d.columns]
     feature_cols = list(dict.fromkeys(feature_cols))
-<<<<<<< HEAD
 
     # Defragment DataFrame to improve performance (consolidates fragmented blocks)
     # This eliminates PerformanceWarnings from incremental column additions
     d = d.copy()
 
-=======
->>>>>>> f1644007
     return d, feature_cols
 
 
@@ -1127,7 +1106,6 @@ def finalize_features(df, feature_cols):
             out[c] = np.nan
     out = out[feature_cols]
     out = out.replace([np.inf, -np.inf], np.nan)
-<<<<<<< HEAD
 
     # FIX: Use forward-fill instead of global median to prevent lookahead bias
     # Previous: out.fillna(out.median()) used future data in median calculation
@@ -1137,10 +1115,8 @@ def finalize_features(df, feature_cols):
     # Fill any remaining NaN at start of series with 0
     out = out.fillna(0)
 
-=======
     # median impute per-column (scalar), safe for TS when used inside CV/pipelines
     out = out.fillna(out.median(numeric_only=True))
->>>>>>> f1644007
     return out
 
 
@@ -1192,10 +1168,7 @@ def add_forward_returns_and_labels(
     slippage_bps: float = 2.0,
     long_only: bool = True,
     pos_threshold: float = 0.0,
-<<<<<<< HEAD
     volatility_adjusted: bool = True,  # NEW: Enable volatility adjustment
-=======
->>>>>>> f1644007
 ):
     d = df.copy()
     if price_col not in d.columns:
@@ -1209,7 +1182,6 @@ def add_forward_returns_and_labels(
     d["fwd_ret_net"] = d["fwd_ret_raw"] - cost
     d["horizon_forward"] = int(horizon)
 
-<<<<<<< HEAD
     # FIX: Volatility-adjusted thresholds
     # In high volatility (VIX 30+), a 0.5% move is noise
     # In low volatility (VIX 10), a 0.5% move is significant
@@ -1227,13 +1199,11 @@ def add_forward_returns_and_labels(
         # Use fixed threshold (original behavior)
         d["y"] = (d["fwd_ret_net"] >= float(pos_threshold)).astype(int)
 
-=======
     d["y"] = (
         (d["fwd_ret_net"] >= float(pos_threshold)).astype(int)
         if long_only
         else (d["fwd_ret_net"] >= float(pos_threshold)).astype(int)
     )
->>>>>>> f1644007
     return d
 
 
@@ -1333,7 +1303,6 @@ def label_events_triple_barrier(
 
 
 # === Canonical SPY loader =====================
-<<<<<<< HEAD
 def load_asset_data(ticker: str = "SPY", data_dir: str = "data_cache") -> pd.DataFrame:
     """
     Generic asset data loader - loads any asset from data_cache/
@@ -1387,19 +1356,14 @@ def load_asset_data(ticker: str = "SPY", data_dir: str = "data_cache") -> pd.Dat
 
     # Read and validate
     header = pd.read_csv(csv_path, nrows=1, low_memory=False)
-=======
 def load_SPY_data() -> pd.DataFrame:
     header = pd.read_csv(CSV_PATH, nrows=1, low_memory=False)
->>>>>>> f1644007
     want = ["Date", "Open", "High", "Low", "Close", "Adj Close", "Volume"]
     usecols = [c for c in want if c in header.columns]
 
     df = pd.read_csv(
-<<<<<<< HEAD
         csv_path,
-=======
         CSV_PATH,
->>>>>>> f1644007
         usecols=usecols,
         parse_dates=["Date"],
         low_memory=False,
@@ -1408,19 +1372,16 @@ def load_SPY_data() -> pd.DataFrame:
     df = df.sort_values("Date").drop_duplicates(subset=["Date"], keep="last").set_index("Date")
 
     if not isinstance(df.index, pd.DatetimeIndex):
-<<<<<<< HEAD
         raise AssertionError(f"{ticker} loader: index is not DatetimeIndex")
     if df.index.tz is not None:
         df.index = df.index.tz_localize(None)
     if "Open" not in df.columns or "Close" not in df.columns:
         raise AssertionError(f"{ticker} loader: missing required OHLC columns")
-=======
         raise AssertionError("SPY loader: index is not DatetimeIndex")
     if df.index.tz is not None:
         df.index = df.index.tz_localize(None)
     if "Open" not in df.columns or "Close" not in df.columns:
         raise AssertionError("SPY loader: missing required OHLC columns")
->>>>>>> f1644007
 
     for c in ["Open", "High", "Low", "Close", "Adj Close", "Volume"]:
         if c in df.columns:
@@ -1431,14 +1392,11 @@ def load_SPY_data() -> pd.DataFrame:
     return df
 
 
-<<<<<<< HEAD
 def load_SPY_data() -> pd.DataFrame:
     """Legacy wrapper - loads SPY data using generic loader"""
     return load_asset_data("SPY", data_dir=DATA_DIR)
 
 
-=======
->>>>>>> f1644007
 # =========================
 # Canonical loader + helpers
 # =========================

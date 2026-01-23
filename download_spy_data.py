@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 #!/usr/bin/env python3
 """
 Download SPY data from Yahoo Finance
@@ -98,7 +97,6 @@ print("2. Upgrade dependencies: pip3 install -r requirements.txt --upgrade")
 print("3. Try manual download from: https://finance.yahoo.com/quote/SPY/history")
 print("4. Save as data/SPY.csv with columns: Date,Open,High,Low,Close,Volume")
 sys.exit(1)
-=======
 from __future__ import annotations
 
 import os
@@ -143,4 +141,3 @@ def main():
 
 if __name__ == "__main__":
     main()
->>>>>>> f1644007
