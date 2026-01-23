@@ -1820,7 +1820,10 @@ def show_valuation_detector():
     gauge_col, verdict_col = st.columns([1.2, 1])
 
     with gauge_col:
-        # Main valuation gauge with gradient colors
+        # Determine score color
+        score_color = "#22c55e" if valuation_score < -0.2 else "#ef4444" if valuation_score > 0.2 else "#fbbf24"
+
+        # Main valuation gauge with gradient colors and centered score
         main_gauge = go.Figure(go.Indicator(
             mode="gauge",
             value=valuation_score,
@@ -1845,15 +1848,20 @@ def show_valuation_detector():
             },
             title={'text': "Valuation Score", 'font': {'size': 14}}
         ))
+        # Add centered score annotation
+        main_gauge.add_annotation(
+            x=0.5, y=0.25,
+            text=f"<b>{valuation_score:+.2f}</b>",
+            font=dict(size=36, color=score_color),
+            showarrow=False,
+            xref="paper", yref="paper"
+        )
         main_gauge.update_layout(
-            height=220,
-            margin=dict(l=20, r=20, t=50, b=10),
+            height=250,
+            margin=dict(l=20, r=20, t=50, b=20),
             paper_bgcolor="rgba(0,0,0,0)",
         )
         st.plotly_chart(main_gauge, use_container_width=True)
-        # Display score as formatted text
-        score_color = "#22c55e" if valuation_score < -0.2 else "#ef4444" if valuation_score > 0.2 else "#fbbf24"
-        st.markdown(f"<div style='text-align:center; font-size:32px; font-weight:bold; color:{score_color}; margin-top:-20px;'>{valuation_score:+.2f}</div>", unsafe_allow_html=True)
 
     with verdict_col:
         # Classification display with color
@@ -2617,273 +2625,204 @@ def show_forecast_results():
     # Load predictions from PostgreSQL
     try:
         dm = get_data_manager()
-        # Get latest predictions (one per asset)
         latest_df = dm.get_latest_predictions(limit=1000)
-        # Get full history for charts
         history_df = dm.get_all_predictions(days=90, limit=5000)
         dm.close()
 
         if len(latest_df) == 0 and len(history_df) == 0:
-            st.warning("No forecast results available yet.")
-            st.info("Predictions are generated daily. Run the prediction pipeline to generate forecasts.")
+            st.info("No forecast results available yet. Run the prediction pipeline to generate forecasts.")
             return
 
-        # Use history if available, otherwise latest
         df = history_df if len(history_df) > 0 else latest_df
 
     except Exception as e:
         st.error(f"Error loading predictions: {e}")
         return
 
-    # ==================== HEADER METRICS ====================
-
-    st.markdown("---")
-
     # Calculate stats
     unique_assets = df['ticker'].nunique() if 'ticker' in df.columns else 0
     latest_date = pd.to_datetime(df['prediction_date']).max() if len(df) > 0 else None
-
-    # Signal distribution
-    crash_count = len(df[df['prediction_label'] == 'CRASH'])
-    normal_count = len(df[df['prediction_label'] == 'NORMAL'])
-    spike_count = len(df[df['prediction_label'] == 'SPIKE'])
-    total = len(df)
-
-    # Model stats
     avg_confidence = df['confidence_score'].mean() if 'confidence_score' in df.columns and df['confidence_score'].notna().any() else None
-    agreement_rate = df['model_agreement'].mean() * 100 if 'model_agreement' in df.columns and df['model_agreement'].notna().any() else None
 
-    # Header row
-    h1, h2, h3, h4, h5 = st.columns(5)
-    with h1:
-        st.metric("Assets", unique_assets)
-    with h2:
-        st.metric("Predictions", f"{total:,}")
-    with h3:
-        st.metric("Avg Confidence", f"{avg_confidence:.0%}" if avg_confidence else "-")
-    with h4:
-        st.metric("Model Agreement", f"{agreement_rate:.0f}%" if agreement_rate else "-")
-    with h5:
-        st.metric("Last Updated", latest_date.strftime('%b %d') if latest_date else "-")
+    # Count signals from latest predictions only
+    crash_count = len(latest_df[latest_df['prediction_label'] == 'CRASH']) if len(latest_df) > 0 else 0
+    normal_count = len(latest_df[latest_df['prediction_label'] == 'NORMAL']) if len(latest_df) > 0 else 0
+    spike_count = len(latest_df[latest_df['prediction_label'] == 'SPIKE']) if len(latest_df) > 0 else 0
 
-    # ==================== CURRENT SIGNALS ====================
-
-    st.markdown("---")
-    st.subheader("Current Market Signals")
-
-    if 'ticker' in latest_df.columns and len(latest_df) > 0:
-        # Group by signal type
-        signal_cols = st.columns(3)
-
-        with signal_cols[0]:
-            st.markdown("#### <span style='color:#ef4444;'>CRASH Signals</span>", unsafe_allow_html=True)
-            crash_assets = latest_df[latest_df['prediction_label'] == 'CRASH']
-            if len(crash_assets) > 0:
-                for _, row in crash_assets.iterrows():
-                    conf = f"{row['confidence_score']:.0%}" if pd.notna(row.get('confidence_score')) else ""
-                    st.markdown(f"**{row['ticker']}** {conf}")
-            else:
-                st.caption("None")
-
-        with signal_cols[1]:
-            st.markdown("#### <span style='color:#fbbf24;'>NORMAL Signals</span>", unsafe_allow_html=True)
-            normal_assets = latest_df[latest_df['prediction_label'] == 'NORMAL']
-            if len(normal_assets) > 0:
-                for _, row in normal_assets.iterrows():
-                    conf = f"{row['confidence_score']:.0%}" if pd.notna(row.get('confidence_score')) else ""
-                    st.markdown(f"**{row['ticker']}** {conf}")
-            else:
-                st.caption("None")
-
-        with signal_cols[2]:
-            st.markdown("#### <span style='color:#22c55e;'>SPIKE Signals</span>", unsafe_allow_html=True)
-            spike_assets = latest_df[latest_df['prediction_label'] == 'SPIKE']
-            if len(spike_assets) > 0:
-                for _, row in spike_assets.iterrows():
-                    conf = f"{row['confidence_score']:.0%}" if pd.notna(row.get('confidence_score')) else ""
-                    st.markdown(f"**{row['ticker']}** {conf}")
-            else:
-                st.caption("None")
-
-    # ==================== DETAILED PREDICTIONS TABLE ====================
-
-    st.markdown("---")
-    st.subheader("Prediction Details")
-
-    if len(latest_df) > 0 and 'ticker' in latest_df.columns:
-        # Build comprehensive table
-        table_data = []
-        for _, row in latest_df.sort_values('ticker').iterrows():
-            signal = row['prediction_label']
-
-            # Individual model probabilities
-            xgb = f"{row['xgboost_prob']:.0%}" if pd.notna(row.get('xgboost_prob')) else "-"
-            lgb = f"{row['lightgbm_prob']:.0%}" if pd.notna(row.get('lightgbm_prob')) else "-"
-            cat = f"{row['catboost_prob']:.0%}" if pd.notna(row.get('catboost_prob')) else "-"
-            ensemble = f"{row['ensemble_prob']:.0%}" if pd.notna(row.get('ensemble_prob')) else "-"
-            confidence = f"{row['confidence_score']:.0%}" if pd.notna(row.get('confidence_score')) else "-"
-
-            table_data.append({
-                'Asset': row['ticker'],
-                'Signal': signal,
-                'Ensemble': ensemble,
-                'XGBoost': xgb,
-                'LightGBM': lgb,
-                'CatBoost': cat,
-                'Confidence': confidence,
-                'Agreement': '✓' if row.get('model_agreement') else '✗',
-                'Date': pd.to_datetime(row['prediction_date']).strftime('%Y-%m-%d')
-            })
-
-        pred_df = pd.DataFrame(table_data)
-
-        def color_signal(val):
-            if val == 'CRASH':
-                return 'color: #ef4444; font-weight: bold'
-            elif val == 'SPIKE':
-                return 'color: #22c55e; font-weight: bold'
-            return 'color: #fbbf24; font-weight: bold'
-
-        styled_pred_df = pred_df.style.applymap(color_signal, subset=['Signal'])
-        st.dataframe(styled_pred_df, use_container_width=True, hide_index=True)
-
-        # Legend
-        st.caption("**Legend:** CRASH (bearish) | NORMAL (neutral) | SPIKE (bullish) | ✓ All models agree | ✗ Models disagree")
-
-    # ==================== SIGNAL DISTRIBUTION CHART ====================
+    # ==================== HEADER ====================
 
     st.markdown("---")
 
-    chart_col, stats_col = st.columns([2, 1])
-
-    with chart_col:
-        st.subheader("Signal Distribution")
-        fig = go.Figure(data=[go.Pie(
-            labels=['CRASH', 'NORMAL', 'SPIKE'],
-            values=[crash_count, normal_count, spike_count],
-            marker=dict(colors=['#ef4444', '#fbbf24', '#22c55e']),
-            hole=0.5,
-            textinfo='label+percent',
-            textposition='outside'
-        )])
-        fig.update_layout(
-            height=300,
-            margin=dict(l=20, r=20, t=20, b=20),
-            showlegend=False,
-            annotations=[dict(text=f'{total}', x=0.5, y=0.5, font_size=24, showarrow=False)]
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-    with stats_col:
-        st.subheader("Summary")
-        st.markdown(f"""
-        | Signal | Count | Pct |
-        |--------|-------|-----|
-        | <span style='color:#ef4444;'>●</span> CRASH | {crash_count} | {crash_count/total*100:.1f}% |
-        | <span style='color:#fbbf24;'>●</span> NORMAL | {normal_count} | {normal_count/total*100:.1f}% |
-        | <span style='color:#22c55e;'>●</span> SPIKE | {spike_count} | {spike_count/total*100:.1f}% |
-        """, unsafe_allow_html=True)
-
+    # Date and confidence header
+    header_col1, header_col2 = st.columns([2, 1])
+    with header_col1:
+        if latest_date:
+            st.markdown(f"### Predictions for {latest_date.strftime('%B %d, %Y')}")
+        st.caption(f"{unique_assets} assets analyzed")
+    with header_col2:
         if avg_confidence:
-            st.markdown("---")
-            st.markdown(f"**Avg Confidence:** {avg_confidence:.0%}")
-        if agreement_rate:
-            st.markdown(f"**Model Agreement:** {agreement_rate:.0f}%")
+            st.metric("Avg Confidence", f"{avg_confidence:.0%}")
 
-    # ==================== HISTORY BY ASSET ====================
-
-    if len(history_df) > 0 and 'ticker' in history_df.columns:
-        st.markdown("---")
-        st.subheader("Prediction History")
-
-        # Asset selector
-        assets = sorted(history_df['ticker'].unique().tolist())
-        selected = st.selectbox("Select Asset", assets, key="history_asset")
-
-        if selected:
-            asset_history = history_df[history_df['ticker'] == selected].copy()
-            asset_history['Date'] = pd.to_datetime(asset_history['prediction_date'])
-            asset_history = asset_history.sort_values('Date', ascending=False)
-
-            if len(asset_history) > 0:
-                # Show recent history table
-                hist_data = []
-                for _, row in asset_history.head(30).iterrows():
-                    signal = row['prediction_label']
-
-                    hist_data.append({
-                        'Date': row['Date'].strftime('%Y-%m-%d'),
-                        'Signal': signal,
-                        'Ensemble': f"{row['ensemble_prob']:.0%}" if pd.notna(row.get('ensemble_prob')) else "-",
-                        'XGBoost': f"{row['xgboost_prob']:.0%}" if pd.notna(row.get('xgboost_prob')) else "-",
-                        'LightGBM': f"{row['lightgbm_prob']:.0%}" if pd.notna(row.get('lightgbm_prob')) else "-",
-                        'CatBoost': f"{row['catboost_prob']:.0%}" if pd.notna(row.get('catboost_prob')) else "-",
-                        'Confidence': f"{row['confidence_score']:.0%}" if pd.notna(row.get('confidence_score')) else "-",
-                        'Agreement': '✓' if row.get('model_agreement') else '✗'
-                    })
-
-                hist_df = pd.DataFrame(hist_data)
-
-                def color_hist_signal(val):
-                    if val == 'CRASH':
-                        return 'color: #ef4444; font-weight: bold'
-                    elif val == 'SPIKE':
-                        return 'color: #22c55e; font-weight: bold'
-                    return 'color: #fbbf24; font-weight: bold'
-
-                styled_hist_df = hist_df.style.applymap(color_hist_signal, subset=['Signal'])
-                st.dataframe(styled_hist_df, use_container_width=True, hide_index=True)
-                st.caption(f"Showing last {len(hist_data)} predictions for {selected}")
-
-                # Signal trend chart
-                if len(asset_history) >= 5:
-                    st.markdown("#### Signal Trend")
-                    signal_map = {'CRASH': 0, 'NORMAL': 1, 'SPIKE': 2}
-                    asset_history['signal_num'] = asset_history['prediction_label'].map(signal_map)
-
-                    trend_fig = go.Figure()
-                    trend_fig.add_trace(go.Scatter(
-                        x=asset_history['Date'],
-                        y=asset_history['ensemble_prob'],
-                        mode='lines+markers',
-                        name='Ensemble Prob',
-                        line=dict(color='#3b82f6', width=2)
-                    ))
-
-                    # Add colored markers for signal type
-                    colors = asset_history['prediction_label'].map({'CRASH': '#ef4444', 'NORMAL': '#fbbf24', 'SPIKE': '#22c55e'})
-                    trend_fig.add_trace(go.Scatter(
-                        x=asset_history['Date'],
-                        y=asset_history['ensemble_prob'],
-                        mode='markers',
-                        marker=dict(size=10, color=colors),
-                        name='Signal',
-                        hovertemplate='%{x}<br>Prob: %{y:.1%}<extra></extra>'
-                    ))
-
-                    trend_fig.update_layout(
-                        height=250,
-                        margin=dict(l=40, r=20, t=20, b=40),
-                        yaxis_title='Probability',
-                        yaxis_tickformat='.0%',
-                        showlegend=False,
-                        hovermode='x unified'
-                    )
-                    st.plotly_chart(trend_fig, use_container_width=True)
-            else:
-                st.info(f"No history available for {selected}")
-
-    # ==================== NOTES ====================
+    # ==================== SIGNAL CARDS ====================
 
     st.markdown("---")
-    st.caption("""
-    **Signal Definitions:**
-    - **CRASH**: Model predicts significant downward movement (bearish)
-    - **NORMAL**: Model predicts sideways/neutral movement
-    - **SPIKE**: Model predicts significant upward movement (bullish)
 
-    **Models:** XGBoost, LightGBM, CatBoost (ensemble weighted average)
-    """)
+    card1, card2, card3 = st.columns(3)
+
+    with card1:
+        crash_assets = latest_df[latest_df['prediction_label'] == 'CRASH'] if len(latest_df) > 0 else []
+        st.markdown(f"""
+        <div style='background: linear-gradient(135deg, #fee2e2 0%, #fecaca 100%); padding: 1.2rem; border-radius: 10px; border-left: 4px solid #ef4444;'>
+            <div style='color: #991b1b; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;'>Bearish</div>
+            <div style='color: #dc2626; font-size: 2rem; font-weight: bold;'>{crash_count}</div>
+            <div style='color: #b91c1c; font-size: 0.9rem;'>CRASH signals</div>
+        </div>
+        """, unsafe_allow_html=True)
+        if len(crash_assets) > 0:
+            st.caption("Assets: " + ", ".join(crash_assets['ticker'].tolist()))
+
+    with card2:
+        normal_assets = latest_df[latest_df['prediction_label'] == 'NORMAL'] if len(latest_df) > 0 else []
+        st.markdown(f"""
+        <div style='background: linear-gradient(135deg, #fef9c3 0%, #fef08a 100%); padding: 1.2rem; border-radius: 10px; border-left: 4px solid #eab308;'>
+            <div style='color: #854d0e; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;'>Neutral</div>
+            <div style='color: #ca8a04; font-size: 2rem; font-weight: bold;'>{normal_count}</div>
+            <div style='color: #a16207; font-size: 0.9rem;'>NORMAL signals</div>
+        </div>
+        """, unsafe_allow_html=True)
+        if len(normal_assets) > 0:
+            st.caption("Assets: " + ", ".join(normal_assets['ticker'].tolist()))
+
+    with card3:
+        spike_assets = latest_df[latest_df['prediction_label'] == 'SPIKE'] if len(latest_df) > 0 else []
+        st.markdown(f"""
+        <div style='background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%); padding: 1.2rem; border-radius: 10px; border-left: 4px solid #22c55e;'>
+            <div style='color: #166534; font-size: 0.85rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;'>Bullish</div>
+            <div style='color: #16a34a; font-size: 2rem; font-weight: bold;'>{spike_count}</div>
+            <div style='color: #15803d; font-size: 0.9rem;'>SPIKE signals</div>
+        </div>
+        """, unsafe_allow_html=True)
+        if len(spike_assets) > 0:
+            st.caption("Assets: " + ", ".join(spike_assets['ticker'].tolist()))
+
+    # ==================== TABS FOR CONTENT ====================
+
+    st.markdown("---")
+
+    tab1, tab2, tab3 = st.tabs(["All Predictions", "Model Details", "History"])
+
+    with tab1:
+        if len(latest_df) > 0 and 'ticker' in latest_df.columns:
+            # Simple clean table
+            simple_data = []
+            for _, row in latest_df.sort_values('ticker').iterrows():
+                signal = row['prediction_label']
+                simple_data.append({
+                    'Asset': row['ticker'],
+                    'Signal': signal,
+                    'Confidence': f"{row['confidence_score']:.0%}" if pd.notna(row.get('confidence_score')) else "-",
+                    'Probability': f"{row['ensemble_prob']:.0%}" if pd.notna(row.get('ensemble_prob')) else "-",
+                    'Agreement': '✓' if row.get('model_agreement') else '✗'
+                })
+
+            simple_df = pd.DataFrame(simple_data)
+
+            def color_signal(val):
+                if val == 'CRASH':
+                    return 'color: #ef4444; font-weight: bold'
+                elif val == 'SPIKE':
+                    return 'color: #22c55e; font-weight: bold'
+                return 'color: #eab308; font-weight: bold'
+
+            styled_df = simple_df.style.applymap(color_signal, subset=['Signal'])
+            st.dataframe(styled_df, use_container_width=True, hide_index=True, height=400)
+
+    with tab2:
+        if len(latest_df) > 0 and 'ticker' in latest_df.columns:
+            st.markdown("#### Individual Model Probabilities")
+            st.caption("Compare predictions across XGBoost, LightGBM, and CatBoost models")
+
+            model_data = []
+            for _, row in latest_df.sort_values('ticker').iterrows():
+                model_data.append({
+                    'Asset': row['ticker'],
+                    'Signal': row['prediction_label'],
+                    'XGBoost': f"{row['xgboost_prob']:.0%}" if pd.notna(row.get('xgboost_prob')) else "-",
+                    'LightGBM': f"{row['lightgbm_prob']:.0%}" if pd.notna(row.get('lightgbm_prob')) else "-",
+                    'CatBoost': f"{row['catboost_prob']:.0%}" if pd.notna(row.get('catboost_prob')) else "-",
+                    'Ensemble': f"{row['ensemble_prob']:.0%}" if pd.notna(row.get('ensemble_prob')) else "-"
+                })
+
+            model_df = pd.DataFrame(model_data)
+            styled_model_df = model_df.style.applymap(color_signal, subset=['Signal'])
+            st.dataframe(styled_model_df, use_container_width=True, hide_index=True, height=400)
+
+            st.caption("**Ensemble** = Weighted average of individual models")
+
+    with tab3:
+        if len(history_df) > 0 and 'ticker' in history_df.columns:
+            # Asset selector
+            assets = sorted(history_df['ticker'].unique().tolist())
+            selected = st.selectbox("Select Asset", assets, key="history_asset")
+
+            if selected:
+                asset_history = history_df[history_df['ticker'] == selected].copy()
+                asset_history['Date'] = pd.to_datetime(asset_history['prediction_date'])
+                asset_history = asset_history.sort_values('Date', ascending=False)
+
+                if len(asset_history) > 0:
+                    # Show recent history table
+                    hist_data = []
+                    for _, row in asset_history.head(20).iterrows():
+                        signal = row['prediction_label']
+                        hist_data.append({
+                            'Date': row['Date'].strftime('%Y-%m-%d'),
+                            'Signal': signal,
+                            'Confidence': f"{row['confidence_score']:.0%}" if pd.notna(row.get('confidence_score')) else "-",
+                            'Probability': f"{row['ensemble_prob']:.0%}" if pd.notna(row.get('ensemble_prob')) else "-"
+                        })
+
+                    hist_df = pd.DataFrame(hist_data)
+
+                    def color_hist_signal(val):
+                        if val == 'CRASH':
+                            return 'color: #ef4444; font-weight: bold'
+                        elif val == 'SPIKE':
+                            return 'color: #22c55e; font-weight: bold'
+                        return 'color: #eab308; font-weight: bold'
+
+                    styled_hist_df = hist_df.style.applymap(color_hist_signal, subset=['Signal'])
+                    st.dataframe(styled_hist_df, use_container_width=True, hide_index=True, height=350)
+
+                    # Signal trend chart
+                    if len(asset_history) >= 5:
+                        st.markdown("#### Probability Trend")
+                        trend_fig = go.Figure()
+
+                        # Add probability line
+                        colors = asset_history['prediction_label'].map({'CRASH': '#ef4444', 'NORMAL': '#eab308', 'SPIKE': '#22c55e'})
+                        trend_fig.add_trace(go.Scatter(
+                            x=asset_history['Date'],
+                            y=asset_history['ensemble_prob'],
+                            mode='lines+markers',
+                            line=dict(color='#6366f1', width=2),
+                            marker=dict(size=8, color=colors, line=dict(width=1, color='white')),
+                            hovertemplate='%{x|%b %d}<br>Prob: %{y:.0%}<extra></extra>'
+                        ))
+
+                        trend_fig.update_layout(
+                            height=220,
+                            margin=dict(l=40, r=20, t=10, b=40),
+                            yaxis_title='Probability',
+                            yaxis_tickformat='.0%',
+                            showlegend=False,
+                            hovermode='x unified'
+                        )
+                        st.plotly_chart(trend_fig, use_container_width=True)
+                else:
+                    st.info(f"No history available for {selected}")
+        else:
+            st.info("No prediction history available.")
 
 
 def show_automation():
