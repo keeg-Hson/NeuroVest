@@ -1692,20 +1692,26 @@ def show_valuation_detector():
         st.plotly_chart(main_gauge, use_container_width=True)
 
     with verdict_col:
-        # Classification display
-        st.markdown(f"### {classification}")
+        # Classification display with color
+        if "OVERVALUED" in classification:
+            class_color = "#ef4444" if "STRONGLY" in classification else "#f97316"
+        elif "UNDERVALUED" in classification:
+            class_color = "#22c55e" if "STRONGLY" in classification else "#4ade80"
+        else:
+            class_color = "#fbbf24"
+        st.markdown(f"### <span style='color:{class_color};'>●</span> {classification}", unsafe_allow_html=True)
 
-        # Signal summary
+        # Signal summary with colored indicators
         st.markdown("**Signal Breakdown:**")
         sig_cols = st.columns(3)
         with sig_cols[0]:
-            st.markdown(f"**{bullish_count}**")
+            st.markdown(f"<span style='color:#22c55e; font-size:24px;'>●</span> **{bullish_count}**", unsafe_allow_html=True)
             st.caption("Bullish")
         with sig_cols[1]:
-            st.markdown(f"**{neutral_count}**")
+            st.markdown(f"<span style='color:#fbbf24; font-size:24px;'>●</span> **{neutral_count}**", unsafe_allow_html=True)
             st.caption("Neutral")
         with sig_cols[2]:
-            st.markdown(f"**{bearish_count}**")
+            st.markdown(f"<span style='color:#ef4444; font-size:24px;'>●</span> **{bearish_count}**", unsafe_allow_html=True)
             st.caption("Bearish")
 
         st.markdown("---")
@@ -1730,7 +1736,7 @@ def show_valuation_detector():
     # ==================== KEY INDICATORS GAUGES ====================
 
     st.markdown("---")
-    st.subheader("⚡ Key Indicators at a Glance")
+    st.subheader("Key Indicators at a Glance")
 
     g1, g2, g3, g4 = st.columns(4)
 
@@ -2173,11 +2179,19 @@ def show_valuation_detector():
     with tab4:
         st.markdown("### Signal Summary")
 
-        # Create signal table
+        # Create signal table with colored indicators
         signal_data = []
         for sig in signals:
             name, reading, score, direction = sig[0], sig[1], sig[2], sig[3]
+            # Add colored dot based on signal direction
+            if direction == "bullish":
+                color_dot = "🟢"
+            elif direction == "bearish":
+                color_dot = "🔴"
+            else:
+                color_dot = "🟡"
             signal_data.append({
+                "": color_dot,
                 "Indicator": name,
                 "Reading": reading,
                 "Score": f"{score:+.2f}",
@@ -2187,31 +2201,31 @@ def show_valuation_detector():
         signal_df = pd.DataFrame(signal_data)
         st.dataframe(signal_df, use_container_width=True, hide_index=True)
 
-        # Grouped signals
+        # Grouped signals with colored indicators
         st.markdown("---")
         sig_col1, sig_col2, sig_col3 = st.columns(3)
 
         with sig_col1:
-            st.markdown("**Bullish Signals**")
+            st.markdown("<span style='color:#22c55e; font-size:18px;'>●</span> **Bullish Signals**", unsafe_allow_html=True)
             bullish = [s for s in signals if s[3] == "bullish"]
             for s in bullish:
-                st.markdown(f"- {s[0]}: {s[1]}")
+                st.markdown(f"<span style='color:#22c55e;'>▸</span> {s[0]}: {s[1]}", unsafe_allow_html=True)
             if not bullish:
                 st.caption("None")
 
         with sig_col2:
-            st.markdown("**Neutral Signals**")
+            st.markdown("<span style='color:#fbbf24; font-size:18px;'>●</span> **Neutral Signals**", unsafe_allow_html=True)
             neutral = [s for s in signals if s[3] == "neutral"]
             for s in neutral:
-                st.markdown(f"- {s[0]}: {s[1]}")
+                st.markdown(f"<span style='color:#fbbf24;'>▸</span> {s[0]}: {s[1]}", unsafe_allow_html=True)
             if not neutral:
                 st.caption("None")
 
         with sig_col3:
-            st.markdown("**Bearish Signals**")
+            st.markdown("<span style='color:#ef4444; font-size:18px;'>●</span> **Bearish Signals**", unsafe_allow_html=True)
             bearish = [s for s in signals if s[3] == "bearish"]
             for s in bearish:
-                st.markdown(f"- {s[0]}: {s[1]}")
+                st.markdown(f"<span style='color:#ef4444;'>▸</span> {s[0]}: {s[1]}", unsafe_allow_html=True)
             if not bearish:
                 st.caption("None")
 
