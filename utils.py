@@ -243,6 +243,35 @@ def get_feature_list():
         "Rate_Change_3m_x_MA200_Slope",  # Fed policy × Market trend
         "DXY_Level_x_Return_Lag5",  # Dollar strength × Returns
         "Yield_10Y_x_Price_vs_MA200",  # Interest rates × Market position
+        # 19. Enhanced Regime Detection Features (Jan 2026)
+        # Volatility regime classification
+        "Vol_Regime_Low",
+        "Vol_Regime_Med",
+        "Vol_Regime_High",
+        "Vol_Regime_Change",
+        "Vol_Mean_Reversion",
+        # Risk-On/Risk-Off indicators
+        "Risk_On_Score",
+        "Risk_On_Regime",
+        # Mean Reversion vs Trending regime
+        "Regime_MeanRevert",
+        "Regime_Trending",
+        "Regime_StrongTrend",
+        "Trend_Direction",
+        "ADX_Slope",
+        "Trend_Strengthening",
+        # Market stress composite
+        "Market_Stress_Index",
+        "High_Stress_Regime",
+        # Cross-asset regime signals
+        "Dollar_Strengthening",
+        "Yields_Rising",
+        "Credit_Tightening",
+        # Regime interaction features
+        "Trend_x_RiskOn",
+        "HighVol_x_Trending",
+        "Stress_x_Downtrend",
+        "MeanRevert_Opportunity",
     ]
 
 
@@ -1069,6 +1098,143 @@ def add_features(df):
     # Yield Curve × Market Position (recession indicator interaction)
     if "Yield_10Y" in d.columns and "Price_vs_MA200" in d.columns:
         d["Yield_10Y_x_Price_vs_MA200"] = d["Yield_10Y"] * d["Price_vs_MA200"]
+
+    # =========================================================================
+    # ENHANCED REGIME DETECTION FEATURES
+    # Help model adapt to different market conditions
+    # =========================================================================
+
+    # 1. VOLATILITY REGIME CLASSIFICATION (explicit categories)
+    if "Volatility" in d.columns:
+        # Rolling percentile for regime detection
+        vol_percentile = d["Volatility"].rolling(252, min_periods=60).rank(pct=True)
+
+        # Explicit regime categories (one-hot style for interpretability)
+        d["Vol_Regime_Low"] = (vol_percentile < 0.33).astype(int)
+        d["Vol_Regime_Med"] = ((vol_percentile >= 0.33) & (vol_percentile < 0.67)).astype(int)
+        d["Vol_Regime_High"] = (vol_percentile >= 0.67).astype(int)
+
+        # Volatility regime transitions (important for timing)
+        vol_regime = pd.cut(vol_percentile, bins=[0, 0.33, 0.67, 1.0], labels=[0, 1, 2])
+        d["Vol_Regime_Change"] = (vol_regime != vol_regime.shift(1)).astype(int)
+
+        # Volatility mean reversion signal
+        vol_ma = d["Volatility"].rolling(60).mean()
+        d["Vol_Mean_Reversion"] = (d["Volatility"] - vol_ma) / (vol_ma + 1e-9)
+
+    # 2. RISK-ON / RISK-OFF INDICATOR
+    # Combines multiple factors to determine market risk appetite
+    risk_signals = []
+
+    # Risk signal: Price above 200MA = risk-on
+    if "Price_vs_MA200" in d.columns:
+        d["RiskOn_Price"] = (d["Price_vs_MA200"] > 1.0).astype(int)
+        risk_signals.append("RiskOn_Price")
+
+    # Risk signal: Low volatility = risk-on
+    if "Vol_Regime_Low" in d.columns:
+        d["RiskOn_Vol"] = d["Vol_Regime_Low"]
+        risk_signals.append("RiskOn_Vol")
+
+    # Risk signal: Positive momentum = risk-on
+    if "Return_Lag5" in d.columns:
+        d["RiskOn_Momentum"] = (d["Return_Lag5"] > 0).astype(int)
+        risk_signals.append("RiskOn_Momentum")
+
+    # Risk signal: Credit spreads (if available) - low spread = risk-on
+    if "Credit_Stress" in d.columns:
+        d["RiskOn_Credit"] = (d["Credit_Stress"] == 0).astype(int)
+        risk_signals.append("RiskOn_Credit")
+
+    # Composite Risk-On Score (0 to 1)
+    if len(risk_signals) > 0:
+        d["Risk_On_Score"] = sum(d[s] for s in risk_signals) / len(risk_signals)
+        d["Risk_On_Regime"] = (d["Risk_On_Score"] > 0.5).astype(int)
+
+    # 3. MEAN REVERSION vs TRENDING REGIME
+    # Helps model know which strategy to apply
+    if "ADX" in d.columns:
+        # ADX < 20: Mean reverting market
+        # ADX 20-40: Trending market
+        # ADX > 40: Strong trend
+        d["Regime_MeanRevert"] = (d["ADX"] < 20).astype(int)
+        d["Regime_Trending"] = ((d["ADX"] >= 20) & (d["ADX"] < 40)).astype(int)
+        d["Regime_StrongTrend"] = (d["ADX"] >= 40).astype(int)
+
+        # Trend direction when trending
+        if "Plus_DI" in d.columns and "Minus_DI" in d.columns:
+            d["Trend_Direction"] = np.where(
+                d["ADX"] >= 20,
+                np.where(d["Plus_DI"] > d["Minus_DI"], 1, -1),
+                0
+            )
+
+        # ADX slope (trend strengthening or weakening)
+        d["ADX_Slope"] = d["ADX"].diff(5)
+        d["Trend_Strengthening"] = (d["ADX_Slope"] > 0).astype(int)
+
+    # 4. MARKET STRESS COMPOSITE INDEX
+    stress_components = []
+
+    # High volatility contributes to stress
+    if "Vol_Regime_High" in d.columns:
+        stress_components.append(d["Vol_Regime_High"])
+
+    # Negative momentum contributes to stress
+    if "Return_Lag5" in d.columns:
+        stress_components.append((d["Return_Lag5"] < -0.02).astype(int))
+
+    # Below 200MA contributes to stress
+    if "Bull_Market" in d.columns:
+        stress_components.append((1 - d["Bull_Market"]))
+
+    # Near 52-week low contributes to stress
+    if "Near_52w_Low" in d.columns:
+        stress_components.append(d["Near_52w_Low"])
+
+    # RSI oversold contributes to stress
+    if "RSI_Oversold" in d.columns:
+        stress_components.append(d["RSI_Oversold"])
+
+    # Credit stress (if available)
+    if "Credit_Stress" in d.columns:
+        stress_components.append(d["Credit_Stress"])
+
+    if len(stress_components) > 0:
+        d["Market_Stress_Index"] = sum(stress_components) / len(stress_components)
+        d["High_Stress_Regime"] = (d["Market_Stress_Index"] > 0.5).astype(int)
+
+    # 5. CROSS-ASSET REGIME SIGNALS (using available cross-asset data)
+    # Dollar strength regime
+    if "DXY_Change_20d" in d.columns:
+        d["Dollar_Strengthening"] = (d["DXY_Change_20d"] > 0).astype(int)
+
+    # Yield environment
+    if "Yield_Change_20d" in d.columns:
+        d["Yields_Rising"] = (d["Yield_Change_20d"] > 0).astype(int)
+
+    # Credit conditions
+    if "Credit_Change_20d" in d.columns:
+        d["Credit_Tightening"] = (d["Credit_Change_20d"] > 0).astype(int)
+
+    # 6. REGIME INTERACTION FEATURES
+    # These capture how different regime states interact
+
+    # Trending in risk-on vs risk-off
+    if "Strong_Trend" in d.columns and "Risk_On_Regime" in d.columns:
+        d["Trend_x_RiskOn"] = d["Strong_Trend"] * d["Risk_On_Regime"]
+
+    # Volatility regime x trend regime
+    if "Vol_Regime_High" in d.columns and "Regime_Trending" in d.columns:
+        d["HighVol_x_Trending"] = d["Vol_Regime_High"] * d["Regime_Trending"]
+
+    # Stress during downtrend (capitulation signal)
+    if "Market_Stress_Index" in d.columns and "Trend_Direction" in d.columns:
+        d["Stress_x_Downtrend"] = d["Market_Stress_Index"] * (d["Trend_Direction"] == -1).astype(int)
+
+    # Mean reversion opportunity (high vol + mean reverting)
+    if "Vol_Regime_High" in d.columns and "Regime_MeanRevert" in d.columns:
+        d["MeanRevert_Opportunity"] = d["Vol_Regime_High"] * d["Regime_MeanRevert"]
 
     # Build the rich feature set: technical core + macro/sentiment extras
     core_features = get_feature_list()
