@@ -73,7 +73,7 @@ echo ""
 if [ -f "train_unified.py" ]; then
     echo "STEP 2/4: Training models..."
     echo "-----------------------------------------------------------------------"
-    python3 train_unified.py
+    python3 train_unified.py --output-prefix multi_asset
     TRAIN_EXIT=$?
 
     if [ $TRAIN_EXIT -ne 0 ]; then
@@ -128,7 +128,7 @@ else
     echo ""
     echo "You can run individual steps manually:"
     echo "  python3 bootstrap_data_load.py"
-    echo "  python3 train_unified.py"
-    echo "  python3 predict_multi_asset_ensemble.py"
+    echo "  python3 train_unified.py --output-prefix multi_asset"
+    echo "  python3 predict_all_assets.py"
     exit 1
 fi
