@@ -239,37 +239,115 @@ def train_ensemble(
     data: Dict,
     args: argparse.Namespace,
 ) -> Dict[str, TreeEnsembleModel]:
-    """Train full ensemble (XGBoost + LightGBM + CatBoost)"""
-    print(f"\n{'='*70}")
-    print(f"Training ENSEMBLE (XGBoost + LightGBM + CatBoost)")
-    print(f"{'='*70}")
-
-    models = {}
-    for model_type in ['xgboost', 'lightgbm', 'catboost']:
-        models[model_type] = train_tree_model(model_type, data, args)
-
-    # Calculate ensemble metrics
-    print(f"\n{'='*70}")
-    print("ENSEMBLE EVALUATION")
-    print(f"{'='*70}")
-
-    # Get ensemble predictions
-    all_probs = []
-    for model in models.values():
-        probs = model.predict_proba(data['X_test'])[:, 1]
-        all_probs.append(probs)
-
-    ensemble_probs = np.mean(all_probs, axis=0)
-    ensemble_preds = (ensemble_probs > 0.5).astype(int)
-
-    # Calculate metrics
+    """Train full ensemble (XGBoost + LightGBM + CatBoost) with meta-learner stacking"""
+    from sklearn.model_selection import TimeSeriesSplit
     from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
+    print(f"\n{'='*70}")
+    print(f"Training ENSEMBLE (XGBoost + LightGBM + CatBoost + Meta-Learner)")
+    print(f"{'='*70}")
+
+    X_train = data['X_train']
+    y_train = data['y_train']
+    X_test = data['X_test']
     y_test = data['y_test']
-    print(f"  Ensemble Accuracy:  {accuracy_score(y_test, ensemble_preds):.4f}")
-    print(f"  Ensemble Precision: {precision_score(y_test, ensemble_preds, zero_division=0):.4f}")
-    print(f"  Ensemble Recall:    {recall_score(y_test, ensemble_preds, zero_division=0):.4f}")
-    print(f"  Ensemble F1:        {f1_score(y_test, ensemble_preds, zero_division=0):.4f}")
+
+    # Step 1: Generate out-of-fold predictions for meta-learner training
+    print("\n[Step 1/4] Generating out-of-fold predictions...")
+    n_splits = 5
+    tscv = TimeSeriesSplit(n_splits=n_splits)
+
+    model_types = ['xgboost', 'lightgbm', 'catboost']
+    oof_predictions = {mt: np.zeros(len(X_train)) for mt in model_types}
+    test_predictions = {mt: np.zeros(len(X_test)) for mt in model_types}
+
+    for fold, (train_idx, val_idx) in enumerate(tscv.split(X_train)):
+        print(f"  Fold {fold + 1}/{n_splits}...")
+        X_fold_train, X_fold_val = X_train[train_idx], X_train[val_idx]
+        y_fold_train, y_fold_val = y_train[train_idx], y_train[val_idx]
+
+        for model_type in model_types:
+            # Train fold model
+            fold_model = TreeEnsembleModel(
+                model_type=model_type,
+                n_estimators=args.n_estimators,
+                max_depth=args.max_depth,
+                learning_rate=args.learning_rate,
+            )
+            fold_model.fit(X_fold_train, y_fold_train)
+
+            # Store OOF predictions
+            oof_predictions[model_type][val_idx] = fold_model.predict_proba(X_fold_val)[:, 1]
+
+            # Accumulate test predictions (average across folds)
+            test_predictions[model_type] += fold_model.predict_proba(X_test)[:, 1] / n_splits
+
+    # Step 2: Train final base models on full training set
+    print("\n[Step 2/4] Training final base models on full data...")
+    models = {}
+    for model_type in model_types:
+        models[model_type] = train_tree_model(model_type, data, args)
+
+    # Step 3: Train meta-learner on OOF predictions
+    print("\n[Step 3/4] Training meta-learner on out-of-fold predictions...")
+
+    # Stack OOF predictions as meta-features
+    meta_train = np.column_stack([oof_predictions[mt] for mt in model_types])
+    meta_test = np.column_stack([test_predictions[mt] for mt in model_types])
+
+    # Add original features as auxiliary inputs (optional, helps meta-learner)
+    # For simplicity, just use base model predictions
+
+    meta_learner = MetaLearnerModel(
+        hidden_layers=[64, 32],
+        dropout=0.3,
+        learning_rate=0.001,
+        epochs=100,
+        batch_size=32,
+        verbose=0,
+    )
+
+    # Split meta_train for validation
+    val_split = int(len(meta_train) * 0.8)
+    meta_learner.fit(
+        meta_train[:val_split],
+        y_train[:val_split],
+        X_val=meta_train[val_split:],
+        y_val=y_train[val_split:],
+    )
+
+    models['meta_learner'] = meta_learner
+
+    # Step 4: Evaluate ensemble with meta-learner
+    print(f"\n[Step 4/4] ENSEMBLE EVALUATION")
+    print(f"{'='*70}")
+
+    # Simple averaging (baseline)
+    simple_avg_probs = np.mean([test_predictions[mt] for mt in model_types], axis=0)
+    simple_avg_preds = (simple_avg_probs > 0.5).astype(int)
+
+    print("\n  Simple Averaging (baseline):")
+    print(f"    Accuracy:  {accuracy_score(y_test, simple_avg_preds):.4f}")
+    print(f"    Precision: {precision_score(y_test, simple_avg_preds, zero_division=0):.4f}")
+    print(f"    Recall:    {recall_score(y_test, simple_avg_preds, zero_division=0):.4f}")
+    print(f"    F1:        {f1_score(y_test, simple_avg_preds, zero_division=0):.4f}")
+
+    # Meta-learner ensemble
+    meta_probs = meta_learner.predict_proba(meta_test)[:, 1]
+    meta_preds = (meta_probs > 0.5).astype(int)
+
+    print("\n  Meta-Learner Stacking:")
+    print(f"    Accuracy:  {accuracy_score(y_test, meta_preds):.4f}")
+    print(f"    Precision: {precision_score(y_test, meta_preds, zero_division=0):.4f}")
+    print(f"    Recall:    {recall_score(y_test, meta_preds, zero_division=0):.4f}")
+    print(f"    F1:        {f1_score(y_test, meta_preds, zero_division=0):.4f}")
+
+    # Calculate improvement
+    baseline_f1 = f1_score(y_test, simple_avg_preds, zero_division=0)
+    meta_f1 = f1_score(y_test, meta_preds, zero_division=0)
+    improvement = (meta_f1 - baseline_f1) * 100
+
+    print(f"\n  Meta-Learner F1 improvement: {improvement:+.2f}%")
 
     return models
 

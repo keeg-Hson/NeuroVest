@@ -351,12 +351,13 @@ class PredictionEngine:
         self.converter = converter or PercentileConverter()
 
         self.models = {}
+        self.meta_learner = None
         self.scaler = None
         self.feature_names = None
 
     def load_models(self, prefix: str = 'multi_asset') -> bool:
         """
-        Load ensemble models.
+        Load ensemble models and meta-learner if available.
 
         Args:
             prefix: Model prefix (e.g., 'multi_asset', 'per_asset_SPY')
@@ -373,6 +374,17 @@ class PredictionEngine:
             scaler_path = self.models_dir / f"{prefix}_scaler.joblib"
         if scaler_path.exists():
             self.scaler = joblib.load(scaler_path)
+
+        # Load meta-learner if exists
+        meta_path = self.models_dir / f"{prefix}_meta_learner.joblib"
+        if meta_path.exists():
+            try:
+                from core.models import MetaLearnerModel
+                self.meta_learner = MetaLearnerModel.load(str(meta_path))
+                print(f"[PredictionEngine] Loaded meta-learner from {meta_path}")
+            except Exception as e:
+                print(f"[PredictionEngine] Could not load meta-learner: {e}")
+                self.meta_learner = None
 
         return len(self.models) > 0
 
@@ -408,7 +420,7 @@ class PredictionEngine:
 
     def predict_proba(self, X: np.ndarray) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
         """
-        Get ensemble probabilities.
+        Get ensemble probabilities using meta-learner if available.
 
         Args:
             X: Feature matrix
@@ -422,7 +434,12 @@ class PredictionEngine:
         individual_probs = {}
         all_probs = []
 
-        for model_type, model in self.models.items():
+        # Get predictions from base models (exclude meta_learner from base models)
+        base_model_types = ['xgboost', 'lightgbm', 'catboost']
+        for model_type in base_model_types:
+            if model_type not in self.models:
+                continue
+            model = self.models[model_type]
             try:
                 if hasattr(model, 'predict_proba'):
                     probs = model.predict_proba(X)
@@ -437,8 +454,14 @@ class PredictionEngine:
         if not all_probs:
             raise RuntimeError("No models produced predictions")
 
-        # Ensemble: average probabilities
-        ensemble_probs = np.mean(all_probs, axis=0)
+        # Use meta-learner if available, otherwise simple averaging
+        if self.meta_learner is not None and len(all_probs) == 3:
+            # Stack base model predictions as meta-features
+            meta_features = np.column_stack(all_probs)
+            ensemble_probs = self.meta_learner.predict_proba(meta_features)[:, 1]
+        else:
+            # Fallback to simple averaging
+            ensemble_probs = np.mean(all_probs, axis=0)
 
         return ensemble_probs, individual_probs
 
