@@ -57,6 +57,12 @@ from core.feature_selection import (
     FeatureSelectionConfig,
     select_features_for_training,
 )
+from core.hyperparameter_tuning import (
+    HyperparameterTuner,
+    TuningConfig,
+    tune_all_models,
+    OPTUNA_AVAILABLE,
+)
 
 
 def parse_args():
@@ -133,6 +139,14 @@ Examples:
     parser.add_argument('--correlation-threshold', type=float, default=0.95,
                         help='Remove features with correlation above this threshold')
 
+    # Hyperparameter tuning options (Optuna)
+    parser.add_argument('--tune', action='store_true',
+                        help='Enable Bayesian hyperparameter tuning with Optuna')
+    parser.add_argument('--tune-trials', type=int, default=100,
+                        help='Number of Optuna trials for hyperparameter search')
+    parser.add_argument('--tune-timeout', type=int, default=None,
+                        help='Maximum time in seconds for tuning (None = no limit)')
+
     # Output options
     parser.add_argument('--output-prefix', type=str, default=None, help='Model output prefix')
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
@@ -144,19 +158,59 @@ def train_tree_model(
     model_type: str,
     data: Dict,
     args: argparse.Namespace,
+    tuned_params: Dict = None,
 ) -> TreeEnsembleModel:
     """Train a tree-based model (XGBoost, LightGBM, or CatBoost)"""
     print(f"\n{'='*70}")
     print(f"Training {model_type.upper()} Model")
     print(f"{'='*70}")
 
-    model = create_model(
-        model_type,
-        max_depth=args.max_depth,
-        learning_rate=args.learning_rate,
-        n_estimators=args.n_estimators,
-        verbose=1 if args.verbose else 0,
-    )
+    # Use tuned parameters if provided, otherwise use defaults from args
+    if tuned_params:
+        print(f"Using Optuna-tuned parameters")
+        # Map Optuna params to model params
+        model_params = {
+            'max_depth': tuned_params.get('max_depth', tuned_params.get('depth', args.max_depth)),
+            'learning_rate': tuned_params.get('learning_rate', args.learning_rate),
+            'n_estimators': tuned_params.get('n_estimators', tuned_params.get('iterations', args.n_estimators)),
+            'verbose': 1 if args.verbose else 0,
+        }
+        # Add model-specific params
+        if model_type == 'xgboost':
+            model_params.update({
+                'min_child_weight': tuned_params.get('min_child_weight', 1),
+                'subsample': tuned_params.get('subsample', 0.8),
+                'colsample_bytree': tuned_params.get('colsample_bytree', 0.8),
+                'gamma': tuned_params.get('gamma', 0),
+                'reg_alpha': tuned_params.get('reg_alpha', 0),
+                'reg_lambda': tuned_params.get('reg_lambda', 1),
+            })
+        elif model_type == 'lightgbm':
+            model_params.update({
+                'num_leaves': tuned_params.get('num_leaves', 31),
+                'min_child_samples': tuned_params.get('min_child_samples', 20),
+                'subsample': tuned_params.get('subsample', 0.8),
+                'colsample_bytree': tuned_params.get('colsample_bytree', 0.8),
+                'reg_alpha': tuned_params.get('reg_alpha', 0),
+                'reg_lambda': tuned_params.get('reg_lambda', 0),
+            })
+        elif model_type == 'catboost':
+            model_params['max_depth'] = tuned_params.get('depth', args.max_depth)
+            model_params['n_estimators'] = tuned_params.get('iterations', args.n_estimators)
+            model_params.update({
+                'l2_leaf_reg': tuned_params.get('l2_leaf_reg', 3),
+                'bagging_temperature': tuned_params.get('bagging_temperature', 1),
+                'random_strength': tuned_params.get('random_strength', 1),
+            })
+    else:
+        model_params = {
+            'max_depth': args.max_depth,
+            'learning_rate': args.learning_rate,
+            'n_estimators': args.n_estimators,
+            'verbose': 1 if args.verbose else 0,
+        }
+
+    model = create_model(model_type, **model_params)
 
     model.fit(
         data['X_train'],
@@ -251,8 +305,10 @@ def train_transformer_model(
 def train_ensemble(
     data: Dict,
     args: argparse.Namespace,
+    tuned_params: Dict[str, Dict] = None,
 ) -> Dict[str, TreeEnsembleModel]:
     """Train full ensemble (XGBoost + LightGBM + CatBoost) with meta-learner stacking"""
+    tuned_params = tuned_params or {}
     from sklearn.model_selection import TimeSeriesSplit
     from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 
@@ -299,7 +355,10 @@ def train_ensemble(
     print("\n[Step 2/4] Training final base models on full data...")
     models = {}
     for model_type in model_types:
-        models[model_type] = train_tree_model(model_type, data, args)
+        models[model_type] = train_tree_model(
+            model_type, data, args,
+            tuned_params=tuned_params.get(model_type)
+        )
 
     # Step 3: Train meta-learner on OOF predictions
     print("\n[Step 3/4] Training meta-learner on out-of-fold predictions...")
@@ -513,13 +572,57 @@ def main():
 
         print(f"\nFeature reduction: {len(feature_names)} → {len(feature_selector.selected_features_)}")
 
+    # Run hyperparameter tuning if enabled
+    tuned_params = {}
+    if args.tune and args.model in ['xgboost', 'lightgbm', 'catboost', 'ensemble']:
+        if not OPTUNA_AVAILABLE:
+            print("\nWarning: Optuna not installed. Skipping hyperparameter tuning.")
+            print("Install with: pip install optuna")
+        else:
+            print(f"\n{'='*70}")
+            print("HYPERPARAMETER TUNING (Optuna)")
+            print(f"{'='*70}")
+
+            tuning_config = TuningConfig(
+                n_trials=args.tune_trials,
+                timeout=args.tune_timeout,
+                verbose=args.verbose,
+            )
+            tuner = HyperparameterTuner(tuning_config)
+
+            if args.model == 'ensemble':
+                # Tune all tree models
+                for model_type in ['xgboost', 'lightgbm', 'catboost']:
+                    best_params = tuner.tune(
+                        data['X_train'],
+                        data['y_train'],
+                        model_type=model_type,
+                        sample_weight=data.get('sample_weights'),
+                    )
+                    tuned_params[model_type] = best_params
+            else:
+                # Tune single model
+                best_params = tuner.tune(
+                    data['X_train'],
+                    data['y_train'],
+                    model_type=args.model,
+                    sample_weight=data.get('sample_weights'),
+                )
+                tuned_params[args.model] = best_params
+
+            # Save tuned parameters
+            data['tuned_params'] = tuned_params
+
     # Train model(s)
     models = {}
 
     if args.model == 'ensemble':
-        models = train_ensemble(data, args)
+        models = train_ensemble(data, args, tuned_params)
     elif args.model in ['xgboost', 'lightgbm', 'catboost']:
-        models[args.model] = train_tree_model(args.model, data, args)
+        models[args.model] = train_tree_model(
+            args.model, data, args,
+            tuned_params=tuned_params.get(args.model)
+        )
     elif args.model in ['lstm', 'attention_lstm', 'cnn_lstm', 'focal_lstm']:
         models[args.model] = train_lstm_model(args.model, data, args)
     elif args.model == 'transformer':
