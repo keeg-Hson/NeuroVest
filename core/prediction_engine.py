@@ -352,12 +352,13 @@ class PredictionEngine:
 
         self.models = {}
         self.meta_learner = None
+        self.feature_selector = None
         self.scaler = None
         self.feature_names = None
 
     def load_models(self, prefix: str = 'multi_asset') -> bool:
         """
-        Load ensemble models and meta-learner if available.
+        Load ensemble models, meta-learner, and feature selector if available.
 
         Args:
             prefix: Model prefix (e.g., 'multi_asset', 'per_asset_SPY')
@@ -386,6 +387,18 @@ class PredictionEngine:
                 print(f"[PredictionEngine] Could not load meta-learner: {e}")
                 self.meta_learner = None
 
+        # Load feature selector if exists
+        selector_path = self.models_dir / f"{prefix}_feature_selector.joblib"
+        if selector_path.exists():
+            try:
+                from core.feature_selection import FeatureSelector
+                self.feature_selector = FeatureSelector.load(str(selector_path))
+                self.feature_names = self.feature_selector.selected_features_
+                print(f"[PredictionEngine] Loaded feature selector ({len(self.feature_names)} features)")
+            except Exception as e:
+                print(f"[PredictionEngine] Could not load feature selector: {e}")
+                self.feature_selector = None
+
         return len(self.models) > 0
 
     def prepare_features(
@@ -403,14 +416,19 @@ class PredictionEngine:
         Returns:
             Feature matrix ready for prediction
         """
-        feature_names = feature_names or self.feature_names or get_feature_list()
-
         # Add features
-        df_feat, _ = add_features(df)
+        df_feat, all_feature_names = add_features(df)
 
-        # Prepare and align features
-        X_df = finalize_features(df_feat, feature_names)
-        X = X_df.values
+        # If we have a feature selector, use it to select features
+        if self.feature_selector is not None:
+            X_df = finalize_features(df_feat, all_feature_names)
+            X_df = self.feature_selector.transform(X_df)
+            X = X_df.values
+        else:
+            # Use specified or default feature names
+            feature_names = feature_names or self.feature_names or get_feature_list()
+            X_df = finalize_features(df_feat, feature_names)
+            X = X_df.values
 
         # Scale if scaler available
         if self.scaler is not None:

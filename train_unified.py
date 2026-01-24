@@ -52,6 +52,11 @@ from core.models import (
     MetaLearnerModel,
     create_model,
 )
+from core.feature_selection import (
+    FeatureSelector,
+    FeatureSelectionConfig,
+    select_features_for_training,
+)
 
 
 def parse_args():
@@ -119,6 +124,14 @@ Examples:
     parser.add_argument('--batch-size', type=int, default=32, help='Batch size')
     parser.add_argument('--dropout', type=float, default=0.3, help='Dropout rate')
     parser.add_argument('--sequence-length', type=int, default=20, help='Sequence length for LSTM')
+
+    # Feature selection options
+    parser.add_argument('--feature-selection', action='store_true',
+                        help='Enable SHAP-based feature selection to reduce overfitting')
+    parser.add_argument('--max-features', type=int, default=60,
+                        help='Maximum features to keep after selection')
+    parser.add_argument('--correlation-threshold', type=float, default=0.95,
+                        help='Remove features with correlation above this threshold')
 
     # Output options
     parser.add_argument('--output-prefix', type=str, default=None, help='Model output prefix')
@@ -408,6 +421,11 @@ def save_models(
             f.write('\n'.join(data['feature_cols']))
         print(f"Saved {len(data['feature_cols'])} features to {features_path}")
 
+    # Save feature selector if used
+    if data.get('feature_selector'):
+        selector_path = output_dir / f"{prefix}_feature_selector.joblib"
+        data['feature_selector'].save(str(selector_path))
+
     # Save training metadata
     metadata = {
         'trained_at': datetime.now().isoformat(),
@@ -458,6 +476,42 @@ def main():
         assets=args.assets,
         multi_asset=args.multi_asset,
     )
+
+    # Apply feature selection if enabled
+    feature_selector = None
+    if args.feature_selection:
+        print(f"\n{'='*70}")
+        print("FEATURE SELECTION (SHAP-based)")
+        print(f"{'='*70}")
+
+        # Convert to DataFrame for feature selection
+        feature_names = data.get('feature_cols', [f"f_{i}" for i in range(data['X_train'].shape[1])])
+        X_train_df = pd.DataFrame(data['X_train'], columns=feature_names)
+        X_test_df = pd.DataFrame(data['X_test'], columns=feature_names)
+
+        # Configure and run feature selection
+        fs_config = FeatureSelectionConfig(
+            correlation_threshold=args.correlation_threshold,
+            max_features=args.max_features,
+            min_features=40,
+            shap_sample_size=500,
+            use_shap=True,
+        )
+
+        X_train_selected, X_test_selected, feature_selector = select_features_for_training(
+            X_train_df,
+            data['y_train'],
+            X_test_df,
+            config=fs_config,
+        )
+
+        # Update data with selected features
+        data['X_train'] = X_train_selected.values
+        data['X_test'] = X_test_selected.values
+        data['feature_cols'] = feature_selector.selected_features_
+        data['feature_selector'] = feature_selector
+
+        print(f"\nFeature reduction: {len(feature_names)} → {len(feature_selector.selected_features_)}")
 
     # Train model(s)
     models = {}
