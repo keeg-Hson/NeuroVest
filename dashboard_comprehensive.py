@@ -1431,8 +1431,14 @@ def run_backtest_simulation(assets, capital, start_date, end_date, strategy, set
 
         # Generate simulated results
         np.random.seed(hash(str(assets) + str(start_date) + strategy) % 2**32)
-        days = (end_date - start_date).days
-        num_periods = max(20, days // 5)
+
+        # Generate proper date range first, then get number of periods
+        dates = pd.date_range(start=start_date, end=end_date, freq='B')
+        num_periods = len(dates)
+
+        if num_periods < 20:
+            num_periods = 20
+            dates = pd.date_range(start=start_date, periods=num_periods, freq='B')
 
         # Base return varies by strategy
         strategy_params = {
@@ -1460,7 +1466,6 @@ def run_backtest_simulation(assets, capital, start_date, end_date, strategy, set
         period_returns = period_returns - txn_cost
 
         cumulative = np.cumprod(1 + period_returns)
-        dates = pd.date_range(start=start_date, periods=len(cumulative), freq='B')[:len(cumulative)]
 
         # Calculate metrics
         total_return = (cumulative[-1] - 1) * 100
@@ -1568,9 +1573,13 @@ def run_strategy_comparison(assets, start_date, end_date, strategies):
     with st.spinner("Running strategy comparison..."):
         time.sleep(0.5)
 
-        days = (end_date - start_date).days
-        num_periods = max(20, days // 5)
-        dates = pd.date_range(start=start_date, periods=num_periods, freq='B')
+        # Generate proper date range first, then get number of periods
+        dates = pd.date_range(start=start_date, end=end_date, freq='B')
+        num_periods = len(dates)
+
+        if num_periods < 20:
+            num_periods = 20
+            dates = pd.date_range(start=start_date, periods=num_periods, freq='B')
 
         results = {}
         strategy_params = {
