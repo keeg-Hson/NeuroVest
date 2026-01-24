@@ -1440,16 +1440,16 @@ def run_backtest_simulation(assets, capital, start_date, end_date, strategy, set
             num_periods = 20
             dates = pd.date_range(start=start_date, periods=num_periods, freq='B')
 
-        # Base return varies by strategy
+        # Base return varies by strategy (realistic daily returns: ~0.0004 = 10% annual)
         strategy_params = {
-            "Follow All Signals": (0.0015, 0.012),
-            "High Confidence Only": (0.002, 0.015),
-            "CRASH Avoidance": (0.001, 0.008),
-            "SPIKE Chasing": (0.0025, 0.02),
-            "Model Agreement Required": (0.0018, 0.013),
-            "Ensemble Threshold": (0.0016, 0.011)
+            "Follow All Signals": (0.00035, 0.012),      # ~9% annual
+            "High Confidence Only": (0.00045, 0.013),    # ~12% annual
+            "CRASH Avoidance": (0.00030, 0.008),         # ~8% annual, lower vol
+            "SPIKE Chasing": (0.00055, 0.018),           # ~15% annual, higher vol
+            "Model Agreement Required": (0.00042, 0.011), # ~11% annual
+            "Ensemble Threshold": (0.00038, 0.010)       # ~10% annual
         }
-        base_return, volatility = strategy_params.get(strategy, (0.0015, 0.012))
+        base_return, volatility = strategy_params.get(strategy, (0.00035, 0.012))
 
         # Adjust for settings
         if settings:
@@ -1582,12 +1582,13 @@ def run_strategy_comparison(assets, start_date, end_date, strategies):
             dates = pd.date_range(start=start_date, periods=num_periods, freq='B')
 
         results = {}
+        # Realistic daily returns (~0.0004 = 10% annual)
         strategy_params = {
-            "Buy & Hold": (0.0008, 0.015),
-            "Follow All Signals": (0.0012, 0.012),
-            "High Confidence Only": (0.0018, 0.014),
-            "CRASH Avoidance": (0.0010, 0.009),
-            "Model Agreement": (0.0015, 0.011)
+            "Buy & Hold": (0.00038, 0.012),           # ~10% annual (market baseline)
+            "Follow All Signals": (0.00035, 0.011),   # ~9% annual
+            "High Confidence Only": (0.00048, 0.013), # ~13% annual
+            "CRASH Avoidance": (0.00032, 0.008),      # ~8% annual, lower vol
+            "Model Agreement": (0.00044, 0.010)       # ~12% annual
         }
 
         for strat in strategies:
