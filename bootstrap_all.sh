@@ -70,10 +70,10 @@ echo "======================================================================="
 echo ""
 
 # Step 2: Train models
-if [ -f "train_multi_asset.py" ]; then
+if [ -f "train_unified.py" ]; then
     echo "STEP 2/4: Training models..."
     echo "-----------------------------------------------------------------------"
-    python3 train_multi_asset.py
+    python3 train_unified.py
     TRAIN_EXIT=$?
 
     if [ $TRAIN_EXIT -ne 0 ]; then
@@ -82,7 +82,7 @@ if [ -f "train_multi_asset.py" ]; then
         echo "You may need to debug this manually"
     fi
 else
-    echo "STEP 2/4: SKIPPED (train_multi_asset.py not found)"
+    echo "STEP 2/4: SKIPPED (train_unified.py not found)"
     TRAIN_EXIT=1
 fi
 
@@ -128,7 +128,7 @@ else
     echo ""
     echo "You can run individual steps manually:"
     echo "  python3 bootstrap_data_load.py"
-    echo "  python3 train_multi_asset.py"
+    echo "  python3 train_unified.py"
     echo "  python3 predict_multi_asset_ensemble.py"
     exit 1
 fi

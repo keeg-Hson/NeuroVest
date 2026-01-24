@@ -130,10 +130,10 @@ class WorkerScheduler:
 
         try:
             # Check if training script exists
-            train_script = Path("train_multi_asset.py")
+            train_script = Path("train_unified.py")
             if train_script.exists():
                 result = subprocess.run(
-                    [sys.executable, "train_multi_asset.py"],
+                    [sys.executable, "train_unified.py"],
                     capture_output=True,
                     text=True,
                     timeout=3600  # 1 hour timeout
@@ -144,7 +144,7 @@ class WorkerScheduler:
                 else:
                     print(f"⚠️  Model training had errors:\n{result.stderr}\n")
             else:
-                print("⚠️  train_multi_asset.py not found, skipping training\n")
+                print("⚠️  train_unified.py not found, skipping training\n")
         except subprocess.TimeoutExpired:
             print("⚠️  Model training timed out after 1 hour\n")
         except Exception as e:
@@ -174,11 +174,11 @@ class WorkerScheduler:
                     print(f"⚠️  Prediction generation had errors:\n{result.stderr}\n")
             else:
                 # Fallback to SPY-only predictions
-                fallback_script = Path("predict_multi_asset_ensemble.py")
+                fallback_script = Path("predict.py")
                 if fallback_script.exists():
                     print("⚠️  predict_all_assets.py not found, using SPY-only fallback\n")
                     result = subprocess.run(
-                        [sys.executable, "predict_multi_asset_ensemble.py"],
+                        [sys.executable, "predict.py"],
                         capture_output=True,
                         text=True,
                         timeout=1800
@@ -229,6 +229,10 @@ class WorkerScheduler:
         # Run initial update
         print("🔄 Running initial data update...")
         self.scheduler.run_once()
+
+        # Generate predictions after fresh data
+        print("🔮 Running initial predictions...")
+        self.generate_predictions()
 
         # Start scheduler (checks every 60 minutes)
         update_interval = int(os.getenv('UPDATE_INTERVAL', '60'))
