@@ -351,7 +351,7 @@ class EarlyStoppingCallback:
         self.best_value: Optional[float] = None
         self.no_improvement_count = 0
 
-    def __call__(self, study: optuna.Study, trial: optuna.FrozenTrial) -> None:
+    def __call__(self, study: Any, trial: Any) -> None:
         if trial.value is None:
             return
 
