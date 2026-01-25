@@ -28,6 +28,7 @@ from .base_models import (
     LSTMModel,
     TransformerModel,
     MetaLearnerModel,
+    create_model,
 )
 
 __all__ = [
@@ -36,4 +37,5 @@ __all__ = [
     'LSTMModel',
     'TransformerModel',
     'MetaLearnerModel',
+    'create_model',
 ]
