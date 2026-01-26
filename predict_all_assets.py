@@ -42,8 +42,14 @@ for name in ['xgboost', 'lightgbm', 'catboost']:
         # Fall back to old naming convention
         filepath = MODELS_DIR / f"{name}_multi_asset.pkl"
     if filepath.exists():
-        models[name] = joblib.load(filepath)
-        print(f"   ✓ {name}")
+        loaded = joblib.load(filepath)
+        # Handle wrapper dict format (from BaseModel.save())
+        if isinstance(loaded, dict) and 'model' in loaded:
+            models[name] = loaded['model']
+            print(f"   ✓ {name} (unwrapped from dict)")
+        else:
+            models[name] = loaded
+            print(f"   ✓ {name}")
 
 if len(models) == 0:
     raise SystemExit("❌ No models found. Run train_unified.py first.")
