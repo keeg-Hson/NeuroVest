@@ -315,6 +315,15 @@ class WorkerScheduler:
         print("🔄 Running initial data update...", flush=True)
         self.scheduler.run_once()
 
+        # Check if models exist - if not, train first
+        models_dir = Path("models")
+        model_files = list(models_dir.glob("multi_asset_*.pkl")) if models_dir.exists() else []
+
+        if len(model_files) < 3:
+            print("⚠️  Missing models detected - running training first...")
+            print("   (This is required before predictions can run)\n")
+            self.train_models()
+
         # Generate predictions after fresh data
         print("🔮 Running initial predictions...", flush=True)
         self.generate_predictions()
