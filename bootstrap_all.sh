@@ -73,7 +73,7 @@ echo ""
 if [ -f "train_unified.py" ]; then
     echo "STEP 2/4: Training models..."
     echo "-----------------------------------------------------------------------"
-    python3 train_unified.py --output-prefix multi_asset
+    python3 train_unified.py --model ensemble --output-prefix multi_asset
     TRAIN_EXIT=$?
 
     if [ $TRAIN_EXIT -ne 0 ]; then

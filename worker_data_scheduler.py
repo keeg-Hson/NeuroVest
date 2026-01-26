@@ -133,7 +133,7 @@ class WorkerScheduler:
             train_script = Path("train_unified.py")
             if train_script.exists():
                 result = subprocess.run(
-                    [sys.executable, "train_unified.py", "--output-prefix", "multi_asset"],
+                    [sys.executable, "train_unified.py", "--model", "ensemble", "--output-prefix", "multi_asset"],
                     capture_output=True,
                     text=True,
                     timeout=3600  # 1 hour timeout

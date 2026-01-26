@@ -45,6 +45,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from config import MODELS_DIR, LOGS_DIR, TRAIN_CFG
 from core.data_pipeline import DataPipeline, PipelineConfig
+from core.data_manager_postgres import DataManager
 from core.models import (
     TreeEnsembleModel,
     LSTMModel,
@@ -501,6 +502,28 @@ def save_models(
     with open(metadata_path, 'w') as f:
         json.dump(metadata, f, indent=2)
     print(f"Saved metadata to {metadata_path}")
+
+    # Save model metadata to PostgreSQL database
+    try:
+        dm = DataManager()
+        for model_name in models.keys():
+            dm.save_model_metadata(
+                model_name=f"{prefix}_{model_name}",
+                model_type=model_name,
+                feature_count=len(data['feature_cols']),
+                training_samples=len(data['X_train']),
+                assets_used=args.assets,
+                metrics=data.get('tuned_params', {}).get(model_name),
+                hyperparameters={
+                    'max_depth': args.max_depth,
+                    'learning_rate': args.learning_rate,
+                    'n_estimators': args.n_estimators,
+                }
+            )
+        dm.close()
+        print(f"✅ Saved model metadata to PostgreSQL database")
+    except Exception as e:
+        print(f"⚠️  Failed to save to PostgreSQL (non-fatal): {e}")
 
 
 def main():
