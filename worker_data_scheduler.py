@@ -126,52 +126,90 @@ class WorkerScheduler:
         print(f"\n{'='*70}")
         print(f"🤖 AUTOMATED MODEL TRAINING STARTED")
         print(f"   Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"{'='*70}\n")
+        print(f"{'='*70}\n", flush=True)
 
         try:
             # Check if training script exists
             train_script = Path("train_unified.py")
             if train_script.exists():
+                print(f"🏃 Running {train_script} --model ensemble --output-prefix multi_asset...\n", flush=True)
                 result = subprocess.run(
                     [sys.executable, "train_unified.py", "--model", "ensemble", "--output-prefix", "multi_asset"],
                     capture_output=True,
                     text=True,
                     timeout=3600  # 1 hour timeout
                 )
-                print(result.stdout)
+                # Always print stdout
+                if result.stdout:
+                    print(result.stdout)
+                # Always print stderr if present
+                if result.stderr:
+                    print(f"STDERR:\n{result.stderr}")
+
                 if result.returncode == 0:
+                    # List generated model files
+                    models_dir = Path("models")
+                    if models_dir.exists():
+                        model_files = list(models_dir.glob("multi_asset*.pkl"))
+                        print(f"📁 Generated {len(model_files)} model files:")
+                        for mf in model_files:
+                            print(f"   - {mf.name}")
                     print("✅ Model training completed successfully\n")
                 else:
-                    print(f"⚠️  Model training had errors:\n{result.stderr}\n")
+                    print(f"⚠️  Model training exit code: {result.returncode}\n")
             else:
                 print("⚠️  train_unified.py not found, skipping training\n")
         except subprocess.TimeoutExpired:
             print("⚠️  Model training timed out after 1 hour\n")
         except Exception as e:
-            print(f"⚠️  Model training failed: {e}\n")
+            import traceback
+            print(f"⚠️  Model training failed: {e}")
+            traceback.print_exc()
+            print()
 
     def generate_predictions(self):
         """Automated prediction generation - runs daily"""
         print(f"\n{'='*70}")
         print(f"🔮 AUTOMATED PREDICTION GENERATION STARTED")
         print(f"   Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"{'='*70}\n")
+        print(f"{'='*70}\n", flush=True)
+
+        # Check if models exist before running predictions
+        models_dir = Path("models")
+        if models_dir.exists():
+            model_files = list(models_dir.glob("*.pkl"))
+            print(f"📁 Models directory: {len(model_files)} .pkl files found")
+            for mf in model_files[:5]:
+                print(f"   - {mf.name}")
+            if len(model_files) > 5:
+                print(f"   ... and {len(model_files) - 5} more")
+        else:
+            print("⚠️  Models directory does not exist!")
+            print("   Training required before predictions can run.\n")
+            return
 
         try:
             # Check if prediction script exists (use predict_all_assets.py for all 40 assets)
             pred_script = Path("predict_all_assets.py")
             if pred_script.exists():
+                print(f"🏃 Running {pred_script}...\n", flush=True)
                 result = subprocess.run(
                     [sys.executable, "predict_all_assets.py"],
                     capture_output=True,
                     text=True,
                     timeout=1800  # 30 minute timeout
                 )
-                print(result.stdout)
+                # Always print stdout
+                if result.stdout:
+                    print(result.stdout)
+                # Always print stderr if present
+                if result.stderr:
+                    print(f"STDERR:\n{result.stderr}")
+
                 if result.returncode == 0:
                     print("✅ Prediction generation completed successfully\n")
                 else:
-                    print(f"⚠️  Prediction generation had errors:\n{result.stderr}\n")
+                    print(f"⚠️  Prediction generation exit code: {result.returncode}\n")
             else:
                 # Fallback to SPY-only predictions
                 fallback_script = Path("predict.py")
@@ -183,13 +221,19 @@ class WorkerScheduler:
                         text=True,
                         timeout=1800
                     )
-                    print(result.stdout)
+                    if result.stdout:
+                        print(result.stdout)
+                    if result.stderr:
+                        print(f"STDERR:\n{result.stderr}")
                 else:
                     print("⚠️  No prediction scripts found, skipping predictions\n")
         except subprocess.TimeoutExpired:
             print("⚠️  Prediction generation timed out after 30 minutes\n")
         except Exception as e:
-            print(f"⚠️  Prediction generation failed: {e}\n")
+            import traceback
+            print(f"⚠️  Prediction generation failed: {e}")
+            traceback.print_exc()
+            print()
 
     def setup_ml_automation(self):
         """Set up automated ML pipeline schedules"""
@@ -226,12 +270,53 @@ class WorkerScheduler:
         # Set up ML automation
         self.setup_ml_automation()
 
+        # Diagnostic: Show model and database state
+        print(f"\n{'='*70}")
+        print("📊 STARTUP DIAGNOSTICS")
+        print(f"{'='*70}")
+
+        # Check models directory
+        models_dir = Path("models")
+        if models_dir.exists():
+            model_files = list(models_dir.glob("*.pkl"))
+            print(f"📁 Models directory: {len(model_files)} .pkl files")
+            for mf in sorted(model_files)[:10]:
+                import os
+                mtime = datetime.fromtimestamp(os.path.getmtime(mf))
+                age_hours = (datetime.now() - mtime).total_seconds() / 3600
+                print(f"   - {mf.name} (modified {age_hours:.1f}h ago)")
+        else:
+            print("⚠️  Models directory missing - training required!")
+
+        # Check database state
+        try:
+            models_df = self.dm.get_latest_models()
+            if not models_df.empty:
+                print(f"\n📊 Database model_metadata: {len(models_df)} models")
+                for _, row in models_df.iterrows():
+                    trained_at = row.get('trained_at', 'unknown')
+                    print(f"   - {row.get('model_type', 'unknown')} trained at {trained_at}")
+            else:
+                print("\n⚠️  Database model_metadata is EMPTY")
+
+            preds_df = self.dm.get_latest_predictions(limit=5)
+            if not preds_df.empty:
+                print(f"\n📊 Database predictions: latest entries")
+                for _, row in preds_df.head(3).iterrows():
+                    print(f"   - {row.get('ticker', '?')}: {row.get('prediction_label', '?')} ({row.get('prediction_date', '?')})")
+            else:
+                print("\n⚠️  Database predictions is EMPTY")
+        except Exception as e:
+            print(f"\n⚠️  Could not query database: {e}")
+
+        print(f"{'='*70}\n")
+
         # Run initial update
-        print("🔄 Running initial data update...")
+        print("🔄 Running initial data update...", flush=True)
         self.scheduler.run_once()
 
         # Generate predictions after fresh data
-        print("🔮 Running initial predictions...")
+        print("🔮 Running initial predictions...", flush=True)
         self.generate_predictions()
 
         # Start scheduler (checks every 60 minutes)
