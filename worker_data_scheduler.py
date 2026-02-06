@@ -54,14 +54,22 @@ class WorkerScheduler:
         # Initialize scheduler
         self.scheduler = DataScheduler(self.dm)
 
-        # Register stock assets
+        # Register stock assets - ALL 31 stock/ETF/commodity assets
         stock_tickers = [
-            'SPY', 'QQQ', 'IWM', 'DIA',  # Major indices
-            'TLT', 'IEF', 'SHY',  # Bonds
-            'GLD', 'SLV', 'GDX',  # Precious metals
-            'PPLT', 'PALL',  # Platinum/Palladium
-            'USO', 'UNG',  # Energy
-            'DBA', 'CORN', 'WEAT'  # Agriculture
+            # Major indices (6)
+            'SPY', 'QQQ', 'IWM', 'DIA', 'VTI', 'EEM',
+            # Sector ETFs (3)
+            'XLF', 'XLK', 'XLE',
+            # Bonds & Treasury (6)
+            'TLT', 'IEF', 'SHY', 'HYG', 'LQD', 'TNX',
+            # Dollar (2)
+            'DXY', 'UUP',
+            # Precious metals (7)
+            'GLD', 'SLV', 'GDX', 'GDXJ', 'IAU', 'PPLT', 'PALL',
+            # Energy (2)
+            'USO', 'UNG',
+            # Agriculture (3)
+            'DBA', 'CORN', 'WEAT'
         ]
 
         print("📊 Registering stock/commodity assets...")
