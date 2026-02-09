@@ -432,8 +432,39 @@ class WorkerScheduler:
 
         print(f"{'='*70}\n")
 
+        # Check if data is actually fresh (not just metadata)
+        print("🔍 Checking data freshness...", flush=True)
+        try:
+            # Get the actual latest date in price_data
+            with self.dm.engine.connect() as conn:
+                from sqlalchemy import text
+                result = conn.execute(text('''
+                    SELECT MAX(date) as latest_date FROM price_data
+                '''))
+                row = result.fetchone()
+                if row and row[0]:
+                    from datetime import date
+                    latest_data_date = row[0]
+                    if hasattr(latest_data_date, 'date'):
+                        latest_data_date = latest_data_date.date()
+                    elif isinstance(latest_data_date, str):
+                        latest_data_date = datetime.strptime(latest_data_date[:10], '%Y-%m-%d').date()
+
+                    days_stale = (date.today() - latest_data_date).days
+                    print(f"   Latest data: {latest_data_date} ({days_stale} days old)")
+
+                    if days_stale > 1:
+                        print(f"   ⚠️  Data is STALE - forcing full refresh...")
+                        # Force update by clearing last_update timestamps
+                        conn.execute(text('UPDATE asset_metadata SET last_update = NULL'))
+                        conn.commit()
+                else:
+                    print("   ⚠️  No data in database - will bootstrap")
+        except Exception as e:
+            print(f"   ⚠️  Could not check data freshness: {e}")
+
         # Run initial update
-        print("🔄 Running initial data update...", flush=True)
+        print("\n🔄 Running initial data update...", flush=True)
         self.scheduler.run_once()
 
         # Check if models exist - if not, train first
