@@ -393,6 +393,7 @@ def train_ensemble(
     except Exception as e:
         print(f"  ⚠️  Meta-learner skipped (TensorFlow not installed): {type(e).__name__}")
         print("  Using simple averaging instead - base models still work fine")
+        meta_learner = None  # Reset to None so downstream checks work correctly
 
     # Step 4: Evaluate ensemble with meta-learner
     print(f"\n[Step 4/4] ENSEMBLE EVALUATION")
