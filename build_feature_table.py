@@ -136,10 +136,17 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     Build technical features and retain any external numeric signals from df.
     """
-    close = df["Adj Close"] if "Adj Close" in df.columns else df["Close"]
-    high = df["High"]
-    low = df["Low"]
-    vol = df["Volume"]
+    # Handle both lowercase and capitalized column names
+    def get_col(names):
+        for n in names:
+            if n in df.columns:
+                return df[n]
+        raise KeyError(f"None of {names} found in columns: {list(df.columns)}")
+
+    close = get_col(["Adj Close", "adj close", "Close", "close"])
+    high = get_col(["High", "high"])
+    low = get_col(["Low", "low"])
+    vol = get_col(["Volume", "volume"])
 
     out = pd.DataFrame(index=df.index)
 
