@@ -29,22 +29,29 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 
 def download_multi_asset_data():
-    """Download data for SPY and related assets from yfinance"""
+    """Download data for all 41 assets from yfinance"""
     import yfinance as yf
 
-    # Core assets for feature generation
+    # Full asset list (31 stock/ETF + attempt crypto proxies)
     tickers = [
-        'SPY',   # Main target
-        # Sector ETFs (for sector features)
-        'XLF', 'XLK', 'XLE', 'XLI', 'XLV',
+        # Major indices (6)
+        'SPY', 'QQQ', 'IWM', 'DIA', 'VTI', 'EEM',
+        # Sector ETFs (3)
+        'XLF', 'XLK', 'XLE',
+        # Bonds & Treasury (6)
+        'TLT', 'IEF', 'SHY', 'HYG', 'LQD', '^TNX',
+        # Dollar (2)
+        'DX-Y.NYB', 'UUP',  # DXY proxy
+        # Precious metals (7)
+        'GLD', 'SLV', 'GDX', 'GDXJ', 'IAU', 'PPLT', 'PALL',
+        # Energy (2)
+        'USO', 'UNG',
+        # Agriculture (3)
+        'DBA', 'CORN', 'WEAT',
         # Volatility
-        'VIX',
-        # Bonds
-        'TLT', 'IEF',
-        # Gold/Commodities
-        'GLD', 'USO',
-        # Dollar
-        'UUP',
+        '^VIX',
+        # Crypto proxies (ETFs since yfinance doesn't do spot crypto well)
+        'BITO', 'ETHE', 'GBTC',
     ]
 
     print(f"Downloading {len(tickers)} assets from yfinance...")
@@ -86,14 +93,26 @@ def load_data():
             spy_data = dm.get_data('SPY')
             if spy_data is not None and len(spy_data) > 100:
                 print(f"Loaded SPY from PostgreSQL: {len(spy_data)} rows")
-                # Also try to get other assets
-                for ticker in ['XLF', 'XLK', 'XLE', 'VIX', 'TLT', 'GLD']:
+                # Also try to get all other assets
+                all_tickers = [
+                    'QQQ', 'IWM', 'DIA', 'VTI', 'EEM',
+                    'XLF', 'XLK', 'XLE',
+                    'TLT', 'IEF', 'SHY', 'HYG', 'LQD', 'TNX',
+                    'DXY', 'UUP',
+                    'GLD', 'SLV', 'GDX', 'GDXJ', 'IAU', 'PPLT', 'PALL',
+                    'USO', 'UNG', 'DBA', 'CORN', 'WEAT',
+                    'VIX',
+                    'BTC_USDT', 'ETH_USDT', 'SOL_USDT', 'BNB_USDT', 'XRP_USDT',
+                    'ADA_USDT', 'DOGE_USDT', 'AVAX_USDT', 'DOT_USDT', 'LINK_USDT',
+                ]
+                for ticker in all_tickers:
                     try:
                         ext = dm.get_data(ticker)
                         if ext is not None and len(ext) > 100:
                             external_data[ticker] = ext
                     except:
                         pass
+                print(f"  Loaded {len(external_data)} external assets from PostgreSQL")
             dm.close()
         except Exception as e:
             print(f"PostgreSQL not available: {e}")
