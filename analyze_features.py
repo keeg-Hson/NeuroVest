@@ -107,13 +107,7 @@ def load_data(use_production_features=False):
     """
     if use_production_features:
         try:
-            from utils import add_features as _build_features
-            # Wrap to handle tuple return
-            def build_features(df):
-                result = _build_features(df)
-                if isinstance(result, tuple):
-                    return result[0]  # Return just the DataFrame
-                return result
+            from utils import add_features as build_features
             print("Using PRODUCTION feature pipeline (utils.add_features)")
         except ImportError:
             print("Warning: Could not import utils.add_features, falling back to build_feature_table")
@@ -253,7 +247,13 @@ def load_data(use_production_features=False):
             'open': 'Open', 'high': 'High', 'low': 'Low',
             'close': 'Close', 'volume': 'Volume', 'date': 'Date'
         })
-        df = build_features(spy_data_renamed)
+        result = build_features(spy_data_renamed)
+        # Handle tuple return from utils.add_features (returns df, feature_cols)
+        if isinstance(result, tuple):
+            df = result[0]
+            print(f"  Production pipeline returned {len(result[1])} feature columns")
+        else:
+            df = result
         # Normalize column names back to lowercase
         df.columns = [c.lower() if c not in ['Date'] else c for c in df.columns]
     else:
