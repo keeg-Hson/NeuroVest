@@ -28,31 +28,49 @@ warnings.filterwarnings('ignore')
 sys.path.insert(0, str(Path(__file__).parent))
 
 
+def get_asset_list_from_config():
+    """Get asset list from AssetManager config if available."""
+    try:
+        from framework.asset_manager import AssetManager
+        manager = AssetManager()
+        return manager.get_yfinance_tickers()
+    except Exception as e:
+        print(f"Warning: Could not load AssetManager: {e}")
+        return None
+
+
 def download_multi_asset_data():
-    """Download data for all 41 assets from yfinance"""
+    """Download data for all assets from yfinance using config or fallback list"""
     import yfinance as yf
 
-    # Full asset list (31 stock/ETF + attempt crypto proxies)
-    tickers = [
-        # Major indices (6)
-        'SPY', 'QQQ', 'IWM', 'DIA', 'VTI', 'EEM',
-        # Sector ETFs (3)
-        'XLF', 'XLK', 'XLE',
-        # Bonds & Treasury (6)
-        'TLT', 'IEF', 'SHY', 'HYG', 'LQD', '^TNX',
-        # Dollar (2)
-        'DX-Y.NYB', 'UUP',  # DXY proxy
-        # Precious metals (7)
-        'GLD', 'SLV', 'GDX', 'GDXJ', 'IAU', 'PPLT', 'PALL',
-        # Energy (2)
-        'USO', 'UNG',
-        # Agriculture (3)
-        'DBA', 'CORN', 'WEAT',
-        # Volatility
-        '^VIX',
-        # Crypto proxies (ETFs since yfinance doesn't do spot crypto well)
-        'BITO', 'ETHE', 'GBTC',
-    ]
+    # Try to get tickers from AssetManager
+    tickers = get_asset_list_from_config()
+
+    if tickers is None:
+        # Fallback to hardcoded list if AssetManager unavailable
+        tickers = [
+            # Major indices (6)
+            'SPY', 'QQQ', 'IWM', 'DIA', 'VTI', 'EEM',
+            # Sector ETFs (3)
+            'XLF', 'XLK', 'XLE',
+            # Bonds & Treasury (6)
+            'TLT', 'IEF', 'SHY', 'HYG', 'LQD', '^TNX',
+            # Dollar (2)
+            'DX-Y.NYB', 'UUP',
+            # Precious metals (7)
+            'GLD', 'SLV', 'GDX', 'GDXJ', 'IAU', 'PPLT', 'PALL',
+            # Energy (2)
+            'USO', 'UNG',
+            # Agriculture (3)
+            'DBA', 'CORN', 'WEAT',
+            # Volatility
+            '^VIX',
+            # Crypto proxies
+            'BITO', 'ETHE', 'GBTC',
+        ]
+        print("Using fallback asset list (AssetManager not available)")
+    else:
+        print(f"Loaded {len(tickers)} assets from config/assets.yaml")
 
     print(f"Downloading {len(tickers)} assets from yfinance...")
     all_data = {}
@@ -74,9 +92,24 @@ def download_multi_asset_data():
     return all_data
 
 
-def load_data():
-    """Load and prepare data for analysis"""
-    from build_feature_table import build_features
+def load_data(use_production_features=False):
+    """
+    Load and prepare data for analysis.
+
+    Args:
+        use_production_features: If True, use utils.add_features() (production pipeline)
+                                 If False, use build_feature_table.build_features() (simplified)
+    """
+    if use_production_features:
+        try:
+            from utils import add_features as build_features
+            print("Using PRODUCTION feature pipeline (utils.add_features)")
+        except ImportError:
+            print("Warning: Could not import utils.add_features, falling back to build_feature_table")
+            from build_feature_table import build_features
+    else:
+        from build_feature_table import build_features
+        print("Using ANALYSIS feature pipeline (build_feature_table.build_features)")
 
     print("=" * 70)
     print("FEATURE ANALYSIS - Loading Data")
@@ -194,10 +227,37 @@ def load_data():
 
     # Build feature table
     print("\nBuilding feature table...")
-    df = build_features(spy_data)
+
+    # Prepare data for utils.add_features() which expects capitalized columns
+    if use_production_features:
+        # Rename columns to match production pipeline expectations
+        spy_data_renamed = spy_data.rename(columns={
+            'open': 'Open', 'high': 'High', 'low': 'Low',
+            'close': 'Close', 'volume': 'Volume', 'date': 'Date'
+        })
+        df = build_features(spy_data_renamed)
+        # Normalize column names back to lowercase
+        df.columns = [c.lower() if c not in ['Date'] else c for c in df.columns]
+    else:
+        df = build_features(spy_data)
+
+    # Handle different close column names
+    close_col = 'close' if 'close' in df.columns else 'Close'
+    if close_col not in df.columns:
+        # Try to find it
+        for c in df.columns:
+            if c.lower() == 'close':
+                close_col = c
+                break
 
     # Create target variable (1 if next day close > today's close)
-    df['target'] = (df['close'].shift(-1) > df['close']).astype(int)
+    if close_col in df.columns:
+        df['target'] = (df[close_col].shift(-1) > df[close_col]).astype(int)
+        df['close'] = df[close_col]  # Ensure lowercase 'close' exists
+    else:
+        print("Warning: Could not find close column for target creation")
+        df['target'] = 0
+
     df = df.dropna()
 
     print(f"Final dataset: {len(df)} rows, {len(df.columns)} columns")
@@ -207,9 +267,25 @@ def load_data():
 
 def get_feature_columns(df: pd.DataFrame) -> List[str]:
     """Get list of feature columns (exclude meta columns)"""
-    exclude = ['date', 'Date', 'open', 'high', 'low', 'close', 'volume',
-               'target', 'ticker', 'asset_type', 'returns', 'log_returns']
-    return [c for c in df.columns if c not in exclude and df[c].dtype in ['float64', 'int64', 'float32', 'int32']]
+    # Exclude price, meta, and target columns (both lowercase and titlecase)
+    exclude = [
+        'date', 'Date', 'datetime', 'timestamp',
+        'open', 'Open', 'high', 'High', 'low', 'Low', 'close', 'Close',
+        'volume', 'Volume', 'adj_close', 'Adj Close', 'adj close',
+        'target', 'Target', 'ticker', 'Ticker', 'asset_type',
+        'returns', 'log_returns', 'Daily_Return', 'daily_return',
+        'y', 'y_up_fwd', 'y_class_3', 'split', 'fwd_ret', 'fwd_price',
+    ]
+    exclude_set = set(e.lower() for e in exclude)
+
+    features = []
+    for c in df.columns:
+        if c.lower() in exclude_set:
+            continue
+        if df[c].dtype in ['float64', 'int64', 'float32', 'int32']:
+            features.append(c)
+
+    return features
 
 
 def analyze_feature_statistics(df: pd.DataFrame, features: List[str]) -> pd.DataFrame:
@@ -290,17 +366,62 @@ def analyze_correlations(df: pd.DataFrame, features: List[str]) -> Tuple[pd.Data
     return corr_matrix, high_corr_pairs
 
 
-def train_baseline_model(X_train, y_train, X_test, y_test):
+def train_baseline_model(X_train, y_train, X_test, y_test, model_type='gradient_boosting'):
     """Train a baseline model and return metrics"""
     from sklearn.ensemble import GradientBoostingClassifier
     from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 
-    model = GradientBoostingClassifier(
-        n_estimators=100,
-        max_depth=4,
-        learning_rate=0.1,
-        random_state=42
-    )
+    if model_type == 'gradient_boosting':
+        model = GradientBoostingClassifier(
+            n_estimators=100,
+            max_depth=4,
+            learning_rate=0.1,
+            random_state=42
+        )
+    elif model_type == 'xgboost':
+        try:
+            from xgboost import XGBClassifier
+            model = XGBClassifier(
+                n_estimators=200,
+                max_depth=6,
+                learning_rate=0.05,
+                reg_alpha=0.1,
+                reg_lambda=1.0,
+                random_state=42,
+                verbosity=0,
+                use_label_encoder=False,
+                eval_metric='logloss'
+            )
+        except ImportError:
+            print("Warning: XGBoost not installed, falling back to GradientBoosting")
+            model = GradientBoostingClassifier(
+                n_estimators=100, max_depth=4, learning_rate=0.1, random_state=42
+            )
+    elif model_type == 'lightgbm':
+        try:
+            from lightgbm import LGBMClassifier
+            model = LGBMClassifier(
+                n_estimators=200,
+                max_depth=6,
+                learning_rate=0.05,
+                reg_alpha=0.1,
+                reg_lambda=1.0,
+                random_state=42,
+                verbose=-1
+            )
+        except ImportError:
+            print("Warning: LightGBM not installed, falling back to GradientBoosting")
+            model = GradientBoostingClassifier(
+                n_estimators=100, max_depth=4, learning_rate=0.1, random_state=42
+            )
+    else:
+        model = GradientBoostingClassifier(
+            n_estimators=100,
+            max_depth=4,
+            learning_rate=0.1,
+            random_state=42
+        )
+
     model.fit(X_train, y_train)
 
     y_pred = model.predict(X_test)
@@ -312,6 +433,55 @@ def train_baseline_model(X_train, y_train, X_test, y_test):
         'auc': roc_auc_score(y_test, y_prob),
         'model': model
     }
+
+
+def compare_model_performance(X_train, y_train, X_test, y_test):
+    """Compare performance across different model types"""
+    print("\n" + "=" * 70)
+    print("MODEL COMPARISON (Production vs Baseline)")
+    print("=" * 70)
+
+    models = ['gradient_boosting', 'xgboost', 'lightgbm']
+    results = {}
+
+    for model_type in models:
+        try:
+            print(f"\nTraining {model_type}...")
+            metrics = train_baseline_model(X_train, y_train, X_test, y_test, model_type=model_type)
+            results[model_type] = metrics
+            print(f"  Accuracy: {metrics['accuracy']:.4f}")
+            print(f"  F1:       {metrics['f1']:.4f}")
+            print(f"  AUC:      {metrics['auc']:.4f}")
+        except Exception as e:
+            print(f"  Error: {e}")
+
+    print("\n" + "-" * 70)
+    print("COMPARISON SUMMARY:")
+    print("-" * 70)
+    print(f"{'Model':<20} {'Accuracy':>10} {'F1':>10} {'AUC':>10}")
+    print("-" * 70)
+    for model_type, metrics in results.items():
+        print(f"{model_type:<20} {metrics['accuracy']:>10.4f} {metrics['f1']:>10.4f} {metrics['auc']:>10.4f}")
+
+    # Calculate ensemble prediction
+    if len(results) >= 2:
+        print("\n" + "-" * 70)
+        print("ENSEMBLE (Average prediction):")
+        from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
+
+        probs = []
+        for model_type, metrics in results.items():
+            probs.append(metrics['model'].predict_proba(X_test)[:, 1])
+
+        avg_prob = np.mean(probs, axis=0)
+        y_pred_ensemble = (avg_prob >= 0.5).astype(int)
+
+        ens_acc = accuracy_score(y_test, y_pred_ensemble)
+        ens_f1 = f1_score(y_test, y_pred_ensemble)
+        ens_auc = roc_auc_score(y_test, avg_prob)
+        print(f"{'Ensemble':<20} {ens_acc:>10.4f} {ens_f1:>10.4f} {ens_auc:>10.4f}")
+
+    return results
 
 
 def analyze_feature_importance(df: pd.DataFrame, features: List[str]) -> pd.DataFrame:
@@ -341,9 +511,12 @@ def analyze_feature_importance(df: pd.DataFrame, features: List[str]) -> pd.Data
     print(f"Training samples: {len(X_train)}, Test samples: {len(X_test)}")
 
     # Train baseline
-    print("\nTraining baseline model...")
-    baseline = train_baseline_model(X_train_scaled, y_train, X_test_scaled, y_test)
+    print("\nTraining baseline model (GradientBoosting)...")
+    baseline = train_baseline_model(X_train_scaled, y_train, X_test_scaled, y_test, model_type='gradient_boosting')
     print(f"Baseline - Accuracy: {baseline['accuracy']:.4f}, F1: {baseline['f1']:.4f}, AUC: {baseline['auc']:.4f}")
+
+    # Compare with production models
+    model_comparison = compare_model_performance(X_train_scaled, y_train, X_test_scaled, y_test)
 
     # Method 1: Built-in feature importance
     print("\nCalculating built-in importance...")
@@ -590,12 +763,72 @@ def save_results(importance_df: pd.DataFrame, drop_df: pd.DataFrame,
 
 def main():
     """Main analysis pipeline"""
+    import argparse
+
+    parser = argparse.ArgumentParser(description='Analyze feature importance and quality')
+    parser.add_argument('--production', '-p', action='store_true',
+                        help='Use production feature pipeline (utils.add_features) instead of simplified')
+    parser.add_argument('--compare', '-c', action='store_true',
+                        help='Compare both feature pipelines side by side')
+    args = parser.parse_args()
+
     start_time = datetime.now()
     print(f"\nStarting Feature Analysis at {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
 
-    # Load data
-    df = load_data()
-    features = get_feature_columns(df)
+    if args.compare:
+        print("\n" + "=" * 70)
+        print("COMPARISON MODE: Analyzing both feature pipelines")
+        print("=" * 70)
+
+        # Run with simplified features
+        print("\n\n>>> SIMPLIFIED FEATURES (build_feature_table.build_features)")
+        print("-" * 70)
+        df_simple = load_data(use_production_features=False)
+        features_simple = get_feature_columns(df_simple)
+        print(f"Simplified pipeline: {len(features_simple)} features")
+
+        # Run with production features
+        print("\n\n>>> PRODUCTION FEATURES (utils.add_features)")
+        print("-" * 70)
+        df_prod = load_data(use_production_features=True)
+        features_prod = get_feature_columns(df_prod)
+        print(f"Production pipeline: {len(features_prod)} features")
+
+        # Compare
+        print("\n" + "=" * 70)
+        print("FEATURE COMPARISON")
+        print("=" * 70)
+        simple_set = set(features_simple)
+        prod_set = set(features_prod)
+
+        only_in_simple = simple_set - prod_set
+        only_in_prod = prod_set - simple_set
+        common = simple_set & prod_set
+
+        print(f"\nCommon features: {len(common)}")
+        print(f"Only in simplified: {len(only_in_simple)}")
+        if only_in_simple:
+            for f in sorted(only_in_simple)[:10]:
+                print(f"  - {f}")
+            if len(only_in_simple) > 10:
+                print(f"  ... and {len(only_in_simple) - 10} more")
+
+        print(f"\nOnly in production: {len(only_in_prod)}")
+        if only_in_prod:
+            for f in sorted(only_in_prod)[:15]:
+                print(f"  + {f}")
+            if len(only_in_prod) > 15:
+                print(f"  ... and {len(only_in_prod) - 15} more")
+
+        # Continue with production features for full analysis
+        df = df_prod
+        features = features_prod
+        print("\n\nContinuing analysis with PRODUCTION features...")
+    else:
+        # Load data with specified pipeline
+        df = load_data(use_production_features=args.production)
+        features = get_feature_columns(df)
+
     print(f"\nTotal features to analyze: {len(features)}")
 
     # Run analyses

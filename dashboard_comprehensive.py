@@ -44,6 +44,16 @@ except ImportError:
 from core.data_manager_postgres import DataManager
 import os
 
+# Import AssetManager for centralized asset configuration
+try:
+    from framework.asset_manager import AssetManager
+    _asset_manager = AssetManager()
+    USE_ASSET_MANAGER = True
+except Exception as e:
+    print(f"Warning: Could not load AssetManager: {e}")
+    USE_ASSET_MANAGER = False
+    _asset_manager = None
+
 # Configure page
 st.set_page_config(
     page_title="NeuroVest Economic Forecasting",
@@ -186,27 +196,49 @@ def get_database_assets():
     except Exception as e:
         return []
 
-# All supported assets
-STOCK_ETFS = {
-    'SPY': 'S&P 500', 'QQQ': 'Nasdaq 100', 'IWM': 'Russell 2000',
-    'DIA': 'Dow Jones', 'VTI': 'Total Stock Market', 'EEM': 'Emerging Markets',
-    'XLF': 'Financials', 'XLK': 'Technology', 'XLE': 'Energy',
-    'DXY': 'US Dollar', 'HYG': 'High Yield Bonds', 'LQD': 'Investment Grade Bonds',
-    'TNX': '10Y Treasury', 'UUP': 'US Dollar Bull'
-}
+# All supported assets - loaded from AssetManager when available
+def _get_asset_categories():
+    """Get asset categories from AssetManager or use fallback defaults."""
+    if USE_ASSET_MANAGER and _asset_manager:
+        try:
+            categories = _asset_manager.get_dashboard_categories()
+            # Merge stocks_etfs with sectors and bonds for display
+            stocks = {**categories.get('stocks_etfs', {}), **categories.get('sectors', {}), **categories.get('bonds', {})}
+            return {
+                'stocks_etfs': stocks,
+                'precious_metals': categories.get('precious_metals', {}),
+                'crypto': categories.get('crypto', {}),
+            }
+        except Exception as e:
+            print(f"Warning: AssetManager categories failed: {e}")
 
-PRECIOUS_METALS = {
-    'GLD': 'Gold Trust', 'SLV': 'Silver Trust', 'GDX': 'Gold Miners',
-    'GDXJ': 'Junior Gold Miners', 'IAU': 'iShares Gold',
-    'PPLT': 'Platinum', 'PALL': 'Palladium'
-}
+    # Fallback to hardcoded values if AssetManager unavailable
+    return {
+        'stocks_etfs': {
+            'SPY': 'S&P 500', 'QQQ': 'Nasdaq 100', 'IWM': 'Russell 2000',
+            'DIA': 'Dow Jones', 'VTI': 'Total Stock Market', 'EEM': 'Emerging Markets',
+            'XLF': 'Financials', 'XLK': 'Technology', 'XLE': 'Energy',
+            'DXY': 'US Dollar', 'HYG': 'High Yield Bonds', 'LQD': 'Investment Grade Bonds',
+            'TNX': '10Y Treasury', 'UUP': 'US Dollar Bull'
+        },
+        'precious_metals': {
+            'GLD': 'Gold Trust', 'SLV': 'Silver Trust', 'GDX': 'Gold Miners',
+            'GDXJ': 'Junior Gold Miners', 'IAU': 'iShares Gold',
+            'PPLT': 'Platinum', 'PALL': 'Palladium'
+        },
+        'crypto': {
+            'BTC/USDT': 'Bitcoin', 'ETH/USDT': 'Ethereum', 'SOL/USDT': 'Solana',
+            'BNB/USDT': 'Binance Coin', 'XRP/USDT': 'Ripple', 'ADA/USDT': 'Cardano',
+            'DOGE/USDT': 'Dogecoin', 'AVAX/USDT': 'Avalanche',
+            'MATIC/USDT': 'Polygon', 'LINK/USDT': 'Chainlink'
+        }
+    }
 
-CRYPTO_ASSETS = {
-    'BTC/USDT': 'Bitcoin', 'ETH/USDT': 'Ethereum', 'SOL/USDT': 'Solana',
-    'BNB/USDT': 'Binance Coin', 'XRP/USDT': 'Ripple', 'ADA/USDT': 'Cardano',
-    'DOGE/USDT': 'Dogecoin', 'AVAX/USDT': 'Avalanche',
-    'MATIC/USDT': 'Polygon', 'LINK/USDT': 'Chainlink'
-}
+# Initialize asset dictionaries
+_categories = _get_asset_categories()
+STOCK_ETFS = _categories['stocks_etfs']
+PRECIOUS_METALS = _categories['precious_metals']
+CRYPTO_ASSETS = _categories['crypto']
 
 def check_asset_status(ticker):
     """Check if asset data is downloaded"""
@@ -1675,6 +1707,11 @@ def show_model_performance():
     st.subheader("Ensemble Architecture")
 
     # Benchmark metrics (typical performance from historical training runs)
+    # NOTE: These are static benchmarks. Actual metrics come from trained models in database.
+    # The difference between feature analysis baseline (~42%) and these (~55%) is due to:
+    # 1. Feature analysis uses simplified GradientBoosting vs production XGBoost/LightGBM/CatBoost
+    # 2. Production models use hyperparameter tuning, time-series CV, and feature selection
+    # 3. Different evaluation methodology (time-based split vs cross-validation)
     benchmark_metrics = {
         'xgboost': {'accuracy': 0.55, 'precision': 0.53, 'recall': 0.51, 'f1': 0.52},
         'lightgbm': {'accuracy': 0.54, 'precision': 0.52, 'recall': 0.50, 'f1': 0.51},
