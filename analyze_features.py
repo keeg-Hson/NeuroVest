@@ -96,13 +96,24 @@ def load_data(use_production_features=False):
     """
     Load and prepare data for analysis.
 
+    Data source priority (same as Streamlit dashboard):
+    1. PostgreSQL database (if DATABASE_URL set)
+    2. Local CSV files
+    3. yfinance download (fallback only)
+
     Args:
         use_production_features: If True, use utils.add_features() (production pipeline)
                                  If False, use build_feature_table.build_features() (simplified)
     """
     if use_production_features:
         try:
-            from utils import add_features as build_features
+            from utils import add_features as _build_features
+            # Wrap to handle tuple return
+            def build_features(df):
+                result = _build_features(df)
+                if isinstance(result, tuple):
+                    return result[0]  # Return just the DataFrame
+                return result
             print("Using PRODUCTION feature pipeline (utils.add_features)")
         except ImportError:
             print("Warning: Could not import utils.add_features, falling back to build_feature_table")
@@ -118,59 +129,66 @@ def load_data(use_production_features=False):
     spy_data = None
     external_data = {}
 
-    # Option 1: Try PostgreSQL if DATABASE_URL is set
-    if os.environ.get('DATABASE_URL'):
+    # PRIMARY: Use PostgreSQL database (same as Streamlit dashboard)
+    database_url = os.environ.get('DATABASE_URL')
+    if database_url:
         try:
             from core.data_manager_postgres import DataManager
             dm = DataManager()
             spy_data = dm.get_data('SPY')
             if spy_data is not None and len(spy_data) > 100:
-                print(f"Loaded SPY from PostgreSQL: {len(spy_data)} rows")
-                # Also try to get all other assets
-                all_tickers = [
-                    'QQQ', 'IWM', 'DIA', 'VTI', 'EEM',
-                    'XLF', 'XLK', 'XLE',
-                    'TLT', 'IEF', 'SHY', 'HYG', 'LQD', 'TNX',
-                    'DXY', 'UUP',
-                    'GLD', 'SLV', 'GDX', 'GDXJ', 'IAU', 'PPLT', 'PALL',
-                    'USO', 'UNG', 'DBA', 'CORN', 'WEAT',
-                    'VIX',
-                    'BTC_USDT', 'ETH_USDT', 'SOL_USDT', 'BNB_USDT', 'XRP_USDT',
-                    'ADA_USDT', 'DOGE_USDT', 'AVAX_USDT', 'DOT_USDT', 'LINK_USDT',
-                ]
-                for ticker in all_tickers:
-                    try:
-                        ext = dm.get_data(ticker)
-                        if ext is not None and len(ext) > 100:
-                            external_data[ticker] = ext
-                    except:
-                        pass
-                print(f"  Loaded {len(external_data)} external assets from PostgreSQL")
+                print(f"✓ Loaded SPY from PostgreSQL database: {len(spy_data)} rows")
+
+                # Get all available assets from database
+                try:
+                    all_assets = dm.get_all_assets()  # Returns list of (ticker, asset_type) tuples
+                    available_tickers = [t[0] for t in all_assets]
+                    print(f"  Database has {len(available_tickers)} assets available")
+
+                    for ticker in available_tickers:
+                        if ticker == 'SPY':
+                            continue
+                        try:
+                            ext = dm.get_data(ticker)
+                            if ext is not None and len(ext) > 100:
+                                external_data[ticker] = ext
+                        except:
+                            pass
+                    print(f"  Loaded {len(external_data)} external assets from database")
+                except Exception as e:
+                    print(f"  Warning: Could not list assets: {e}")
             dm.close()
         except Exception as e:
             print(f"PostgreSQL not available: {e}")
+            spy_data = None
+    else:
+        print("DATABASE_URL not set - cannot load from database")
 
-    # Option 2: Try local CSV files
+    # SECONDARY: Try local CSV files
     if spy_data is None or len(spy_data) < 100:
         csv_paths = [
+            Path('data/SPY.csv'),
             Path('data/SPY_daily.csv'),
             Path('data/spy_data.csv'),
             Path('data_cache/SPY.csv'),
+            Path('data_cache/SPY_1d.csv'),
             Path('logs/spy_data.csv'),
         ]
         for csv_path in csv_paths:
             if csv_path.exists():
                 try:
                     temp = pd.read_csv(csv_path)
-                    if len(temp) > 100:  # Must have substantial data
+                    if len(temp) > 100:
                         spy_data = temp
-                        print(f"Loaded from {csv_path}: {len(spy_data)} rows")
+                        print(f"✓ Loaded SPY from CSV: {csv_path} ({len(spy_data)} rows)")
                         break
                 except Exception as e:
                     pass
 
-    # Option 3: Download fresh data from yfinance
+    # TERTIARY: Download from yfinance (fallback only)
     if spy_data is None or len(spy_data) < 100:
+        print("⚠️  No database/CSV data available, falling back to yfinance download")
+        print("    (This gives less data than the Streamlit dashboard)")
         try:
             all_data = download_multi_asset_data()
             if 'SPY' in all_data:
@@ -183,8 +201,8 @@ def load_data(use_production_features=False):
     if spy_data is None or len(spy_data) < 100:
         print("ERROR: Could not load SPY data from any source")
         print("Options:")
-        print("  1. Set DATABASE_URL environment variable")
-        print("  2. Place SPY data CSV in data/SPY_daily.csv")
+        print("  1. Set DATABASE_URL environment variable (same as Streamlit)")
+        print("  2. Place SPY data CSV in data/SPY.csv")
         print("  3. Install yfinance: pip install yfinance")
         sys.exit(1)
 
