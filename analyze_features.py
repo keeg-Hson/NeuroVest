@@ -28,6 +28,45 @@ warnings.filterwarnings('ignore')
 sys.path.insert(0, str(Path(__file__).parent))
 
 
+def download_multi_asset_data():
+    """Download data for SPY and related assets from yfinance"""
+    import yfinance as yf
+
+    # Core assets for feature generation
+    tickers = [
+        'SPY',   # Main target
+        # Sector ETFs (for sector features)
+        'XLF', 'XLK', 'XLE', 'XLI', 'XLV',
+        # Volatility
+        'VIX',
+        # Bonds
+        'TLT', 'IEF',
+        # Gold/Commodities
+        'GLD', 'USO',
+        # Dollar
+        'UUP',
+    ]
+
+    print(f"Downloading {len(tickers)} assets from yfinance...")
+    all_data = {}
+
+    for ticker in tickers:
+        try:
+            t = yf.Ticker(ticker)
+            df = t.history(period='5y')
+            if len(df) > 0:
+                df = df.reset_index()
+                df.columns = [c.lower() for c in df.columns]
+                all_data[ticker] = df
+                print(f"  ✓ {ticker}: {len(df)} rows")
+            else:
+                print(f"  ✗ {ticker}: no data")
+        except Exception as e:
+            print(f"  ✗ {ticker}: {e}")
+
+    return all_data
+
+
 def load_data():
     """Load and prepare data for analysis"""
     from build_feature_table import build_features
@@ -36,8 +75,8 @@ def load_data():
     print("FEATURE ANALYSIS - Loading Data")
     print("=" * 70)
 
-    # Try multiple data sources
     spy_data = None
+    external_data = {}
 
     # Option 1: Try PostgreSQL if DATABASE_URL is set
     if os.environ.get('DATABASE_URL'):
@@ -45,14 +84,22 @@ def load_data():
             from core.data_manager_postgres import DataManager
             dm = DataManager()
             spy_data = dm.get_data('SPY')
+            if spy_data is not None and len(spy_data) > 100:
+                print(f"Loaded SPY from PostgreSQL: {len(spy_data)} rows")
+                # Also try to get other assets
+                for ticker in ['XLF', 'XLK', 'XLE', 'VIX', 'TLT', 'GLD']:
+                    try:
+                        ext = dm.get_data(ticker)
+                        if ext is not None and len(ext) > 100:
+                            external_data[ticker] = ext
+                    except:
+                        pass
             dm.close()
-            if spy_data is not None and not spy_data.empty:
-                print(f"Loaded from PostgreSQL: {len(spy_data)} rows")
         except Exception as e:
             print(f"PostgreSQL not available: {e}")
 
     # Option 2: Try local CSV files
-    if spy_data is None:
+    if spy_data is None or len(spy_data) < 100:
         csv_paths = [
             Path('data/SPY_daily.csv'),
             Path('data/spy_data.csv'),
@@ -62,26 +109,26 @@ def load_data():
         for csv_path in csv_paths:
             if csv_path.exists():
                 try:
-                    spy_data = pd.read_csv(csv_path)
-                    print(f"Loaded from {csv_path}: {len(spy_data)} rows")
-                    break
+                    temp = pd.read_csv(csv_path)
+                    if len(temp) > 100:  # Must have substantial data
+                        spy_data = temp
+                        print(f"Loaded from {csv_path}: {len(spy_data)} rows")
+                        break
                 except Exception as e:
-                    print(f"Failed to load {csv_path}: {e}")
+                    pass
 
     # Option 3: Download fresh data from yfinance
-    if spy_data is None:
+    if spy_data is None or len(spy_data) < 100:
         try:
-            import yfinance as yf
-            print("Downloading SPY data from yfinance...")
-            ticker = yf.Ticker('SPY')
-            spy_data = ticker.history(period='5y')
-            spy_data = spy_data.reset_index()
-            spy_data.columns = [c.lower() for c in spy_data.columns]
-            print(f"Downloaded from yfinance: {len(spy_data)} rows")
+            all_data = download_multi_asset_data()
+            if 'SPY' in all_data:
+                spy_data = all_data['SPY']
+                external_data = {k: v for k, v in all_data.items() if k != 'SPY'}
         except Exception as e:
             print(f"yfinance download failed: {e}")
+            print("Install with: pip install yfinance")
 
-    if spy_data is None or spy_data.empty:
+    if spy_data is None or len(spy_data) < 100:
         print("ERROR: Could not load SPY data from any source")
         print("Options:")
         print("  1. Set DATABASE_URL environment variable")
@@ -115,7 +162,16 @@ def load_data():
     # Sort by date
     spy_data = spy_data.sort_values('date').reset_index(drop=True)
 
-    print(f"Date range: {spy_data['date'].min()} to {spy_data['date'].max()}")
+    print(f"\nSPY date range: {spy_data['date'].min()} to {spy_data['date'].max()}")
+
+    # Save external data for feature building
+    if external_data:
+        print(f"External assets loaded: {list(external_data.keys())}")
+        # Save to temp location for build_features to pick up
+        ext_dir = Path('data/external_temp')
+        ext_dir.mkdir(parents=True, exist_ok=True)
+        for ticker, df in external_data.items():
+            df.to_csv(ext_dir / f'{ticker}.csv', index=False)
 
     # Build feature table
     print("\nBuilding feature table...")
