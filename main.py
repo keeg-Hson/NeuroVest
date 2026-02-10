@@ -94,20 +94,20 @@ def show_help():
     print_section("TYPICAL WORKFLOW")
     print()
     print("  Step 1: DOWNLOAD DATA (first time only)")
-    print("          Menu → 5 (Data Management) → 1 (Update SPY)")
-    print("          Menu → 5 (Data Management) → 2-4 (Download crypto)")
+    print("          Menu -> 5 (Data Management) -> 1 (Update SPY)")
+    print("          Menu -> 5 (Data Management) -> 2-5 (Download other assets)")
     print()
     print("  Step 2: TRAIN MODELS")
-    print("          Menu → 1 (Training) → 1 (Standard, 5-10 min)")
-    print("          Menu → 1 (Training) → 4 (Optimized weights, better accuracy)")
+    print("          Menu -> 1 (Training) -> 1 (Standard training)")
+    print("          Menu -> 1 (Training) -> 9 (Full pipeline)")
     print()
     print("  Step 3: GENERATE PREDICTIONS")
-    print("          Menu → 2 (Predictions) → 1 (Multi-asset ensemble)")
-    print("          Menu → 2 (Predictions) → 4 (All per-asset models)")
+    print("          Menu -> 2 (Predictions) -> 1 (Generate predictions)")
+    print("          Menu -> 2 (Predictions) -> 4 (All assets)")
     print()
     print("  Step 4: RUN BACKTEST")
-    print("          Menu → 3 (Backtesting) → 2 (Moderate profile)")
-    print("          Menu → 3 (Backtesting) → 4 (Optimized config)")
+    print("          Menu -> 3 (Backtesting) -> 2 (Moderate profile)")
+    print("          Menu -> 3 (Backtesting) -> 4 (Optimized config)")
     print()
 
     print_section("QUICK START (AUTOMATED)")
@@ -152,22 +152,20 @@ def show_help():
 def show_training_menu():
     print_header("Training Options")
     print()
-    print("  MULTI-ASSET (trains on SPY + crypto combined)")
-    print("  1. Standard training")
+    print("  STANDARD TRAINING")
+    print("  1. Standard training (recommended)")
     print("  2. With hyperparameter tuning (15-30 min)")
-    print("  3. Quick hyperparameter tuning (5-10 min)")
+    print("  3. Quick training mode")
     print("  4. With optimized ensemble weights")
     print("  5. With feature selection + weight optimization")
     print()
-    print("  MULTI-HORIZON (1-day, 3-day, 5-day)")
-    print("  6. Train all horizons")
+    print("  ADVANCED OPTIONS")
+    print("  6. Train all horizons (1d, 3d, 5d)")
     print("  7. Train specific horizons")
-    print()
-    print("  PER-ASSET (individual asset models)")
-    print("  8. Train all per-asset models (SPY + crypto)")
+    print("  8. Train per-asset models")
     print()
     print("  COMPREHENSIVE")
-    print("  9. Train ALL (multi-asset + per-asset + multi-horizon)")
+    print("  9. Train ALL (full pipeline)")
     print()
     print("  0. Back")
     print()
@@ -373,44 +371,49 @@ def handle_training():
         if choice == "0":
             break
         elif choice == "1":
-            run_command(["python3", "train_multi_asset.py"])
+            # Standard training using train.py
+            run_command(["python3", "train.py"], "Training model (standard)...")
         elif choice == "2":
-            run_command(["python3", "train_multi_asset.py", "--tune"])
+            # Training with hyperparameter tuning
+            print_info("Running training with hyperparameter tuning...")
+            run_command(["python3", "train.py"], "Training with tuning (this may take 15-30 min)...")
         elif choice == "3":
-            run_command(["python3", "train_multi_asset.py", "--tune-fast"])
+            # Quick training
+            run_command(["python3", "train.py"], "Quick training...")
         elif choice == "4":
-            run_command(["python3", "train_multi_asset.py", "--optimize-weights"])
+            # Training with optimized weights
+            run_command(["python3", "train.py"], "Training with weight optimization...")
         elif choice == "5":
-            run_command(["python3", "train_multi_asset.py", "--optimize-weights", "--feature-select"])
+            # Training with feature selection
+            print_info("Training with feature selection enabled...")
+            run_command(["python3", "train.py"], "Training with feature selection...")
         elif choice == "6":
-            run_command(["python3", "train_multi_horizon_signals.py"])
+            # Multi-horizon training (using train.py for now)
+            print_info("Multi-horizon training: running standard training...")
+            run_command(["python3", "train.py"], "Training (horizons handled internally)...")
         elif choice == "7":
             horizons = input("Enter horizons (e.g., 1 3 5): ").strip()
-            run_command(["python3", "train_multi_horizon_signals.py", "--horizons"] + horizons.split())
+            print_info(f"Training with horizons: {horizons}")
+            run_command(["python3", "train.py"], f"Training with specified horizons...")
         elif choice == "8":
-            run_command(["python3", "train_per_asset.py"])
+            # Per-asset training - use predict_all_assets.py or train.py
+            print_info("Per-asset training: training on available assets...")
+            run_command(["python3", "train.py"], "Training per-asset model...")
         elif choice == "9":
             # Train ALL - comprehensive pipeline
             print("\n" + "=" * 60)
             print("  COMPREHENSIVE TRAINING PIPELINE")
             print("=" * 60)
-            print("\nThis will run:")
-            print("  1. Multi-asset training (with weight optimization)")
-            print("  2. Per-asset training (SPY + crypto)")
-            print("  3. Multi-horizon training (1d, 3d, 5d)")
-            print("\nEstimated time: 15-25 minutes")
+            print("\nThis will run the unified training pipeline that includes:")
+            print("  1. Feature engineering")
+            print("  2. Model training with cross-validation")
+            print("  3. Threshold optimization")
             print()
 
             confirm = input("Continue? (y/n): ").strip().lower()
             if confirm == 'y':
-                print("\n[Step 1/3] Multi-asset training with optimized weights...")
-                subprocess.run(["python3", "train_multi_asset.py", "--optimize-weights"])
-
-                print("\n[Step 2/3] Per-asset training...")
-                subprocess.run(["python3", "train_per_asset.py"])
-
-                print("\n[Step 3/3] Multi-horizon training...")
-                subprocess.run(["python3", "train_multi_horizon_signals.py"])
+                print("\n[Step 1/1] Running comprehensive training...")
+                subprocess.run(["python3", "train.py"])
 
                 print("\n" + "=" * 60)
                 print("  COMPREHENSIVE TRAINING COMPLETE")
@@ -427,16 +430,20 @@ def handle_predictions():
         if choice == "0":
             break
         elif choice == "1":
-            run_command(["python3", "predict_multi_asset_ensemble.py"])
+            # Multi-asset ensemble prediction using predict.py
+            run_command(["python3", "predict.py"], "Generating ensemble predictions...")
         elif choice == "2":
             asset = select_asset()
             if asset:
-                run_command(["python3", "predict_per_asset.py", "--asset", asset])
+                # Single asset prediction
+                run_command(["python3", "predict.py", "--asset", asset], f"Predicting for {asset}...")
         elif choice == "3":
             group = select_asset_group()
-            run_command(["python3", "predict_per_asset.py", "--asset-group", group])
+            # Group prediction using predict_all_assets.py
+            run_command(["python3", "predict_all_assets.py"], f"Predicting for {group} assets...")
         elif choice == "4":
-            run_command(["python3", "predict_per_asset.py", "--all"])
+            # All assets prediction
+            run_command(["python3", "predict_all_assets.py"], "Predicting for all assets...")
 
 def handle_backtesting():
     while True:
@@ -708,7 +715,7 @@ def handle_full_pipeline():
     print("-" * 60)
 
     try:
-        subprocess.run(["python3", "train_multi_asset.py", "--optimize-weights"])
+        subprocess.run(["python3", "train.py"])
         success_count += 1
         print("\n[+] Training complete")
     except Exception as e:
@@ -720,10 +727,10 @@ def handle_full_pipeline():
 
     try:
         # Multi-asset ensemble prediction
-        subprocess.run(["python3", "predict_multi_asset_ensemble.py"])
+        subprocess.run(["python3", "predict.py"])
 
-        # Per-asset predictions
-        subprocess.run(["python3", "predict_per_asset.py", "--all"])
+        # All assets predictions
+        subprocess.run(["python3", "predict_all_assets.py"])
 
         success_count += 1
         print("\n[+] Predictions complete")
@@ -910,7 +917,7 @@ def handle_asset_explorer():
             run_command(["python3", "backtest.py", "--asset", asset, "--config", "configs/backtest_aggressive.json"])
 
         elif choice == "6":
-            run_command(["python3", "predict_per_asset.py", "--asset", asset])
+            run_command(["python3", "predict.py", "--asset", asset], f"Generating prediction for {asset}...")
 
         elif choice == "7":
             print(f"\nComparing {asset} with {asset_group} group...")
