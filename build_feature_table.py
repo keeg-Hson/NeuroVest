@@ -132,9 +132,41 @@ def _merge_external_if_available(df: pd.DataFrame, external_dir: Path) -> pd.Dat
     return base
 
 
-def build_features(df: pd.DataFrame) -> pd.DataFrame:
+def _load_external_asset(ticker: str, ext_dir: Path = None) -> pd.DataFrame:
+    """Load external asset data from temp directory"""
+    if ext_dir is None:
+        ext_dir = Path("data/external_temp")
+
+    # Try multiple file name patterns
+    patterns = [
+        ext_dir / f"{ticker}.csv",
+        ext_dir / f"{ticker.replace('^', '')}.csv",
+        ext_dir / f"{ticker.replace('-', '_')}.csv",
+    ]
+
+    for path in patterns:
+        if path.exists():
+            try:
+                df = pd.read_csv(path)
+                df.columns = [c.lower() for c in df.columns]
+                if 'date' in df.columns:
+                    df['date'] = pd.to_datetime(df['date'])
+                    df = df.set_index('date')
+                return df
+            except Exception:
+                pass
+    return None
+
+
+def build_features(df: pd.DataFrame, ext_dir: Path = None) -> pd.DataFrame:
     """
-    Build technical features and retain any external numeric signals from df.
+    Build technical features including cross-asset signals.
+
+    Pruned based on feature analysis:
+    - Removed: logret_1d (redundant with ret_1d), bb_mid_20_2 (redundant with sma_20)
+    - Removed: ema_12, ema_26 (redundant with sma_20)
+    - Removed: macd, vol_sma_20 (hurt performance)
+    - Kept: macd_hist (most important feature)
     """
     # Handle both lowercase and capitalized column names
     def get_col(names):
@@ -150,58 +182,157 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
 
     out = pd.DataFrame(index=df.index)
 
-    # returns (explicitly disable fill to avoid FutureWarning)
+    # ══════════════════════════════════════════════════════════════════════════
+    # CORE FEATURES (kept from analysis)
+    # ══════════════════════════════════════════════════════════════════════════
+
+    # Returns - multiple horizons
     out["ret_1d"] = close.pct_change(1, fill_method=None)
     out["ret_5d"] = close.pct_change(5, fill_method=None)
     out["ret_10d"] = close.pct_change(10, fill_method=None)
-    out["logret_1d"] = np.log(close).diff(1)
+    out["ret_21d"] = close.pct_change(21, fill_method=None)  # Monthly
 
-    # trend
+    # Trend - keep only sma_20, sma_50 (others were redundant)
     out["sma_20"] = _sma(close, 20)
     out["sma_50"] = _sma(close, 50)
-    out["ema_12"] = _ema(close, 12)
-    out["ema_26"] = _ema(close, 26)
+    out["sma_200"] = _sma(close, 200)  # Long-term trend
 
-    # momentum
+    # Momentum - RSI at multiple timeframes
     out["rsi_14"] = _rsi(close, 14)
-    macd, sig, hist = _macd(close)
-    out["macd"] = macd
-    out["macd_signal"] = sig
+    out["rsi_7"] = _rsi(close, 7)   # Short-term
+    out["rsi_21"] = _rsi(close, 21)  # Medium-term
+
+    # MACD - keep only histogram (most important)
+    _, _, hist = _macd(close)
     out["macd_hist"] = hist
 
-    # bands
+    # Bollinger Bands - keep width and upper (lower was harmful)
     up, mid, lo = _boll(close, 20, 2.0)
     out["bb_up_20_2"] = up
-    out["bb_mid_20_2"] = mid
-    out["bb_lo_20_2"] = lo
     out["bb_width_20_2"] = (up - lo) / mid
+    out["bb_pct"] = (close - lo) / (up - lo)  # Position within bands
 
-    # volatility / range
+    # Volatility
     out["atr_14"] = _atr(high, low, close, 14)
     out["vol_20"] = _vol(close, 20)
+    out["vol_ratio"] = _vol(close, 5) / _vol(close, 20)  # Short vs long vol
 
-    # stochastic
+    # Stochastic
     k, d = _stoch_kd(high, low, close, 14, 3)
     out["stoch_k_14_3"] = k
     out["stoch_d_14_3"] = d
 
-    # volume
-    out["vol_sma_20"] = _sma(vol, 20)
-    out["vol_pct_20"] = vol / out["vol_sma_20"] - 1.0
+    # Volume features (removed vol_sma_20 which hurt performance)
+    out["vol_pct_20"] = vol / _sma(vol, 20) - 1.0
+    out["vol_pct_5"] = vol / _sma(vol, 5) - 1.0
 
-    # price vs MAs
+    # Price position
     out["px_over_sma20"] = close / out["sma_20"] - 1.0
     out["px_over_sma50"] = close / out["sma_50"] - 1.0
+    out["px_over_sma200"] = close / out["sma_200"] - 1.0
 
-    # carry through external numeric signals (non-OHLCV, non-technical) as features
-    ohlcv_cols = {"Open", "High", "Low", "Close", "Adj Close", "Volume"}
-    existing_cols = set(df.columns)
-    extra_cols = [
-        c for c in existing_cols if c not in ohlcv_cols and pd.api.types.is_numeric_dtype(df[c])
-    ]
-    if extra_cols:
-        out = pd.concat([out, df[list(extra_cols)]], axis=1)
+    # ══════════════════════════════════════════════════════════════════════════
+    # CROSS-ASSET FEATURES (new - using external data)
+    # ══════════════════════════════════════════════════════════════════════════
 
+    if ext_dir is None:
+        ext_dir = Path("data/external_temp")
+
+    # VIX - Volatility regime
+    vix = _load_external_asset("^VIX", ext_dir)
+    if vix is not None and 'close' in vix.columns:
+        vix_close = vix['close'].reindex(df.index if isinstance(df.index, pd.DatetimeIndex) else pd.DatetimeIndex(df.get('date', df.index)))
+        if len(vix_close.dropna()) > 50:
+            out["vix_level"] = vix_close.values[:len(out)] if len(vix_close) >= len(out) else np.nan
+            out["vix_sma10"] = _sma(pd.Series(out["vix_level"]), 10)
+            out["vix_over_sma"] = out["vix_level"] / out["vix_sma10"] - 1.0
+            out["vix_regime"] = (out["vix_level"] > 20).astype(float)  # High vol regime
+
+    # QQQ - Tech momentum relative to SPY
+    qqq = _load_external_asset("QQQ", ext_dir)
+    if qqq is not None and 'close' in qqq.columns:
+        qqq_close = qqq['close'].values[:len(out)] if len(qqq) >= len(out) else None
+        if qqq_close is not None:
+            out["spy_qqq_ratio"] = close.values / qqq_close
+            out["spy_qqq_ratio_ma"] = _sma(pd.Series(out["spy_qqq_ratio"]), 20)
+            out["qqq_momentum"] = pd.Series(qqq_close).pct_change(5).values
+
+    # TLT - Bond/Equity relationship (risk on/off)
+    tlt = _load_external_asset("TLT", ext_dir)
+    if tlt is not None and 'close' in tlt.columns:
+        tlt_close = tlt['close'].values[:len(out)] if len(tlt) >= len(out) else None
+        if tlt_close is not None:
+            out["spy_tlt_ratio"] = close.values / tlt_close
+            out["tlt_momentum"] = pd.Series(tlt_close).pct_change(5).values
+            # Rolling correlation (risk sentiment)
+            spy_ret = close.pct_change()
+            tlt_ret = pd.Series(tlt_close).pct_change()
+            out["spy_tlt_corr_20"] = spy_ret.rolling(20).corr(tlt_ret).values
+
+    # GLD - Gold as risk hedge
+    gld = _load_external_asset("GLD", ext_dir)
+    if gld is not None and 'close' in gld.columns:
+        gld_close = gld['close'].values[:len(out)] if len(gld) >= len(out) else None
+        if gld_close is not None:
+            out["spy_gld_ratio"] = close.values / gld_close
+            out["gld_momentum"] = pd.Series(gld_close).pct_change(10).values
+
+    # HYG/LQD - Credit spread proxy
+    hyg = _load_external_asset("HYG", ext_dir)
+    lqd = _load_external_asset("LQD", ext_dir)
+    if hyg is not None and lqd is not None and 'close' in hyg.columns and 'close' in lqd.columns:
+        hyg_close = hyg['close'].values[:len(out)] if len(hyg) >= len(out) else None
+        lqd_close = lqd['close'].values[:len(out)] if len(lqd) >= len(out) else None
+        if hyg_close is not None and lqd_close is not None:
+            out["credit_spread"] = hyg_close / lqd_close
+            out["credit_spread_ma"] = _sma(pd.Series(out["credit_spread"]), 10)
+            out["credit_spread_chg"] = pd.Series(out["credit_spread"]).pct_change(5).values
+
+    # Dollar strength (UUP)
+    uup = _load_external_asset("UUP", ext_dir)
+    if uup is not None and 'close' in uup.columns:
+        uup_close = uup['close'].values[:len(out)] if len(uup) >= len(out) else None
+        if uup_close is not None:
+            out["dollar_momentum"] = pd.Series(uup_close).pct_change(10).values
+            out["dollar_level"] = uup_close / np.mean(uup_close[:50]) if len(uup_close) > 50 else np.nan
+
+    # Sector rotation - XLK (tech) vs XLF (financials)
+    xlk = _load_external_asset("XLK", ext_dir)
+    xlf = _load_external_asset("XLF", ext_dir)
+    if xlk is not None and xlf is not None and 'close' in xlk.columns and 'close' in xlf.columns:
+        xlk_close = xlk['close'].values[:len(out)] if len(xlk) >= len(out) else None
+        xlf_close = xlf['close'].values[:len(out)] if len(xlf) >= len(out) else None
+        if xlk_close is not None and xlf_close is not None:
+            out["tech_fin_ratio"] = xlk_close / xlf_close
+            out["tech_momentum"] = pd.Series(xlk_close).pct_change(5).values
+            out["fin_momentum"] = pd.Series(xlf_close).pct_change(5).values
+
+    # IWM - Small cap momentum (risk appetite)
+    iwm = _load_external_asset("IWM", ext_dir)
+    if iwm is not None and 'close' in iwm.columns:
+        iwm_close = iwm['close'].values[:len(out)] if len(iwm) >= len(out) else None
+        if iwm_close is not None:
+            out["spy_iwm_ratio"] = close.values / iwm_close
+            out["smallcap_momentum"] = pd.Series(iwm_close).pct_change(5).values
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # ADDITIONAL DERIVED FEATURES
+    # ══════════════════════════════════════════════════════════════════════════
+
+    # Trend strength
+    out["trend_strength"] = (out["sma_20"] - out["sma_50"]) / out["sma_50"]
+    out["trend_accel"] = out["trend_strength"].diff(5)
+
+    # Mean reversion signals
+    out["zscore_20"] = (close - out["sma_20"]) / out["vol_20"]
+
+    # Momentum divergence
+    out["rsi_price_div"] = out["rsi_14"].diff(5) - (close.pct_change(5) * 100)
+
+    # Carry forward close for target calculation
+    out["close"] = close.values
+
+    # Drop rows with NaN in critical features
     return out
 
 
