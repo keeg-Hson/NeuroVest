@@ -30,33 +30,103 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 def load_data():
     """Load and prepare data for analysis"""
-    from core.data_manager_postgres import DataManager
-    from build_feature_table import build_feature_table
+    from build_feature_table import build_features
 
     print("=" * 70)
     print("FEATURE ANALYSIS - Loading Data")
     print("=" * 70)
 
-    dm = DataManager()
+    # Try multiple data sources
+    spy_data = None
 
-    # Get SPY data
-    spy_data = dm.get_data('SPY')
+    # Option 1: Try PostgreSQL if DATABASE_URL is set
+    if os.environ.get('DATABASE_URL'):
+        try:
+            from core.data_manager_postgres import DataManager
+            dm = DataManager()
+            spy_data = dm.get_data('SPY')
+            dm.close()
+            if spy_data is not None and not spy_data.empty:
+                print(f"Loaded from PostgreSQL: {len(spy_data)} rows")
+        except Exception as e:
+            print(f"PostgreSQL not available: {e}")
+
+    # Option 2: Try local CSV files
+    if spy_data is None:
+        csv_paths = [
+            Path('data/SPY_daily.csv'),
+            Path('data/spy_data.csv'),
+            Path('data_cache/SPY.csv'),
+            Path('logs/spy_data.csv'),
+        ]
+        for csv_path in csv_paths:
+            if csv_path.exists():
+                try:
+                    spy_data = pd.read_csv(csv_path)
+                    print(f"Loaded from {csv_path}: {len(spy_data)} rows")
+                    break
+                except Exception as e:
+                    print(f"Failed to load {csv_path}: {e}")
+
+    # Option 3: Download fresh data from yfinance
+    if spy_data is None:
+        try:
+            import yfinance as yf
+            print("Downloading SPY data from yfinance...")
+            ticker = yf.Ticker('SPY')
+            spy_data = ticker.history(period='5y')
+            spy_data = spy_data.reset_index()
+            spy_data.columns = [c.lower() for c in spy_data.columns]
+            print(f"Downloaded from yfinance: {len(spy_data)} rows")
+        except Exception as e:
+            print(f"yfinance download failed: {e}")
+
     if spy_data is None or spy_data.empty:
-        print("ERROR: No SPY data found")
+        print("ERROR: Could not load SPY data from any source")
+        print("Options:")
+        print("  1. Set DATABASE_URL environment variable")
+        print("  2. Place SPY data CSV in data/SPY_daily.csv")
+        print("  3. Install yfinance: pip install yfinance")
         sys.exit(1)
 
-    print(f"Loaded SPY: {len(spy_data)} rows")
+    # Standardize column names
+    spy_data.columns = [c.lower() for c in spy_data.columns]
+
+    # Ensure we have required columns
+    required = ['open', 'high', 'low', 'close', 'volume']
+    missing = [c for c in required if c not in spy_data.columns]
+    if missing:
+        print(f"ERROR: Missing required columns: {missing}")
+        sys.exit(1)
+
+    # Handle date column
+    date_col = None
+    for col in ['date', 'datetime', 'timestamp', 'index']:
+        if col in spy_data.columns:
+            date_col = col
+            break
+
+    if date_col:
+        spy_data['date'] = pd.to_datetime(spy_data[date_col])
+    elif isinstance(spy_data.index, pd.DatetimeIndex):
+        spy_data['date'] = spy_data.index
+        spy_data = spy_data.reset_index(drop=True)
+
+    # Sort by date
+    spy_data = spy_data.sort_values('date').reset_index(drop=True)
+
     print(f"Date range: {spy_data['date'].min()} to {spy_data['date'].max()}")
 
     # Build feature table
     print("\nBuilding feature table...")
-    df = build_feature_table(spy_data, ticker='SPY')
+    df = build_features(spy_data)
 
     # Create target variable (1 if next day close > today's close)
     df['target'] = (df['close'].shift(-1) > df['close']).astype(int)
     df = df.dropna()
 
-    dm.close()
+    print(f"Final dataset: {len(df)} rows, {len(df.columns)} columns")
+
     return df
 
 

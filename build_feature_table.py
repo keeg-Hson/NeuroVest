@@ -34,7 +34,15 @@ def _ensure_datetime_index_any(df: pd.DataFrame) -> pd.DataFrame:
                 break
         else:
             raise ValueError("Dataframe must have a DatetimeIndex or a date-like column.")
-    idx = idx.tz_localize(None)
+
+    # Convert to DatetimeIndex if it's a Series
+    if isinstance(idx, pd.Series):
+        idx = pd.DatetimeIndex(idx)
+
+    # Remove timezone if present
+    if idx.tz is not None:
+        idx = idx.tz_localize(None)
+
     df = df.copy()
     df.index = idx
     df = df.sort_index()
