@@ -11,8 +11,11 @@ Outputs (by default under data/features/):
 
 import argparse
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
+
+# Python 3.10 compatibility (UTC added in 3.11)
+UTC = timezone.utc
 
 import numpy as np
 import pandas as pd
