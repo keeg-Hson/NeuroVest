@@ -94,7 +94,7 @@ cd NeuroVest
 pip install -r requirements.txt
 
 # Update market data
-python3 update_spy_data.py
+python3 update_data.py update
 
 # Generate live predictions
 python3 predict.py

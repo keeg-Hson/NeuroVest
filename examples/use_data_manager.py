@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from core.data_manager import DataManager
+from core.data_manager_postgres import DataManager
 import pandas as pd
 
 

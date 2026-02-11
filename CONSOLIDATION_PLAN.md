@@ -53,11 +53,10 @@ The following scripts are referenced in the menu but do NOT exist at the root le
 - `dashboard_demo.py` - Demo version
 - `dashboard_improvements.py` - Legacy
 
-#### Download Scripts (9 variants - consolidate to unified interface)
-- `download_spy_data.py` / `update_spy_data.py`
-- `download_crypto_data.py` / `download_crypto_enhanced.py` / `download_crypto_comprehensive.py`
-- `download_equity_etfs.py` / `download_equity_etfs_alternative.py`
-- `download_cross_asset_simple.py` / `download_multi_asset_data.py`
+#### Download Scripts (CONSOLIDATED)
+- `update_data.py` - CANONICAL (CLI interface for all data updates)
+- `download_crypto_comprehensive.py` - Multi-source crypto data (CryptoCompare, Binance, CoinGecko)
+- 9 legacy variants archived in `archive/download_scripts/`
 
 ---
 
@@ -128,9 +127,9 @@ Create minimal wrapper scripts that delegate to the core functionality.
 - [x] Create missing directories (`data_cache/`, `models/`)
 - [x] Fix broken menu items in `main.py`
 - [x] Add model improvements to `core/models/base_models.py`
-- [ ] Archive deprecated data managers
-- [ ] Consolidate download scripts
-- [ ] Update documentation
+- [x] Archive deprecated data managers
+- [x] Consolidate download scripts
+- [x] Update documentation
 
 ---
 
@@ -153,10 +152,21 @@ archive/train_scripts/     - 22 legacy training variants
 archive/predict_scripts/   - 3 legacy prediction variants
 ```
 
+### Archived Core (in archive/core/)
+```
+data_manager.py              - Archived; use data_manager_postgres.py
+data_manager_sqlite_backup.py - Archived; use data_manager_postgres.py
+```
+
+### Archived Download Scripts (in archive/download_scripts/)
+```
+download_assets_simple.py, download_cross_asset_simple.py, download_crypto_data.py,
+download_crypto_enhanced.py, download_equity_etfs.py, download_equity_etfs_alternative.py,
+download_multi_asset_data.py, download_spy_data.py, update_spy_data.py
+```
+
 ### Deprecate (Mark for removal)
 ```
-core/data_manager.py              - Use data_manager_postgres.py
-core/data_manager_sqlite_backup.py - Use data_manager_postgres.py
 dashboard_demo.py                  - Use dashboard_comprehensive.py
 dashboard_improvements.py          - Use dashboard_comprehensive.py
 ```
@@ -179,4 +189,4 @@ dashboard_improvements.py          - Use dashboard_comprehensive.py
 ---
 
 *Document generated: 2026-02-10*
-*Last updated: 2026-02-10*
+*Last updated: 2026-02-11*
