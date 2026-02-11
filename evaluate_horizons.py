@@ -442,15 +442,14 @@ def main():
     parser = argparse.ArgumentParser(description='Evaluate prediction horizons')
     parser.add_argument('--quick', '-q', action='store_true',
                         help='Quick evaluation mode (faster but less accurate)')
-    parser.add_argument('--horizons', '-h', type=str, default='1,2,3,5,10,21',
+    parser.add_argument('--horizons', '-H', type=str, default='1,2,3,5,10,21',
                         help='Comma-separated list of horizons to evaluate')
     parser.add_argument('--threshold', '-t', type=float, default=0.005,
                         help='Positive threshold for labeling (default: 0.005 = 0.5%%)')
     parser.add_argument('--splits', '-s', type=int, default=5,
                         help='Number of CV splits (default: 5)')
 
-    # Use parse_known_args to avoid conflict with -h/--help
-    args, unknown = parser.parse_known_args()
+    args = parser.parse_args()
 
     # Parse horizons
     horizons = [int(h.strip()) for h in args.horizons.split(',')]
