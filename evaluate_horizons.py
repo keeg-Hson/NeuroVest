@@ -82,8 +82,17 @@ def load_data_for_horizon(horizon: int, pos_threshold: float = 0.005) -> Tuple[p
         volatility_adjusted=True,
     )
 
-    # Finalize features
+    # Save label column before finalize_features (it only keeps feature_cols)
+    y_col = df['y'].copy()
+    fwd_ret_col = df['fwd_ret_net'].copy() if 'fwd_ret_net' in df.columns else None
+
+    # Finalize features (this filters to only feature_cols)
     df = finalize_features(df, feature_cols)
+
+    # Restore label and forward return columns
+    df['y'] = y_col
+    if fwd_ret_col is not None:
+        df['fwd_ret_net'] = fwd_ret_col
 
     # Restore Close column for validation
     raw = load_SPY_data()
