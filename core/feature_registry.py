@@ -59,9 +59,10 @@ class FeatureRegistry:
 
     # =========================================================================
     # CORE TECHNICAL FEATURES (proven high importance)
+    # PRUNED Feb 2026: Removed redundant SMAs, kept SMA_50 as primary trend filter
     # =========================================================================
     CORE_TECHNICAL = [
-        "MA_20",
+        "SMA_50",          # Primary trend filter (replaced MA_20)
         "EMA_12",
         "EMA_26",
         "MACD",
@@ -128,6 +129,7 @@ class FeatureRegistry:
 
     # =========================================================================
     # RETURN/LAG FEATURES (highest importance category)
+    # PRUNED Feb 2026: Removed redundant RSI lags (RSI_Lag7, RSI_Lag10)
     # =========================================================================
     RETURNS = [
         "Daily_Return",
@@ -140,8 +142,7 @@ class FeatureRegistry:
         "RSI_Lag_1",
         "RSI_Lag_3",
         "RSI_Lag_5",
-        "RSI_Lag7",
-        "RSI_Lag10",
+        # RSI_Lag7 and RSI_Lag10 removed - redundant with shorter lags
         "Return_Lag1_MA5",
         "Return_Lag1_MA10",
         "Return_Volatility_20",
@@ -157,6 +158,7 @@ class FeatureRegistry:
 
     # =========================================================================
     # CROSS-ASSET FEATURES (from cross_asset_features.csv)
+    # UPDATED Feb 2026: Added cross-asset momentum, VIX term structure, sector rotation
     # =========================================================================
     CROSS_ASSET = [
         # Credit (HYG/LQD spread)
@@ -176,6 +178,18 @@ class FeatureRegistry:
         "Realized_Vol_60",
         "High_Vol_Regime",
         "Vol_Spike",
+        # NEW Feb 2026: Cross-asset momentum
+        "XAsset_Momentum_5d",      # Multi-asset momentum composite
+        "XAsset_Momentum_20d",     # Longer-term cross-asset trend
+        "XAsset_Momentum_Diverge", # SPY vs cross-asset momentum divergence
+        # NEW Feb 2026: VIX term structure
+        "VIX_Term_Structure",      # VIX vs VIX3M ratio (contango/backwardation)
+        "VIX_Term_Slope",          # VIX term structure slope
+        "VIX_Contango",            # Binary: in contango (normal) vs backwardation (stress)
+        # NEW Feb 2026: Sector rotation
+        "Sector_Rotation_Score",   # Leading vs lagging sectors momentum
+        "Sector_Breadth",          # % of sectors with positive momentum
+        "Sector_Leadership_Chg",   # Change in sector leadership
     ]
 
     # =========================================================================
@@ -307,6 +321,7 @@ class FeatureRegistry:
 
     # =========================================================================
     # FEATURES TO EXCLUDE (zero importance or harmful)
+    # UPDATED Feb 2026: Added pruned features
     # =========================================================================
     EXCLUDED_FEATURES = [
         # Binary regime indicators (zero importance)
@@ -345,6 +360,10 @@ class FeatureRegistry:
         "Month_sin",
         "Month_cos",
         "Quarter",
+        # PRUNED Feb 2026: Redundant SMAs and RSI lags
+        "MA_20",           # Replaced by SMA_50
+        "RSI_Lag7",        # Redundant with shorter RSI lags
+        "RSI_Lag10",       # Redundant with shorter RSI lags
     ]
 
     @classmethod
@@ -474,6 +493,7 @@ class FeatureRegistry:
 
 # =========================================================================
 # CROSS-ASSET FEATURE MAPPING (CSV column name -> internal name)
+# UPDATED Feb 2026: Added new cross-asset momentum, VIX term, sector rotation
 # =========================================================================
 CROSS_ASSET_COLUMN_MAP = {
     'XAsset_Credit_Ratio': 'Credit_Ratio',
@@ -489,6 +509,18 @@ CROSS_ASSET_COLUMN_MAP = {
     'XAsset_Realized_Vol_60': 'Realized_Vol_60',
     'XAsset_High_Vol_Regime': 'High_Vol_Regime',
     'XAsset_Vol_Spike': 'Vol_Spike',
+    # NEW Feb 2026: Cross-asset momentum
+    'XAsset_Momentum_5d': 'XAsset_Momentum_5d',
+    'XAsset_Momentum_20d': 'XAsset_Momentum_20d',
+    'XAsset_Momentum_Diverge': 'XAsset_Momentum_Diverge',
+    # NEW Feb 2026: VIX term structure
+    'XAsset_VIX_Term_Structure': 'VIX_Term_Structure',
+    'XAsset_VIX_Term_Slope': 'VIX_Term_Slope',
+    'XAsset_VIX_Contango': 'VIX_Contango',
+    # NEW Feb 2026: Sector rotation
+    'XAsset_Sector_Rotation_Score': 'Sector_Rotation_Score',
+    'XAsset_Sector_Breadth': 'Sector_Breadth',
+    'XAsset_Sector_Leadership_Chg': 'Sector_Leadership_Chg',
 }
 
 # =========================================================================

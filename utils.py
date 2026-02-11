@@ -484,7 +484,9 @@ def add_features(df):
     d["Volatility"] = d["Daily_Return"].rolling(20).std()
 
     # Moving averages and MACD family
-    d["MA_20"] = d["Close"].rolling(20).mean()
+    # SMA_50 is the primary trend filter (Feb 2026 - replaced MA_20)
+    d["SMA_50"] = d["Close"].rolling(50).mean()
+    d["MA_20"] = d["Close"].rolling(20).mean()  # Kept for compatibility, excluded in production
     d["EMA_12"] = d["Close"].ewm(span=12, adjust=False).mean()
     d["EMA_26"] = d["Close"].ewm(span=26, adjust=False).mean()
     d["MACD"] = d["EMA_12"] - d["EMA_26"]

@@ -686,6 +686,111 @@ def add_external_signals(df: pd.DataFrame) -> pd.DataFrame:
     if uup20 is not None:
         out["DXY_Change_20"] = out["DXY_Change_20"].fillna(uup20)
 
+    # ---- NEW Feb 2026: Cross-Asset Momentum ----
+    # Composite momentum from multiple asset classes
+    xasset_momentum_series = []
+
+    # Collect available cross-asset returns for momentum composite
+    if hyg is not None:
+        xasset_momentum_series.append(('HYG', hyg))
+    if lqd is not None:
+        xasset_momentum_series.append(('LQD', lqd))
+    if tnx is not None:
+        xasset_momentum_series.append(('TNX', tnx))
+    if dxy is not None:
+        xasset_momentum_series.append(('DXY', dxy))
+
+    if len(xasset_momentum_series) >= 2:
+        # Build cross-asset momentum composite
+        xasset_rets_5 = pd.DataFrame()
+        xasset_rets_20 = pd.DataFrame()
+        for name, series in xasset_momentum_series:
+            series = series.reindex(out.index)
+            xasset_rets_5[name] = series.pct_change(5, fill_method=None)
+            xasset_rets_20[name] = series.pct_change(20, fill_method=None)
+
+        # Cross-asset momentum is the mean return across asset classes
+        out["XAsset_Momentum_5d"] = xasset_rets_5.mean(axis=1)
+        out["XAsset_Momentum_20d"] = xasset_rets_20.mean(axis=1)
+
+        # Divergence: SPY momentum vs cross-asset momentum
+        if "Close" in out.columns:
+            spy_ret_20 = out["Close"].pct_change(20, fill_method=None)
+            out["XAsset_Momentum_Diverge"] = spy_ret_20 - out["XAsset_Momentum_20d"]
+    else:
+        out["XAsset_Momentum_5d"] = np.nan
+        out["XAsset_Momentum_20d"] = np.nan
+        out["XAsset_Momentum_Diverge"] = np.nan
+
+    # ---- NEW Feb 2026: VIX Term Structure ----
+    # VIX vs VIX3M indicates market stress expectations
+    vix3m = _pick_price_series(_read_csv_maybe("data/VIX3M.csv"), "VIX3M")
+    vix3m = _clean_series_index(vix3m) if vix3m is not None else None
+
+    # Also try FRED VIX if not in out
+    vix_series = None
+    if "VIX" in out.columns and out["VIX"].notna().any():
+        vix_series = out["VIX"]
+    else:
+        vix_csv = _pick_price_series(_read_csv_maybe("data/VIX.csv"), "VIX")
+        if vix_csv is not None:
+            vix_csv = _clean_series_index(vix_csv)
+            vix_series = vix_csv.reindex(out.index).ffill()
+
+    if vix_series is not None and vix3m is not None:
+        vix3m_aligned = vix3m.reindex(out.index).ffill()
+        # Term structure: VIX / VIX3M ratio
+        # < 1 = contango (normal), > 1 = backwardation (stress)
+        out["VIX_Term_Structure"] = vix_series / (vix3m_aligned + 1e-9)
+        # Slope: change in term structure
+        out["VIX_Term_Slope"] = out["VIX_Term_Structure"].diff(5)
+        # Binary contango flag
+        out["VIX_Contango"] = (out["VIX_Term_Structure"] < 1.0).astype(int)
+    else:
+        out["VIX_Term_Structure"] = np.nan
+        out["VIX_Term_Slope"] = np.nan
+        out["VIX_Contango"] = np.nan
+
+    # ---- NEW Feb 2026: Sector Rotation ----
+    # Analyze which sectors are leading/lagging to detect rotation
+    if sector_series:
+        sectors_df = pd.concat(sector_series, axis=1)
+        sectors_df = _ensure_unique_sorted_index(sectors_df)
+        sectors_df = sectors_df.reindex(out.index.unique()).ffill()
+
+        # Calculate 20-day momentum for each sector
+        sector_mom_20 = sectors_df.pct_change(20, fill_method=None)
+
+        # Sector rotation score: difference between cyclical and defensive sectors
+        cyclical = ["XLF", "XLK", "XLI", "XLY"]  # Financials, Tech, Industrials, Consumer Disc
+        defensive = ["XLU", "XLP", "XLV"]         # Utilities, Staples, Healthcare
+
+        cyclical_cols = [c for c in cyclical if c in sector_mom_20.columns]
+        defensive_cols = [c for c in defensive if c in sector_mom_20.columns]
+
+        if cyclical_cols and defensive_cols:
+            cyclical_mom = sector_mom_20[cyclical_cols].mean(axis=1)
+            defensive_mom = sector_mom_20[defensive_cols].mean(axis=1)
+            # Positive = risk-on (cyclicals leading), Negative = risk-off
+            out["Sector_Rotation_Score"] = cyclical_mom - defensive_mom
+        else:
+            out["Sector_Rotation_Score"] = np.nan
+
+        # Sector breadth: % of sectors with positive 20d momentum
+        positive_sectors = (sector_mom_20 > 0).sum(axis=1)
+        total_sectors = sector_mom_20.notna().sum(axis=1)
+        out["Sector_Breadth"] = positive_sectors / (total_sectors + 1e-9)
+
+        # Leadership change: rolling correlation change in sector rankings
+        sector_rank = sector_mom_20.rank(axis=1, pct=True)
+        sector_rank_lag = sector_rank.shift(20)
+        rank_corr = sector_rank.corrwith(sector_rank_lag, axis=1, method='spearman')
+        out["Sector_Leadership_Chg"] = 1 - rank_corr  # High = leadership changing
+    else:
+        out["Sector_Rotation_Score"] = np.nan
+        out["Sector_Breadth"] = np.nan
+        out["Sector_Leadership_Chg"] = np.nan
+
     # ---- Structured Sentiment Features ----
     # keep NaNs (no zero imputation); compute stats on available data only
     if "News_Sentiment" in out.columns:
@@ -726,7 +831,7 @@ def add_external_signals(df: pd.DataFrame) -> pd.DataFrame:
         out["News_Sent_Concord"] = np.nan
         out["Reddit_Sent_Concord"] = np.nan
 
-    # Lag externals one day so they can't “see the future”
+    # Lag externals one day so they can't "see the future"
     _lag_cols = [
         # macro
         "CPI",
@@ -755,9 +860,21 @@ def add_external_signals(df: pd.DataFrame) -> pd.DataFrame:
         "Reddit_Sent_Z20",
         "News_Sent_ROC3",
         "Reddit_Sent_ROC3",
-        # NEW: concordance features also lagged to remove leakage
+        # concordance features also lagged to remove leakage
         "News_Sent_Concord",
         "Reddit_Sent_Concord",
+        # NEW Feb 2026: Cross-asset momentum
+        "XAsset_Momentum_5d",
+        "XAsset_Momentum_20d",
+        "XAsset_Momentum_Diverge",
+        # NEW Feb 2026: VIX term structure
+        "VIX_Term_Structure",
+        "VIX_Term_Slope",
+        "VIX_Contango",
+        # NEW Feb 2026: Sector rotation
+        "Sector_Rotation_Score",
+        "Sector_Breadth",
+        "Sector_Leadership_Chg",
     ]
     out = _lag_joined_columns(out, _lag_cols, n=1)
 
