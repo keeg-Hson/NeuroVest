@@ -11,6 +11,8 @@ Outputs:
 - Redundant feature detection
 - Features to consider pruning
 - Suggestions for new features
+
+Updated Feb 2026: Added pruning configuration tracking and validation
 """
 
 import os
@@ -26,6 +28,40 @@ warnings.filterwarnings('ignore')
 
 # Add project root
 sys.path.insert(0, str(Path(__file__).parent))
+
+
+# Current pruning configuration (from Feb 2026 analysis)
+# These features have been identified as harmful or redundant
+CURRENT_PRUNING_CONFIG = {
+    'pruned_features': {
+        'stoch_k_14_3',    # +0.0052 AUC when removed
+        'ret_10d',         # +0.0022 AUC when removed
+        'trend_strength',  # -15.70 importance score
+        'ret_5d',          # -8.74 importance score
+        'px_over_sma20',   # -6.86 importance score
+        'rsi_price_div',   # -3.19 importance score
+        'rsi_14',          # -0.51 importance, redundant with rsi_7
+        'rsi_21',          # Redundant with rsi_7 (r=0.98)
+        'sma_20',          # Redundant with sma_50 (r=0.999)
+        'bb_up_20_2',      # Redundant with sma_50 (r=1.0)
+        'trend_accel',     # Low importance (0.53)
+    },
+    'core_features': {
+        'sma_50',          # Primary trend filter (score: 64.51)
+        'macd_hist',       # Key momentum signal (score: 57.37)
+        'px_over_sma200',  # Long-term position (score: 41.60)
+        'stoch_d_14_3',    # Momentum oscillator (score: 33.37)
+        'rsi_7',           # Short-term momentum (score: 25.44)
+        'px_over_sma50',   # Medium-term position (score: 24.95)
+        'zscore_20',       # Mean reversion (score: 24.81)
+        'bb_pct',          # Bollinger position (score: 20.14)
+        'sma_200',         # Long-term trend (score: 17.67)
+        'vol_ratio',       # Volatility regime (score: 16.43)
+        'atr_14',          # Volatility measure (score: 14.62)
+    },
+    'last_analysis_date': '2026-02-11',
+    'expected_auc_improvement': 0.0074,  # Sum of AUC gains from pruning
+}
 
 
 def get_asset_list_from_config():
@@ -701,12 +737,65 @@ def analyze_feature_groups(df: pd.DataFrame, features: List[str],
     return group_results
 
 
+def validate_pruning_config(features: List[str], importance_df: pd.DataFrame, drop_df: pd.DataFrame):
+    """Validate current pruning configuration against latest analysis"""
+    print("\n" + "=" * 70)
+    print("PRUNING CONFIGURATION VALIDATION")
+    print("=" * 70)
+
+    pruned = CURRENT_PRUNING_CONFIG['pruned_features']
+    core = CURRENT_PRUNING_CONFIG['core_features']
+
+    print(f"\nLast analysis date: {CURRENT_PRUNING_CONFIG['last_analysis_date']}")
+    print(f"Expected AUC improvement from pruning: {CURRENT_PRUNING_CONFIG['expected_auc_improvement']:.4f}")
+
+    # Check if pruned features are still in the analysis
+    pruned_in_analysis = [f for f in pruned if f in features]
+    pruned_missing = [f for f in pruned if f not in features]
+
+    print(f"\nPruned features found in analysis: {len(pruned_in_analysis)}/{len(pruned)}")
+    if pruned_missing:
+        print(f"  Missing (already removed): {pruned_missing}")
+
+    # Validate pruned features still hurt performance
+    if not drop_df.empty:
+        pruned_validation = []
+        for feat in pruned_in_analysis:
+            row = drop_df[drop_df['feature'] == feat]
+            if not row.empty:
+                auc_change = row['auc_change'].values[0]
+                status = "✓ CONFIRMED" if auc_change > 0 else "⚠ CHANGED"
+                pruned_validation.append((feat, auc_change, status))
+
+        print("\nPruned features validation (should have positive AUC change):")
+        for feat, auc_change, status in sorted(pruned_validation, key=lambda x: x[1], reverse=True):
+            print(f"  {status} {feat}: {auc_change:+.4f}")
+
+    # Check core features are still valuable
+    if not importance_df.empty:
+        core_in_analysis = [f for f in core if f in features]
+        print(f"\nCore features validation:")
+        for feat in core_in_analysis[:5]:
+            row = importance_df[importance_df['feature'] == feat]
+            if not row.empty:
+                score = row['combined_score'].values[0]
+                status = "✓ VALUABLE" if score > 10 else "⚠ LOW VALUE"
+                print(f"  {status} {feat}: score={score:.2f}")
+
+
 def suggest_improvements(importance_df: pd.DataFrame, drop_df: pd.DataFrame,
                         corr_pairs: List[Tuple], group_results: Dict):
     """Generate actionable recommendations"""
     print("\n" + "=" * 70)
     print("RECOMMENDATIONS")
     print("=" * 70)
+
+    # Show current pruning status
+    print("\n0. CURRENT PRUNING STATUS:")
+    print("-" * 50)
+    print(f"  Features currently pruned: {len(CURRENT_PRUNING_CONFIG['pruned_features'])}")
+    print(f"  Core features protected: {len(CURRENT_PRUNING_CONFIG['core_features'])}")
+    print(f"  Last analysis: {CURRENT_PRUNING_CONFIG['last_analysis_date']}")
 
     # Features to consider removing
     print("\n1. FEATURES TO CONSIDER REMOVING:")
@@ -718,10 +807,16 @@ def suggest_improvements(importance_df: pd.DataFrame, drop_df: pd.DataFrame,
     # Features that improve AUC when removed
     harmful = drop_df[drop_df['auc_change'] > 0.002]['feature'].tolist() if not drop_df.empty else []
 
-    # Combine recommendations
+    # Combine recommendations (exclude already pruned)
+    already_pruned = CURRENT_PRUNING_CONFIG['pruned_features']
     to_remove = set(low_importance[:20]) | set(harmful[:10])
-    for feat in list(to_remove)[:15]:
-        print(f"  - {feat}")
+    to_remove = to_remove - already_pruned  # Don't recommend already pruned features
+
+    if to_remove:
+        for feat in list(to_remove)[:15]:
+            print(f"  - {feat}")
+    else:
+        print("  (No additional features to remove - pruning is up to date)")
 
     # Redundant features (high correlation)
     print("\n2. REDUNDANT FEATURES (keep one, remove others):")
@@ -779,6 +874,26 @@ def save_results(importance_df: pd.DataFrame, drop_df: pd.DataFrame,
     print(f"\nResults saved to {output_dir}/")
 
 
+def print_pruning_summary():
+    """Print a summary of the current pruning configuration"""
+    print("\n" + "=" * 70)
+    print("CURRENT FEATURE PRUNING CONFIGURATION")
+    print("=" * 70)
+
+    print(f"\nLast analysis: {CURRENT_PRUNING_CONFIG['last_analysis_date']}")
+    print(f"Expected AUC improvement: {CURRENT_PRUNING_CONFIG['expected_auc_improvement']:.4f}")
+
+    print(f"\n{len(CURRENT_PRUNING_CONFIG['pruned_features'])} Features PRUNED (excluded from model):")
+    for feat in sorted(CURRENT_PRUNING_CONFIG['pruned_features']):
+        print(f"  ✗ {feat}")
+
+    print(f"\n{len(CURRENT_PRUNING_CONFIG['core_features'])} Core Features (highest importance):")
+    for feat in sorted(CURRENT_PRUNING_CONFIG['core_features']):
+        print(f"  ✓ {feat}")
+
+    print("\nTo update pruning configuration, run full analysis and review recommendations.")
+
+
 def main():
     """Main analysis pipeline"""
     import argparse
@@ -788,7 +903,13 @@ def main():
                         help='Use production feature pipeline (utils.add_features) instead of simplified')
     parser.add_argument('--compare', '-c', action='store_true',
                         help='Compare both feature pipelines side by side')
+    parser.add_argument('--show-pruning', action='store_true',
+                        help='Show current pruning configuration and exit')
     args = parser.parse_args()
+
+    if args.show_pruning:
+        print_pruning_summary()
+        return
 
     start_time = datetime.now()
     print(f"\nStarting Feature Analysis at {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -855,6 +976,9 @@ def main():
     importance_df, baseline, data_tuple = analyze_feature_importance(df, features)
     drop_df = analyze_drop_column_importance(df, features, baseline, data_tuple)
     group_results = analyze_feature_groups(df, features, baseline, data_tuple)
+
+    # Validate current pruning configuration
+    validate_pruning_config(features, importance_df, drop_df)
 
     # Generate recommendations
     suggest_improvements(importance_df, drop_df, corr_pairs, group_results)

@@ -158,15 +158,63 @@ def _load_external_asset(ticker: str, ext_dir: Path = None) -> pd.DataFrame:
     return None
 
 
-def build_features(df: pd.DataFrame, ext_dir: Path = None) -> pd.DataFrame:
+# Feature pruning configuration based on analyze_features.py results (Feb 2026)
+# Features that HURT model performance when included:
+FEATURES_TO_PRUNE = {
+    'stoch_k_14_3',    # +0.0052 AUC when removed
+    'ret_10d',         # +0.0022 AUC when removed
+    'trend_strength',  # -15.70 importance score
+    'ret_5d',          # -8.74 importance score
+    'px_over_sma20',   # -6.86 importance score
+    'rsi_price_div',   # -3.19 importance score
+    'rsi_14',          # -0.51 importance, redundant with rsi_7
+    'rsi_21',          # Redundant with rsi_7 (r=0.98)
+    'sma_20',          # Redundant with sma_50 (r=0.999)
+    'bb_up_20_2',      # Redundant with sma_50 (r=1.0)
+    'trend_accel',     # Low importance (0.53)
+}
+
+# Features confirmed as valuable (keep these)
+CORE_FEATURES = {
+    'sma_50',          # Primary trend filter (score: 64.51)
+    'macd_hist',       # Key momentum signal (score: 57.37)
+    'px_over_sma200',  # Long-term position (score: 41.60)
+    'stoch_d_14_3',    # Momentum oscillator (score: 33.37)
+    'rsi_7',           # Short-term momentum (score: 25.44)
+    'px_over_sma50',   # Medium-term position (score: 24.95)
+    'zscore_20',       # Mean reversion (score: 24.81)
+    'bb_pct',          # Bollinger position (score: 20.14)
+    'sma_200',         # Long-term trend (score: 17.67)
+    'vol_ratio',       # Volatility regime (score: 16.43)
+    'atr_14',          # Volatility measure (score: 14.62)
+    'vol_20',          # Realized volatility (score: 5.89)
+    'ret_1d',          # Daily returns (score: 9.55)
+    'ret_21d',         # Monthly returns (score: 8.39)
+    'bb_width_20_2',   # Volatility expansion (score: 8.54)
+    'vol_pct_5',       # Short-term volume (score: 14.85)
+    'vol_pct_20',      # Volume trend (score: 9.89)
+}
+
+
+def build_features(df: pd.DataFrame, ext_dir: Path = None, prune_features: bool = True) -> pd.DataFrame:
     """
     Build technical features including cross-asset signals.
 
-    Pruned based on feature analysis:
+    Pruned based on feature analysis (Feb 2026):
     - Removed: logret_1d (redundant with ret_1d), bb_mid_20_2 (redundant with sma_20)
     - Removed: ema_12, ema_26 (redundant with sma_20)
     - Removed: macd, vol_sma_20 (hurt performance)
     - Kept: macd_hist (most important feature)
+
+    New pruning (Feb 2026 analysis):
+    - Removed: stoch_k_14_3, ret_10d, trend_strength, ret_5d, px_over_sma20, rsi_price_div
+    - Removed: rsi_14, rsi_21 (redundant with rsi_7)
+    - Removed: sma_20, bb_up_20_2 (redundant with sma_50)
+
+    Args:
+        df: DataFrame with OHLCV data
+        ext_dir: Directory for external asset data
+        prune_features: If True, exclude low-value features (default: True)
     """
     # Handle both lowercase and capitalized column names
     def get_col(names):
@@ -332,8 +380,64 @@ def build_features(df: pd.DataFrame, ext_dir: Path = None) -> pd.DataFrame:
     # Carry forward close for target calculation
     out["close"] = close.values
 
+    # Apply feature pruning if enabled
+    if prune_features:
+        cols_to_drop = [c for c in out.columns if c in FEATURES_TO_PRUNE]
+        if cols_to_drop:
+            out = out.drop(columns=cols_to_drop)
+
     # Drop rows with NaN in critical features
     return out
+
+
+def get_pruning_config() -> dict:
+    """
+    Return the current feature pruning configuration.
+    Useful for analysis scripts to understand what's being excluded.
+    """
+    return {
+        'pruned_features': list(FEATURES_TO_PRUNE),
+        'core_features': list(CORE_FEATURES),
+        'reason': 'Based on analyze_features.py results (Feb 2026)',
+        'expected_auc_improvement': 0.0074,  # Sum of AUC gains from pruning
+    }
+
+
+def get_feature_importance_ranking() -> list:
+    """
+    Return features ranked by importance from latest analysis.
+    Higher score = more important for model performance.
+    """
+    return [
+        ('sma_50', 64.51),
+        ('macd_hist', 57.37),
+        ('px_over_sma200', 41.60),
+        ('stoch_d_14_3', 33.37),
+        ('rsi_7', 25.44),
+        ('px_over_sma50', 24.95),
+        ('zscore_20', 24.81),
+        ('bb_pct', 20.14),
+        ('ret_10d', 19.93),  # Pruned but tracked
+        ('sma_200', 17.67),
+        ('vol_ratio', 16.43),
+        ('vol_pct_5', 14.85),
+        ('atr_14', 14.62),
+        ('bb_up_20_2', 11.65),  # Pruned (redundant)
+        ('vol_pct_20', 9.89),
+        ('sma_20', 9.70),  # Pruned (redundant)
+        ('ret_1d', 9.55),
+        ('rsi_21', 9.27),  # Pruned (redundant)
+        ('bb_width_20_2', 8.54),
+        ('ret_21d', 8.39),
+        ('stoch_k_14_3', 8.00),  # Pruned (hurts AUC)
+        ('vol_20', 5.89),
+        ('trend_accel', 0.53),  # Pruned (low value)
+        ('rsi_14', -0.51),  # Pruned (negative)
+        ('rsi_price_div', -3.19),  # Pruned (negative)
+        ('px_over_sma20', -6.86),  # Pruned (negative)
+        ('ret_5d', -8.74),  # Pruned (negative)
+        ('trend_strength', -15.70),  # Pruned (negative)
+    ]
 
 
 def make_label_forward_up(close: pd.Series, horizon: int, min_return: float = 0.0) -> pd.Series:

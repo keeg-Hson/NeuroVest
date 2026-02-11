@@ -47,15 +47,38 @@ class HorizonResult:
     n_positive: int
     positive_rate: float
     train_time: float = 0.0
+    n_features: int = 0
+    pruned: bool = False
 
 
-def load_data_for_horizon(horizon: int, pos_threshold: float = 0.005) -> Tuple[pd.DataFrame, List[str]]:
+# Feature pruning configuration (from analyze_features.py Feb 2026)
+FEATURES_TO_PRUNE = {
+    'stoch_k_14_3',    # +0.0052 AUC when removed
+    'ret_10d',         # +0.0022 AUC when removed
+    'trend_strength',  # -15.70 importance score
+    'ret_5d',          # -8.74 importance score
+    'px_over_sma20',   # -6.86 importance score
+    'rsi_price_div',   # -3.19 importance score
+    'rsi_14',          # -0.51 importance, redundant with rsi_7
+    'rsi_21',          # Redundant with rsi_7 (r=0.98)
+    'sma_20',          # Redundant with sma_50 (r=0.999)
+    'bb_up_20_2',      # Redundant with sma_50 (r=1.0)
+    'trend_accel',     # Low importance (0.53)
+}
+
+
+def load_data_for_horizon(
+    horizon: int,
+    pos_threshold: float = 0.005,
+    prune_features: bool = True,
+) -> Tuple[pd.DataFrame, List[str]]:
     """
     Load and prepare data for a specific horizon.
 
     Args:
         horizon: Forward return horizon in days
         pos_threshold: Minimum return to label as positive
+        prune_features: If True, exclude low-value features (default: True)
 
     Returns:
         Tuple of (DataFrame with features and labels, feature column names)
@@ -69,6 +92,14 @@ def load_data_for_horizon(horizon: int, pos_threshold: float = 0.005) -> Tuple[p
 
     # Add features
     df, feature_cols = add_features(df)
+
+    # Apply feature pruning if enabled
+    if prune_features:
+        original_count = len(feature_cols)
+        feature_cols = [f for f in feature_cols if f not in FEATURES_TO_PRUNE]
+        pruned_count = original_count - len(feature_cols)
+        if pruned_count > 0:
+            print(f"[Horizon {horizon}d] Pruned {pruned_count} low-value features ({len(feature_cols)} remaining)")
 
     # Add forward returns and labels for this horizon
     df = add_forward_returns_and_labels(
@@ -110,6 +141,7 @@ def evaluate_horizon(
     feature_cols: List[str],
     n_splits: int = 5,
     quick_mode: bool = False,
+    pruned: bool = False,
 ) -> HorizonResult:
     """
     Evaluate a single horizon using time-series cross-validation.
@@ -120,6 +152,7 @@ def evaluate_horizon(
         feature_cols: List of feature column names
         n_splits: Number of CV splits
         quick_mode: If True, use faster but less accurate evaluation
+        pruned: Whether features were pruned (for tracking)
 
     Returns:
         HorizonResult with evaluation metrics
@@ -134,22 +167,26 @@ def evaluate_horizon(
 
     start_time = time.time()
 
+    # Filter to valid features only
+    valid_features = [f for f in feature_cols if f in df.columns]
+
     # Prepare data
-    X = df[feature_cols].astype(float).replace([np.inf, -np.inf], np.nan)
+    X = df[valid_features].astype(float).replace([np.inf, -np.inf], np.nan)
     y = df['y'].astype(int)
 
     # Impute NaN values
     imputer = SimpleImputer(strategy='median')
     X_imputed = imputer.fit_transform(X)
-    X = pd.DataFrame(X_imputed, columns=feature_cols, index=X.index)
+    X = pd.DataFrame(X_imputed, columns=valid_features, index=X.index)
 
     n_samples = len(X)
     n_positive = int(y.sum())
     positive_rate = n_positive / n_samples
+    n_features = len(valid_features)
 
     print(f"[Horizon {horizon}d] Samples: {n_samples}, Positive: {n_positive} ({positive_rate:.1%})")
 
-    # Model configuration
+    # Model configuration - optimized based on analyze_features.py results
     if quick_mode:
         from sklearn.ensemble import GradientBoostingClassifier
         model_class = GradientBoostingClassifier
@@ -163,20 +200,22 @@ def evaluate_horizon(
         try:
             from xgboost import XGBClassifier
             model_class = XGBClassifier
+            # Tuned hyperparameters based on feature analysis
             model_params = {
                 'n_estimators': 300,
-                'max_depth': 5,
+                'max_depth': 6,  # Increased from 5 - more capacity with pruned features
                 'learning_rate': 0.03,
                 'subsample': 0.8,
-                'colsample_bytree': 0.8,
-                'min_child_weight': 10,
-                'reg_alpha': 0.05,
-                'reg_lambda': 1.5,
+                'colsample_bytree': 0.85,  # Increased - fewer features now
+                'min_child_weight': 8,  # Reduced - more flexible splits
+                'reg_alpha': 0.08,  # Increased L1 regularization
+                'reg_lambda': 1.2,  # Slightly reduced L2
                 'random_state': 42,
                 'n_jobs': -1,
                 'verbosity': 0,
                 'tree_method': 'hist',
                 'use_label_encoder': False,
+                'scale_pos_weight': (n_samples - n_positive) / max(n_positive, 1),  # Handle class imbalance
             }
         except ImportError:
             from sklearn.ensemble import GradientBoostingClassifier
@@ -239,6 +278,8 @@ def evaluate_horizon(
         n_positive=n_positive,
         positive_rate=positive_rate,
         train_time=train_time,
+        n_features=n_features,
+        pruned=pruned,
     )
 
     print(f"[Horizon {horizon}d] AUC: {result.auc:.4f}, F1: {result.f1:.4f}, "
@@ -393,6 +434,8 @@ def save_results(
             'n_positive': r.n_positive,
             'positive_rate': r.positive_rate,
             'train_time': r.train_time,
+            'n_features': r.n_features,
+            'pruned': r.pruned,
         }
         for r in results
     ])
@@ -457,11 +500,16 @@ def main():
                         help='Positive threshold for labeling (default: 0.005 = 0.5%%)')
     parser.add_argument('--splits', '-s', type=int, default=5,
                         help='Number of CV splits (default: 5)')
+    parser.add_argument('--no-prune', action='store_true',
+                        help='Disable feature pruning (use all features)')
+    parser.add_argument('--compare-pruning', action='store_true',
+                        help='Compare performance with and without feature pruning')
 
     args = parser.parse_args()
 
     # Parse horizons
     horizons = [int(h.strip()) for h in args.horizons.split(',')]
+    prune_features = not args.no_prune
 
     print("=" * 70)
     print("HORIZON EVALUATION")
@@ -470,6 +518,9 @@ def main():
     print(f"Positive threshold: {args.threshold:.4f} ({args.threshold*100:.2f}%)")
     print(f"CV splits: {args.splits}")
     print(f"Mode: {'Quick' if args.quick else 'Full'}")
+    print(f"Feature pruning: {'Enabled' if prune_features else 'Disabled'}")
+    if prune_features:
+        print(f"Pruned features: {len(FEATURES_TO_PRUNE)} low-value features excluded")
     print("=" * 70)
 
     results = []
@@ -477,7 +528,11 @@ def main():
     for horizon in horizons:
         try:
             # Load data for this horizon
-            df, feature_cols = load_data_for_horizon(horizon, pos_threshold=args.threshold)
+            df, feature_cols = load_data_for_horizon(
+                horizon,
+                pos_threshold=args.threshold,
+                prune_features=prune_features,
+            )
 
             # Evaluate
             result = evaluate_horizon(
@@ -486,6 +541,7 @@ def main():
                 feature_cols=feature_cols,
                 n_splits=args.splits,
                 quick_mode=args.quick,
+                pruned=prune_features,
             )
             results.append(result)
 
@@ -493,6 +549,39 @@ def main():
             print(f"[Horizon {horizon}d] ERROR: {e}")
             import traceback
             traceback.print_exc()
+
+    # Compare with unpruned if requested
+    if args.compare_pruning and prune_features:
+        print("\n" + "=" * 70)
+        print("COMPARISON: PRUNED vs UNPRUNED FEATURES")
+        print("=" * 70)
+
+        for horizon in horizons[:2]:  # Compare first 2 horizons only (for speed)
+            try:
+                df_full, feature_cols_full = load_data_for_horizon(
+                    horizon,
+                    pos_threshold=args.threshold,
+                    prune_features=False,
+                )
+                result_full = evaluate_horizon(
+                    horizon=horizon,
+                    df=df_full,
+                    feature_cols=feature_cols_full,
+                    n_splits=args.splits,
+                    quick_mode=args.quick,
+                    pruned=False,
+                )
+
+                pruned_result = next((r for r in results if r.horizon == horizon), None)
+                if pruned_result:
+                    auc_diff = pruned_result.auc - result_full.auc
+                    print(f"\n[Horizon {horizon}d] Pruning impact:")
+                    print(f"  Pruned:   AUC={pruned_result.auc:.4f} ({pruned_result.n_features} features)")
+                    print(f"  Unpruned: AUC={result_full.auc:.4f} ({result_full.n_features} features)")
+                    print(f"  Delta:    {auc_diff:+.4f} ({'BETTER' if auc_diff > 0 else 'WORSE' if auc_diff < 0 else 'SAME'})")
+
+            except Exception as e:
+                print(f"[Horizon {horizon}d] Comparison ERROR: {e}")
 
     if not results:
         print("\nERROR: No horizons could be evaluated successfully.")

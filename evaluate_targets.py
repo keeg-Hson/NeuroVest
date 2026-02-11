@@ -41,6 +41,22 @@ sys.path.insert(0, str(Path(__file__).parent))
 from config import TRAIN_CFG
 
 
+# Feature pruning configuration (from analyze_features.py Feb 2026)
+FEATURES_TO_PRUNE = {
+    'stoch_k_14_3',    # +0.0052 AUC when removed
+    'ret_10d',         # +0.0022 AUC when removed
+    'trend_strength',  # -15.70 importance score
+    'ret_5d',          # -8.74 importance score
+    'px_over_sma20',   # -6.86 importance score
+    'rsi_price_div',   # -3.19 importance score
+    'rsi_14',          # -0.51 importance, redundant with rsi_7
+    'rsi_21',          # Redundant with rsi_7 (r=0.98)
+    'sma_20',          # Redundant with sma_50 (r=0.999)
+    'bb_up_20_2',      # Redundant with sma_50 (r=1.0)
+    'trend_accel',     # Low importance (0.53)
+}
+
+
 class TargetStrategy(Enum):
     """Target labeling strategies"""
     BINARY_THRESHOLD = "binary_threshold"
@@ -261,10 +277,20 @@ def evaluate_target_strategy(
     feature_cols: List[str],
     n_splits: int = 5,
     quick_mode: bool = False,
+    prune_features: bool = True,
     **target_params,
 ) -> TargetResult:
     """
     Evaluate a single target strategy.
+
+    Args:
+        strategy: Target labeling strategy to evaluate
+        df: DataFrame with OHLCV and features
+        feature_cols: List of feature column names
+        n_splits: Number of CV splits
+        quick_mode: If True, use faster but less accurate evaluation
+        prune_features: If True, exclude low-value features
+        **target_params: Strategy-specific parameters
     """
     from sklearn.model_selection import TimeSeriesSplit
     from sklearn.metrics import (
@@ -302,7 +328,15 @@ def evaluate_target_strategy(
 
     # Clean data
     df_labeled = df_labeled.dropna(subset=['y'])
+
+    # Apply feature pruning if enabled
     valid_features = [c for c in feature_cols if c in df_labeled.columns]
+    if prune_features:
+        original_count = len(valid_features)
+        valid_features = [f for f in valid_features if f not in FEATURES_TO_PRUNE]
+        pruned_count = original_count - len(valid_features)
+        if pruned_count > 0:
+            print(f"[{strategy.value}] Pruned {pruned_count} low-value features")
 
     X = df_labeled[valid_features].astype(float).replace([np.inf, -np.inf], np.nan)
     y = df_labeled['y'].astype(int)
@@ -319,7 +353,7 @@ def evaluate_target_strategy(
     print(f"[{strategy.value}] Samples: {n_samples}, Classes: {n_classes}")
     print(f"[{strategy.value}] Class distribution: {class_distribution}")
 
-    # Model configuration
+    # Model configuration - optimized based on analyze_features.py results
     if n_classes > 2:
         # Multi-class
         try:
@@ -327,9 +361,12 @@ def evaluate_target_strategy(
             model_class = XGBClassifier
             model_params = {
                 'n_estimators': 200 if quick_mode else 300,
-                'max_depth': 5,
+                'max_depth': 6,
                 'learning_rate': 0.03,
                 'subsample': 0.8,
+                'colsample_bytree': 0.85,
+                'reg_alpha': 0.08,
+                'reg_lambda': 1.2,
                 'random_state': 42,
                 'n_jobs': -1,
                 'verbosity': 0,
@@ -348,15 +385,25 @@ def evaluate_target_strategy(
             }
         avg_method = 'macro'
     else:
-        # Binary
+        # Binary - with class imbalance handling
         try:
             from xgboost import XGBClassifier
             model_class = XGBClassifier
+            # Calculate scale_pos_weight for class imbalance
+            pos_count = (y == 1).sum()
+            neg_count = (y == 0).sum()
+            scale_weight = neg_count / max(pos_count, 1)
+
             model_params = {
                 'n_estimators': 200 if quick_mode else 300,
-                'max_depth': 5,
+                'max_depth': 6,
                 'learning_rate': 0.03,
                 'subsample': 0.8,
+                'colsample_bytree': 0.85,
+                'min_child_weight': 8,
+                'reg_alpha': 0.08,
+                'reg_lambda': 1.2,
+                'scale_pos_weight': scale_weight,  # Handle class imbalance
                 'random_state': 42,
                 'n_jobs': -1,
                 'verbosity': 0,
@@ -540,8 +587,11 @@ def main():
                         help='Comma-separated list of targets to evaluate')
     parser.add_argument('--splits', '-s', type=int, default=5,
                         help='Number of CV splits')
+    parser.add_argument('--no-prune', action='store_true',
+                        help='Disable feature pruning (use all features)')
 
     args = parser.parse_args()
+    prune_features = not args.no_prune
 
     # Map short names to strategies
     strategy_map = {
@@ -564,6 +614,9 @@ def main():
     print("=" * 70)
     print(f"\nStrategies to evaluate: {[s.value for s in strategies]}")
     print(f"CV splits: {args.splits}")
+    print(f"Feature pruning: {'Enabled' if prune_features else 'Disabled'}")
+    if prune_features:
+        print(f"Pruned features: {len(FEATURES_TO_PRUNE)} low-value features excluded")
     print("=" * 70)
 
     # Load data
@@ -590,6 +643,7 @@ def main():
                 feature_cols=feature_cols,
                 n_splits=args.splits,
                 quick_mode=args.quick,
+                prune_features=prune_features,
             )
             results.append(result)
         except Exception as e:
