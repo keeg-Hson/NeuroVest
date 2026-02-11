@@ -88,6 +88,18 @@ from utils import (
     load_SPY_data,
 )
 
+# Modern ML components - consolidated as source of truth (dashboard.py line 329)
+from core.model_improvements import EnhancedEnsemble, EnsembleConfig, CalibratedModel
+from core.feature_selection import FeatureSelector, FeatureSelectionConfig
+
+# Bayesian HPO - replaces GridSearchCV for better parameter search
+try:
+    from core.hyperparameter_tuning import HyperparameterTuner, TuningConfig
+    OPTUNA_AVAILABLE = True
+except ImportError:
+    OPTUNA_AVAILABLE = False
+    print("[train] Optuna not available, falling back to GridSearchCV")
+
 # === GLOBAL: forward-looking feature blacklist (never in model inputs) =========
 FWD_BLACKLIST = {"y", "fwd_price", "fwd_ret_raw", "fwd_ret_net", "horizon_forward"}
 
@@ -330,7 +342,8 @@ def pick_threshold_from_oof(pipe, X, y, cv, pos_label=1):
     f1_scores = 2 * (prec_curve * rec_curve) / (prec_curve + rec_curve + 1e-9)
 
     # Find threshold with best F1 score (with minimum precision constraint)
-    min_precision = 0.40
+    # Lowered from 0.40 to 0.30 to allow higher recall
+    min_precision = 0.30
     valid_idx = np.where(prec_curve >= min_precision)[0]
 
     if len(valid_idx) > 0:
@@ -583,6 +596,12 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         except Exception:
             use_smote, smote_step = (False, "passthrough")
 
+        # Calculate class imbalance ratio for scale_pos_weight
+        n_neg = int((y == 0).sum())
+        n_pos = int((y == 1).sum())
+        class_ratio = n_neg / max(1, n_pos)
+        print(f"📊 Class distribution: neg={n_neg}, pos={n_pos}, ratio={class_ratio:.2f}")
+
         xgb_common = dict(
             random_state=42,
             n_jobs=-1,
@@ -590,6 +609,7 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             tree_method="hist",
             use_label_encoder=False,
             early_stopping_rounds=75,  # Stop if no improvement for 75 rounds (allow more exploration)
+            scale_pos_weight=class_ratio,  # Handle class imbalance (dashboard source of truth)
         )
         xgb_obj = dict(objective="binary:logistic", eval_metric="logloss")
 
