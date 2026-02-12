@@ -1262,19 +1262,29 @@ def add_forward_returns_and_labels(
     d["fwd_ret_net"] = d["fwd_ret_raw"] - cost
     d["horizon_forward"] = int(horizon)
 
-    # FIX: Volatility-adjusted thresholds
+    # FIX: Volatility-adjusted thresholds using EXPANDING window (no lookahead bias)
     # In high volatility (VIX 30+), a 0.5% move is noise
     # In low volatility (VIX 10), a 0.5% move is significant
+    # CRITICAL: Using expanding median instead of global median to prevent lookahead bias
     if volatility_adjusted and "Volatility" in d.columns:
-        median_vol = d["Volatility"].median()
-        if median_vol > 0:
-            # Scale threshold by realized volatility
-            vol_ratio = d["Volatility"] / median_vol
+        # Use EXPANDING window median - only uses data available at each point in time
+        # This prevents lookahead bias by not using future volatility data
+        vol_series = pd.to_numeric(d["Volatility"], errors="coerce")
+        expanding_median_vol = vol_series.expanding(min_periods=60).median()
+
+        # For early rows where we don't have enough history, use fixed threshold
+        valid_expanding = expanding_median_vol.notna() & (expanding_median_vol > 0)
+
+        # Initialize with fixed threshold
+        d["y"] = (d["fwd_ret_net"] >= float(pos_threshold)).astype(int)
+
+        # Apply volatility-adjusted threshold only where we have valid expanding median
+        if valid_expanding.any():
+            vol_ratio = vol_series[valid_expanding] / expanding_median_vol[valid_expanding]
             adjusted_threshold = float(pos_threshold) * vol_ratio
-            d["y"] = (d["fwd_ret_net"] >= adjusted_threshold).astype(int)
-        else:
-            # Fallback to fixed threshold if volatility is invalid
-            d["y"] = (d["fwd_ret_net"] >= float(pos_threshold)).astype(int)
+            d.loc[valid_expanding, "y"] = (
+                d.loc[valid_expanding, "fwd_ret_net"] >= adjusted_threshold
+            ).astype(int)
     else:
         # Use fixed threshold (original behavior)
         d["y"] = (d["fwd_ret_net"] >= float(pos_threshold)).astype(int)
@@ -1318,13 +1328,21 @@ def compute_sample_weights(
     recency_weight = recency_weight / recency_weight.mean()  # Normalize to mean=1
 
     # 3. Volatility-adjusted weights (down-weight high volatility periods for stability)
+    # CRITICAL FIX: Use EXPANDING window median instead of global median to prevent lookahead bias
     vol_weight = np.ones(n)
     if "Volatility" in df.columns:
-        vol = pd.to_numeric(df["Volatility"], errors="coerce").fillna(df["Volatility"].median())
-        vol_median = vol.median()
-        if vol_median > 0:
-            vol_weight = 1.0 / (1.0 + vol / vol_median)  # Inverse volatility
-            vol_weight = vol_weight / vol_weight.mean()  # Normalize to mean=1
+        vol = pd.to_numeric(df["Volatility"], errors="coerce")
+        # Use expanding median - only uses data available at each point in time
+        expanding_vol_median = vol.expanding(min_periods=60).median()
+        # Fill early NaNs with first available expanding median
+        expanding_vol_median = expanding_vol_median.ffill().bfill()
+        vol = vol.fillna(expanding_vol_median)
+
+        valid_mask = (expanding_vol_median > 0) & expanding_vol_median.notna()
+        if valid_mask.any():
+            vol_weight[valid_mask] = 1.0 / (1.0 + vol[valid_mask].values / expanding_vol_median[valid_mask].values)
+            # Normalize to mean=1
+            vol_weight = vol_weight / vol_weight.mean()
 
     # 4. Combine weights multiplicatively (but with dampening to prevent extremes)
     # More conservative powers to reduce overfitting to recent regime
