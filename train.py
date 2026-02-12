@@ -651,7 +651,7 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         # Step 2: Feature Selection using SHAP-based selector
         print("\n📊 Step 1: Feature Selection (SHAP + RFE)")
         feature_config = FeatureSelectionConfig(
-            correlation_threshold=0.85,  # Lower threshold for better diversity
+            correlation_threshold=0.75,  # TIGHTENED (Feb 2026): from 0.85 to reduce overfitting
             min_features=40,
             max_features=70,
             shap_sample_size=1000,  # More samples for accurate importance
@@ -955,6 +955,28 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             f"t={t_star:.3f} (P_val={thr_payload['precision_val']:.3f}, "
             f"R_val={thr_payload['recall_val']:.3f}, F1_val={thr_payload['f1_val']:.3f})"
         )
+
+        # Compute regime-adaptive thresholds (Feb 2026)
+        try:
+            from core.regime_adaptive_thresholds import compute_regime_thresholds
+
+            print("\n📊 Computing regime-adaptive thresholds...")
+            # Get OOF predictions for regime threshold optimization
+            # y and oof_proba should be available from the training loop above
+            if 'y' in dir() and 'oof_proba' in dir() and oof_proba is not None:
+                regime_thresholds = compute_regime_thresholds(
+                    df=df,
+                    y_true=y.values if hasattr(y, 'values') else y,
+                    y_proba=oof_proba,
+                    output_path=str(MODELS_DIR / "regime_thresholds.json"),
+                )
+                print("✅ Regime-adaptive thresholds saved")
+            else:
+                print("⚠️ OOF predictions not available for regime threshold optimization")
+                print("   Run predict.py --backfill then core/regime_adaptive_thresholds.py")
+        except Exception as e:
+            print(f"⚠️ Regime threshold computation failed: {e}")
+            print("   Using static thresholds - run regime optimization separately")
 
         print("✅ [FWD] Forward-returns training completed.")
         print(

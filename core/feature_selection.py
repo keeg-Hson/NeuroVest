@@ -25,10 +25,13 @@ warnings.filterwarnings('ignore')
 @dataclass
 class FeatureSelectionConfig:
     """Configuration for feature selection"""
-    correlation_threshold: float = 0.85  # Remove features with correlation above this (lowered from 0.95 for better feature diversity)
+    # TIGHTENED (Feb 2026): Lowered from 0.85 to 0.75 to reduce overfitting
+    # More aggressive correlation pruning removes redundant features that
+    # contribute to overfitting without adding predictive value
+    correlation_threshold: float = 0.75
     min_features: int = 40  # Minimum features to keep
     max_features: int = 70  # Maximum features to keep
-    shap_sample_size: int = 1000  # Samples to use for SHAP calculation (increased for better accuracy)
+    shap_sample_size: int = 1000  # Samples to use for SHAP calculation
     use_shap: bool = True  # Whether to use SHAP (slower but more accurate)
     use_rfe: bool = True  # Whether to use RFE for additional pruning
     random_state: int = 42

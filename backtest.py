@@ -14,6 +14,9 @@ import pandas as pd
 
 from utils import load_SPY_data, load_asset_data
 
+# Regime-adaptive position sizing (Feb 2026)
+USE_REGIME_POSITION_SIZING = os.getenv("USE_REGIME_SIZING", "1").lower() in ("1", "true", "yes")
+
 subprocess.run(
     [sys.executable, str(pathlib.Path(__file__).with_name("update_spy_data.py"))], check=False
 )
@@ -674,7 +677,20 @@ def run_backtest(
         else:
             kelly = 0.0
 
-        pos_mult_final = pos_conf * size_vol * size_conf * (1.0 + kelly)
+        # (5) Regime-adaptive sizing (Feb 2026) - reduce size in risky regimes
+        regime_mult = 1.0
+        if USE_REGIME_POSITION_SIZING:
+            try:
+                from core.regime_position_sizing import RegimePositionSizer
+                # Use data up to signal date for regime detection (no lookahead)
+                regime_df = spy_df.loc[:signal_date].copy()
+                if len(regime_df) > 200:  # Need enough history for regime detection
+                    sizer = RegimePositionSizer(regime_df)
+                    regime_mult = sizer.get_multiplier()
+            except Exception:
+                regime_mult = 1.0  # Fallback to no adjustment
+
+        pos_mult_final = pos_conf * size_vol * size_conf * (1.0 + kelly) * regime_mult
 
         # --- prices/targets on the actual entry trading day ---
         entry_px = float(entry_bar["Open"])

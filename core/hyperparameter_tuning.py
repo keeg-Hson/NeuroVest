@@ -16,13 +16,71 @@ import numpy as np
 import pandas as pd
 from typing import Dict, Optional, Callable, Any
 from dataclasses import dataclass
-from sklearn.model_selection import TimeSeriesSplit, cross_val_score
+from sklearn.model_selection import TimeSeriesSplit, cross_val_score, BaseCrossValidator
 from sklearn.metrics import f1_score, make_scorer
 import warnings
 import joblib
 from pathlib import Path
 
 warnings.filterwarnings('ignore')
+
+
+# =============================================================================
+# Walk-Forward CV with Embargo (Feb 2026)
+# =============================================================================
+class PurgedWalkForwardCV(BaseCrossValidator):
+    """
+    Walk-forward cross-validation with embargo period.
+
+    Proper temporal validation for financial time series that:
+    1. Respects time ordering (no lookahead bias)
+    2. Uses expanding or sliding windows
+    3. Includes embargo period between train and test to prevent leakage
+
+    This replaces basic TimeSeriesSplit for more robust hyperparameter tuning.
+    """
+
+    def __init__(
+        self,
+        n_splits: int = 5,
+        min_train_size: int = 250,
+        test_size: int = None,
+        embargo: int = 3,
+    ):
+        self.n_splits = n_splits
+        self.min_train_size = min_train_size
+        self.test_size = test_size
+        self.embargo = embargo
+
+    def split(self, X, y=None, groups=None):
+        n = len(X)
+        test_size = self.test_size or max(50, (n - self.min_train_size) // (self.n_splits + 1))
+
+        start_test = self.min_train_size + self.embargo
+        made = 0
+
+        for _ in range(self.n_splits):
+            test_start = start_test
+            test_end = min(n, test_start + test_size)
+
+            if test_end - test_start < 10:
+                break
+
+            train_end = max(0, test_start - self.embargo)
+            train_idx = np.arange(0, train_end)
+            test_idx = np.arange(test_start, test_end)
+
+            if len(train_idx) >= self.min_train_size:
+                yield (train_idx, test_idx)
+                made += 1
+
+            start_test = test_end
+            if made >= self.n_splits:
+                break
+
+    def get_n_splits(self, X=None, y=None, groups=None):
+        return self.n_splits
+
 
 # Try to import optuna
 try:
@@ -38,13 +96,15 @@ except ImportError:
 class TuningConfig:
     """Configuration for hyperparameter tuning"""
     n_trials: int = 100  # Number of optimization trials
-    n_cv_splits: int = 5  # Cross-validation splits
+    n_cv_splits: int = 5  # Walk-forward CV splits with embargo
     timeout: Optional[int] = None  # Max seconds for tuning (None = no limit)
     scoring: str = 'f1'  # Optimization metric
     direction: str = 'maximize'  # Optimization direction
     random_state: int = 42
     verbose: bool = True
     early_stopping_rounds: int = 30  # Stop if no improvement
+    # Walk-forward CV settings (Feb 2026)
+    embargo_days: int = 3  # Gap between train/test to prevent leakage
 
 
 class HyperparameterTuner:
@@ -141,7 +201,16 @@ class HyperparameterTuner:
     ) -> Callable:
         """Create Optuna objective function for the specified model type"""
 
-        tscv = TimeSeriesSplit(n_splits=self.config.n_cv_splits)
+        # Use PurgedWalkForwardCV with embargo for robust hyperparameter tuning
+        # This prevents lookahead bias and provides more realistic OOS estimates
+        n_samples = len(X)
+        min_train = max(250, int(n_samples * 0.4))  # At least 40% for initial train
+
+        tscv = PurgedWalkForwardCV(
+            n_splits=self.config.n_cv_splits,
+            min_train_size=min_train,
+            embargo=3,  # 3-day embargo to prevent label leakage
+        )
 
         if model_type == 'xgboost':
             return self._xgboost_objective(X, y, tscv, sample_weight)

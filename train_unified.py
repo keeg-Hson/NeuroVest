@@ -137,8 +137,8 @@ Examples:
                         help='Enable SHAP-based feature selection to reduce overfitting')
     parser.add_argument('--max-features', type=int, default=60,
                         help='Maximum features to keep after selection')
-    parser.add_argument('--correlation-threshold', type=float, default=0.95,
-                        help='Remove features with correlation above this threshold')
+    parser.add_argument('--correlation-threshold', type=float, default=0.75,
+                        help='Remove features with correlation above this threshold (tightened from 0.95)')
 
     # Hyperparameter tuning options (Optuna)
     parser.add_argument('--tune', action='store_true',

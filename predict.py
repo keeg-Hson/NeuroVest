@@ -39,6 +39,10 @@ import pandas as pd
 from config import LOGS_DIR, MODELS_DIR, PREDICT_CFG, SPY_DAILY_CSV
 from utils import add_features, finalize_features  # must match training pipeline
 
+# Regime-adaptive thresholds (Feb 2026)
+# Use different thresholds based on current market regime
+USE_REGIME_ADAPTIVE_THRESHOLDS = os.getenv("USE_REGIME_THRESHOLDS", "1").lower() in ("1", "true", "yes")
+
 
 # =============================================================================
 # Public API
@@ -156,6 +160,38 @@ def _load_thresholds(variant: str) -> dict[str, float]:
     return {"p_min": t, "invert_proba": False}
 
 
+def _get_regime_adaptive_threshold(df: pd.DataFrame) -> tuple[float, dict]:
+    """
+    Get threshold based on current market regime.
+
+    Args:
+        df: DataFrame with price/feature data for regime detection
+
+    Returns:
+        (threshold, regime_info_dict)
+    """
+    try:
+        from core.regime_adaptive_thresholds import RegimeAdaptiveThresholds
+
+        rat = RegimeAdaptiveThresholds(df)
+        rat.load()  # Load saved thresholds (or use defaults)
+
+        regime = rat.detect_current_regime()
+        threshold = rat.get_threshold(regime)
+
+        print(f"[regime] Current: volatility={regime['volatility']}, "
+              f"trend={regime['trend']}, risk={regime['risk_appetite']}")
+        print(f"[regime] Using threshold: {threshold:.4f}")
+
+        return threshold, regime
+
+    except Exception as e:
+        print(f"[warn] Regime detection failed: {e}")
+        print("[warn] Falling back to static threshold")
+        from config import PREDICTION_THRESHOLD
+        return PREDICTION_THRESHOLD, {"error": str(e)}
+
+
 # =============================================================================
 # Feature engineering — identical to training
 # =============================================================================
@@ -247,10 +283,18 @@ def _map_proba_to_p1(model, X_last: pd.DataFrame) -> float:
     return 0.7 if pred_plain == 1 else 0.3
 
 
-def _score_latest(model, X: pd.DataFrame, variant: str) -> tuple[int, float, pd.Timestamp]:
+def _score_latest(
+    model,
+    X: pd.DataFrame,
+    variant: str,
+    raw_df: pd.DataFrame = None,
+) -> tuple[int, float, pd.Timestamp]:
     """
     Takes the last row, computes p(long=1), applies the threshold, and returns
     (binary_decision, p1, timestamp).
+
+    If USE_REGIME_ADAPTIVE_THRESHOLDS is enabled and raw_df is provided,
+    uses regime-specific thresholds.
     """
     X_last = X.tail(1).drop(columns=["Date"], errors="ignore").astype(float)
     if X_last.isna().any(axis=None):
@@ -262,7 +306,14 @@ def _score_latest(model, X: pd.DataFrame, variant: str) -> tuple[int, float, pd.
     p1_raw = _map_proba_to_p1(model, X_last)
     cfg = _load_thresholds(variant)
     p1 = 1.0 - p1_raw if cfg.get("invert_proba", False) else p1_raw
-    decision = int(p1 >= float(cfg.get("p_min", 0.55)))
+
+    # Use regime-adaptive threshold if enabled
+    if USE_REGIME_ADAPTIVE_THRESHOLDS and raw_df is not None:
+        threshold, regime = _get_regime_adaptive_threshold(raw_df)
+    else:
+        threshold = float(cfg.get("p_min", 0.55))
+
+    decision = int(p1 >= threshold)
 
     if "Date" in X.columns and X["Date"].notna().any():
         ts = pd.to_datetime(X["Date"].dropna().iloc[-1])
@@ -394,7 +445,50 @@ def _backfill_full(model, saved_feats: list[str], variant: str) -> None:
         p1 = 1.0 - p1
         print("[debug] applied invert_proba: using (1 - p1) for decisions")
 
-    pred_bin = (p1 >= float(thresholds.get("p_min", 0.55))).astype(int)
+    # Use regime-adaptive thresholds if enabled
+    if USE_REGIME_ADAPTIVE_THRESHOLDS:
+        try:
+            from core.regime_adaptive_thresholds import RegimeAdaptiveThresholds
+            from core.regime_backtest import RegimeDetector
+
+            print("[regime] Computing per-row regime-adaptive thresholds...")
+            rat = RegimeAdaptiveThresholds(raw)
+            rat.load()  # Load saved thresholds
+
+            # Detect regimes for all dates
+            detector = RegimeDetector()
+            regimes = detector.detect_all_regimes(raw)
+
+            # Align regimes with predictions
+            # Use dates from full DataFrame
+            pred_dates = pd.to_datetime(full["Date"])
+            thresholds_per_row = np.full(len(full), 0.45)  # Default
+
+            for i, date in enumerate(pred_dates):
+                if date in regimes.index:
+                    regime = {
+                        "volatility": regimes.loc[date, "volatility"],
+                        "trend": regimes.loc[date, "trend"],
+                        "risk_appetite": regimes.loc[date, "risk_appetite"],
+                    }
+                    thresholds_per_row[i] = rat.get_threshold(regime)
+
+            # Count threshold distribution
+            unique_thresholds = np.unique(thresholds_per_row)
+            print(f"[regime] Threshold distribution: {len(unique_thresholds)} unique values")
+            for t in unique_thresholds[:5]:  # Show first 5
+                count = (thresholds_per_row == t).sum()
+                print(f"  - {t:.2f}: {count} rows ({count/len(thresholds_per_row):.1%})")
+
+            pred_bin = (p1 >= thresholds_per_row).astype(int)
+
+        except Exception as e:
+            print(f"[warn] Regime-adaptive backfill failed: {e}")
+            print("[warn] Using static threshold")
+            pred_bin = (p1 >= float(thresholds.get("p_min", 0.55))).astype(int)
+    else:
+        pred_bin = (p1 >= float(thresholds.get("p_min", 0.55))).astype(int)
+
     # Binary 1 → 2 (SPIKE), binary 0 → 1 (NORMAL); CRASH (0) is not emitted here.
     pred_012 = np.where(pred_bin == 1, 2, 1).astype(int)
 
@@ -455,7 +549,8 @@ def live_predict() -> tuple[int, float, pd.Timestamp]:
     X = _align_features(feat, saved_feats)
     _feature_coverage_guard(X, saved_feats)
 
-    return _score_latest(model, X, variant)
+    # Pass raw_df for regime-adaptive thresholds
+    return _score_latest(model, X, variant, raw_df=raw)
 
 
 # =============================================================================
@@ -489,7 +584,8 @@ def main(argv: list[str] | None = None) -> int:
     X = _align_features(feat, saved_feats)
     _feature_coverage_guard(X, saved_feats)
 
-    pred_bin, prob, when = _score_latest(model, X, variant)
+    # Pass raw_df for regime-adaptive thresholds
+    pred_bin, prob, when = _score_latest(model, X, variant, raw_df=raw)
     pred_012 = _binary_to_legacy(pred_bin)
     label_human = {0: "CRASH", 1: "NORMAL", 2: "SPIKE"}[pred_012]
 
