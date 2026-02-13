@@ -77,9 +77,14 @@ keep_cols = all_features + ["y", "fwd_ret_net"]
 df = df[keep_cols]
 df = df.dropna(subset=["y"])
 
-# Fill remaining NaN with 0
+# Fill remaining NaN with column median (not 0, to avoid systematic bias)
 if df.isnull().any().any():
-    print(f"   Filling {df.isnull().sum().sum()} NaN values with 0")
+    nan_count = df.isnull().sum().sum()
+    print(f"   Filling {nan_count} NaN values with column medians")
+    for col in all_features:
+        if df[col].isnull().any():
+            df[col] = df[col].fillna(df[col].median())
+    # Any remaining NaN (e.g. all-NaN columns) fill with 0
     df = df.fillna(0)
 
 print(f"\n✅ Data prepared: {len(df)} rows, {len(all_features)} features")

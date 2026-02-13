@@ -6,7 +6,7 @@ Tests multiple prediction horizons (1d, 2d, 3d, 5d, 10d, 21d) to find
 which timeframe produces the highest AUC scores.
 
 Usage:
-    python evaluate_horizons.py [--quick] [--horizons 1,3,5,10]
+    python3 evaluate_horizons.py [--quick] [--horizons 1,3,5,10]
 
 Outputs:
     - Per-horizon AUC, F1, Precision, Recall scores
@@ -75,6 +75,10 @@ def load_data_for_horizon(
     """
     Load and prepare data for a specific horizon.
 
+    Uses build_feature_table.build_features() to match the same feature
+    namespace as analyze_features.py, so that FEATURES_TO_PRUNE names
+    actually match the generated feature columns.
+
     Args:
         horizon: Forward return horizon in days
         pos_threshold: Minimum return to label as positive
@@ -83,56 +87,55 @@ def load_data_for_horizon(
     Returns:
         Tuple of (DataFrame with features and labels, feature column names)
     """
-    from utils import add_features, add_forward_returns_and_labels, finalize_features, load_SPY_data
+    from utils import load_SPY_data
+    from build_feature_table import build_features
 
     print(f"\n[Horizon {horizon}d] Loading and preparing data...")
 
     # Load raw data
     df = load_SPY_data()
 
-    # Add features
-    df, feature_cols = add_features(df)
+    # Build features using the same pipeline as analyze_features.py
+    # Pass prune_features=False here; we apply pruning ourselves below
+    # so we can report how many were pruned.
+    feat_df = build_features(df, prune_features=False)
+
+    # Feature columns are everything except 'close' (which build_features carries)
+    all_feature_cols = [c for c in feat_df.columns if c != 'close']
 
     # Apply feature pruning if enabled
     if prune_features:
-        original_count = len(feature_cols)
-        feature_cols = [f for f in feature_cols if f not in FEATURES_TO_PRUNE]
+        original_count = len(all_feature_cols)
+        feature_cols = [f for f in all_feature_cols if f not in FEATURES_TO_PRUNE]
         pruned_count = original_count - len(feature_cols)
         if pruned_count > 0:
             print(f"[Horizon {horizon}d] Pruned {pruned_count} low-value features ({len(feature_cols)} remaining)")
+    else:
+        feature_cols = all_feature_cols
 
     # Add forward returns and labels for this horizon
-    df = add_forward_returns_and_labels(
-        df,
-        price_col="Close",
-        horizon=horizon,
-        fee_bps=TRAIN_CFG.get('fee_bps', 1.5),
-        slippage_bps=TRAIN_CFG.get('slippage_bps', 2.0),
-        long_only=True,
-        pos_threshold=pos_threshold,
-        volatility_adjusted=True,
+    close = feat_df['close'] if 'close' in feat_df.columns else df['Close'].reindex(feat_df.index)
+    cost = (float(TRAIN_CFG.get('fee_bps', 1.5)) + float(TRAIN_CFG.get('slippage_bps', 2.0))) * 1e-4
+
+    feat_df['fwd_ret_raw'] = (close.shift(-int(horizon)) / close) - 1.0
+    feat_df['fwd_ret_net'] = feat_df['fwd_ret_raw'] - cost
+    feat_df['y'] = (feat_df['fwd_ret_net'] >= float(pos_threshold)).astype(int)
+
+    # Impute NaN in features with median
+    from sklearn.impute import SimpleImputer
+    valid_features = [f for f in feature_cols if f in feat_df.columns]
+    X_raw = feat_df[valid_features].replace([np.inf, -np.inf], np.nan)
+    imputer = SimpleImputer(strategy='median')
+    X_imputed = pd.DataFrame(
+        imputer.fit_transform(X_raw), columns=valid_features, index=feat_df.index
     )
-
-    # Save label column before finalize_features (it only keeps feature_cols)
-    y_col = df['y'].copy()
-    fwd_ret_col = df['fwd_ret_net'].copy() if 'fwd_ret_net' in df.columns else None
-
-    # Finalize features (this filters to only feature_cols)
-    df = finalize_features(df, feature_cols)
-
-    # Restore label and forward return columns
-    df['y'] = y_col
-    if fwd_ret_col is not None:
-        df['fwd_ret_net'] = fwd_ret_col
-
-    # Restore Close column for validation
-    raw = load_SPY_data()
-    df['Close'] = raw['Close'].reindex(df.index)
+    for c in valid_features:
+        feat_df[c] = X_imputed[c]
 
     # Drop rows with missing labels
-    df = df.dropna(subset=['y'])
+    feat_df = feat_df.dropna(subset=['y'])
 
-    return df, feature_cols
+    return feat_df, valid_features
 
 
 def evaluate_horizon(

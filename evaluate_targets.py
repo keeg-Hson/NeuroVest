@@ -12,7 +12,7 @@ Tests different target labeling strategies to find what works best:
 6. RISK_ADJUSTED: Sharpe-ratio-like targets
 
 Usage:
-    python evaluate_targets.py [--quick] [--targets binary,volatility]
+    python3 evaluate_targets.py [--quick] [--targets binary,volatility]
 
 Outputs:
     - Per-target strategy AUC, F1, Precision, Recall
@@ -121,16 +121,17 @@ def add_volatility_adjusted_target(
     d['fwd_ret_raw'] = d['Close'].pct_change(horizon).shift(-horizon)
     d['fwd_ret_net'] = d['fwd_ret_raw'] - cost
 
-    # Calculate rolling volatility
+    # Calculate rolling volatility with EXPANDING median to prevent lookahead
     d['_vol'] = d['Close'].pct_change().rolling(20).std()
-    median_vol = d['_vol'].median()
+    expanding_median_vol = d['_vol'].expanding(min_periods=60).median()
 
-    if median_vol > 0:
-        vol_ratio = d['_vol'] / median_vol
+    valid = expanding_median_vol.notna() & (expanding_median_vol > 0)
+    d['y'] = (d['fwd_ret_net'] >= base_threshold).astype(int)  # default
+
+    if valid.any():
+        vol_ratio = d.loc[valid, '_vol'] / expanding_median_vol[valid]
         adjusted_threshold = base_threshold * vol_ratio
-        d['y'] = (d['fwd_ret_net'] >= adjusted_threshold).astype(int)
-    else:
-        d['y'] = (d['fwd_ret_net'] >= base_threshold).astype(int)
+        d.loc[valid, 'y'] = (d.loc[valid, 'fwd_ret_net'] >= adjusted_threshold).astype(int)
 
     d = d.drop(columns=['_vol'])
     return d
@@ -218,8 +219,8 @@ def add_regression_binned_target(
     slippage_bps: float = 2.0,
 ) -> pd.DataFrame:
     """
-    Regression with quantile binning.
-    Bins returns into n_bins classes based on percentiles.
+    Regression with expanding-window quantile binning.
+    Uses only past data to determine bin boundaries, preventing lookahead bias.
     """
     d = df.copy()
     cost = (fee_bps + slippage_bps) * 1e-4
@@ -227,15 +228,27 @@ def add_regression_binned_target(
     d['fwd_ret_raw'] = d['Close'].pct_change(horizon).shift(-horizon)
     d['fwd_ret_net'] = d['fwd_ret_raw'] - cost
 
-    # Use rolling quantile binning to prevent lookahead
-    d['y'] = pd.qcut(
-        d['fwd_ret_net'].rank(method='first'),
-        q=n_bins,
-        labels=list(range(n_bins)),
-    ).astype(float).fillna(-1).astype(int)
+    # Expanding-window quantile binning to prevent lookahead bias
+    # At each point t, bin boundaries are computed from data [0..t-1] only
+    min_history = 252  # Need at least 1 year of history for stable quantiles
+    y_vals = pd.Series(np.nan, index=d.index)
+    fwd = d['fwd_ret_net']
 
-    # Replace -1 with median class
-    d.loc[d['y'] == -1, 'y'] = n_bins // 2
+    for i in range(min_history, len(d)):
+        val = fwd.iloc[i]
+        if pd.isna(val):
+            continue
+        past = fwd.iloc[:i].dropna()
+        if len(past) < min_history:
+            continue
+        quantiles = past.quantile([k / n_bins for k in range(1, n_bins)]).values
+        label = 0
+        for q in quantiles:
+            if val >= q:
+                label += 1
+        y_vals.iloc[i] = label
+
+    d['y'] = y_vals
 
     return d
 
@@ -619,16 +632,19 @@ def main():
         print(f"Pruned features: {len(FEATURES_TO_PRUNE)} low-value features excluded")
     print("=" * 70)
 
-    # Load data
-    from utils import add_features, finalize_features, load_SPY_data
+    # Load data using build_feature_table (matches analyze_features.py namespace
+    # so that FEATURES_TO_PRUNE names actually match the generated columns)
+    from utils import load_SPY_data
+    from build_feature_table import build_features
 
     print("\nLoading data...")
-    df = load_SPY_data()
-    df, feature_cols = add_features(df)
-    df = finalize_features(df, feature_cols)
-
-    # Restore Close column
     raw = load_SPY_data()
+    df = build_features(raw, prune_features=False)
+
+    # Feature columns are everything except 'close'
+    feature_cols = [c for c in df.columns if c != 'close']
+
+    # Carry OHLC through for target labeling strategies that need them
     df['Close'] = raw['Close'].reindex(df.index)
     df['High'] = raw['High'].reindex(df.index)
     df['Low'] = raw['Low'].reindex(df.index)
