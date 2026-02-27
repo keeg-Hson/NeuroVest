@@ -98,7 +98,47 @@ def _make_logger() -> logging.Logger:
     return logger
 
 
+# ─── Structured JSON log handler ──────────────────────────────────────────────
+class _JsonLogHandler(logging.Handler):
+    """Appends one JSON line per log record to logs/run_all_YYYYMMDD.jsonl."""
+
+    def __init__(self, path: Path) -> None:
+        super().__init__()
+        self._path = path
+        self._path.parent.mkdir(parents=True, exist_ok=True)
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            entry = {
+                "ts": dt.datetime.fromtimestamp(record.created).isoformat(timespec="milliseconds"),
+                "level": record.levelname,
+                "run_id": getattr(record, "run_id", None),
+                "msg": self.format(record),
+            }
+            with open(self._path, "a") as f:
+                f.write(json.dumps(entry) + "\n")
+        except Exception:
+            pass
+
+
 LOGGER = _make_logger()
+_RUN_ID = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+_json_handler = _JsonLogHandler(LOGS_DIR / f"run_all_{_RUN_ID}.jsonl")
+_json_handler.setFormatter(logging.Formatter("%(message)s"))
+LOGGER.addHandler(_json_handler)
+
+# Inject run_id into all log records via a filter
+class _RunIdFilter(logging.Filter):
+    def __init__(self, run_id: str) -> None:
+        super().__init__()
+        self._run_id = run_id
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.run_id = self._run_id
+        return True
+
+LOGGER.addFilter(_RunIdFilter(_RUN_ID))
+LOGGER.info("run_id=%s", _RUN_ID)
 
 
 # --------------------------------------------------------------------------------------
@@ -459,6 +499,24 @@ def step_backtest(window_days: int | None, oos_only: bool) -> StepResult:
         return StepResult(name, ok=False, seconds=time.time() - start, error=traceback.format_exc())
 
 
+def step_fill_realized() -> StepResult:
+    """Annotate past signals with realized PnL (predict.py --fill-realized)."""
+    start = time.time()
+    name = "Fill realized PnL"
+    try:
+        pred_mod = _import_module("predict")
+        if pred_mod and hasattr(pred_mod, "fill_realized_pnl"):
+            LOGGER.info("predict.fill_realized_pnl()")
+            pred_mod.fill_realized_pnl()
+            return StepResult(name, ok=True, seconds=time.time() - start)
+        # fallback: subprocess
+        ok, _, err = _call_script(ROOT / "predict.py", ["--fill-realized"])
+        return StepResult(name, ok=ok, seconds=time.time() - start, error=err if not ok else None)
+    except Exception:
+        LOGGER.exception("%s failed", name)
+        return StepResult(name, ok=False, seconds=time.time() - start, error=traceback.format_exc())
+
+
 def step_tearsheet() -> StepResult:
     start = time.time()
     name = "Generate HTML tearsheet"
@@ -506,6 +564,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     group = p.add_mutually_exclusive_group(required=False)
     group.add_argument("--all", action="store_true", help="Run all steps (default).")
     group.add_argument("--predict-only", action="store_true", help="Only run prediction stage.")
+    group.add_argument(
+        "--daily",
+        action="store_true",
+        help=(
+            "Daily shortcut: refresh → predict (append today) → update realized PnL → "
+            "backtest snapshot. Skips train, analyze, and tearsheet."
+        ),
+    )
 
     p.add_argument("--skip-refresh", action="store_true", help="Skip refreshing data sources.")
     p.add_argument("--skip-analyze", action="store_true", help="Skip signal diagnostics.")
@@ -526,7 +592,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
 
     args = p.parse_args(argv)
-    if not (args.all or args.predict_only):
+    # --daily sets sensible defaults for the daily cron job
+    if args.daily:
+        args.skip_train = True
+        args.skip_analyze = True
+        args.skip_select = True
+        args.skip_tearsheet = True
+        args.all = True  # use full pipeline switch with skips applied
+    elif not (args.all or args.predict_only):
         args.all = True
     return args
 
@@ -556,6 +629,10 @@ def main(argv: list[str] | None = None) -> int:
     # 5) Predict/backfill (always run unless predict-only toggled)
     results.append(step_backfill_predictions())
 
+    # 5b) Annotate realized PnL for elapsed horizons (daily mode or --all)
+    if args.all and not args.predict_only:
+        results.append(step_fill_realized())
+
     # 6) Backtest
     if (args.all and not args.skip_backtest) and not args.predict_only:
         results.append(step_backtest(window_days=args.backtest_window, oos_only=args.oos_only))
@@ -564,8 +641,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.all and not args.skip_tearsheet and not args.predict_only:
         results.append(step_tearsheet())
 
-    # Summary
+    # Summary — write to JSON as well
     LOGGER.info("\n==== PIPELINE SUMMARY ====")
+    summary_records = []
     for r in results:
         status = "✅" if r.ok else "❌"
         LOGGER.info("%s %s (%.1fs)", status, r.name, r.seconds)
@@ -576,6 +654,28 @@ def main(argv: list[str] | None = None) -> int:
                 k: (str(v)[:140] + ("…" if len(str(v)) > 140 else "")) for k, v in r.extra.items()
             }
             LOGGER.info("   Extra: %s", trimmed)
+        summary_records.append({
+            "step": r.name,
+            "ok": r.ok,
+            "seconds": round(r.seconds, 2),
+            "error": (r.error or "").strip().splitlines()[-1] if r.error else None,
+            "extra": r.extra,
+        })
+
+    # Persist run summary to outputs/run_summary_*.json
+    try:
+        OUTPUTS_DIR.mkdir(parents=True, exist_ok=True)
+        summary_path = OUTPUTS_DIR / f"run_summary_{_RUN_ID}.json"
+        with open(summary_path, "w") as _sf:
+            json.dump(
+                {"run_id": _RUN_ID, "steps": summary_records},
+                _sf,
+                indent=2,
+                default=str,
+            )
+        LOGGER.info("Run summary → %s", summary_path)
+    except Exception as _se:
+        LOGGER.warning("Could not save run summary: %s", _se)
 
     all_ok = all(r.ok for r in results)
     LOGGER.info("%s Pipeline complete.", "✅" if all_ok else "⚠️")

@@ -1618,7 +1618,15 @@ if __name__ == "__main__":
         trades = trades.rename(columns={"equity_curve": "Equity"})
         trades["Drawdown %"] = trades["drawdown"] * 100
 
+        import matplotlib
+        matplotlib.use("Agg")  # non-interactive backend
         import matplotlib.pyplot as plt
+
+        # --- Save plots to outputs/plots/ ---
+        outputs_dir = Path("outputs")
+        plots_dir = outputs_dir / "plots"
+        plots_dir.mkdir(parents=True, exist_ok=True)
+        ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
         trades["Equity"].plot(ax=ax1, title="Equity Curve")
@@ -1630,9 +1638,45 @@ if __name__ == "__main__":
         ax2.grid(True)
         plt.xlabel("Signal Time")
         plt.tight_layout()
-        plt.show()
-        fig.savefig("logs/equity_drawdown_plot.png", dpi=300)
-        print("📸 Saved equity and drawdown chart to logs/equity_drawdown_plot.png")
+        plot_path = plots_dir / f"equity_drawdown_{ts_str}.png"
+        fig.savefig(str(plot_path), dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        # Also keep backward-compat copy in logs/
+        Path("logs").mkdir(parents=True, exist_ok=True)
+        import shutil
+        shutil.copy(str(plot_path), "logs/equity_drawdown_plot.png")
+        print(f"📸 Saved equity chart → {plot_path}")
+
+        # --- Compute Sortino ratio ---
+        if "return_pct" in trades.columns:
+            rets = trades["return_pct"].dropna()
+            downside = rets[rets < 0]
+            downside_std = float(downside.std()) if len(downside) > 1 else float("nan")
+            mean_ret_252 = float(rets.mean()) * 252
+            sortino = (mean_ret_252 / (downside_std * np.sqrt(252))) if downside_std and not np.isnan(downside_std) else float("nan")
+        else:
+            sortino = float("nan")
+
+        # --- Save metrics to outputs/metrics_*.json ---
+        metrics_out = {
+            "run_at": datetime.now().isoformat(timespec="seconds"),
+            "git_sha": _git_sha(),
+            "trades": int(m.get("trades", 0)),
+            "cagr": float(m.get("annualized_return", float("nan"))),
+            "total_return": float(m.get("total_return", float("nan"))),
+            "sharpe": float(m.get("sharpe", float("nan"))),
+            "sortino": float(sortino),
+            "max_drawdown": float(m.get("max_drawdown", float("nan"))),
+            "hit_rate": float(m.get("win_rate", float("nan"))),
+            "profit_factor": float(m.get("profit_factor", float("nan"))),
+            "buy_hold_return": float(m.get("buy_hold_return", float("nan"))),
+            "alpha": float(m.get("alpha", float("nan"))),
+            "plot_path": str(plot_path),
+        }
+        metrics_path = outputs_dir / f"metrics_{ts_str}.json"
+        with open(metrics_path, "w") as _mf:
+            json.dump(metrics_out, _mf, indent=2)
+        print(f"📊 Metrics saved → {metrics_path}")
 
     if simulate_mode:
         print("\n⚠️ NOTE: This was a simulated run with injected predictions.")

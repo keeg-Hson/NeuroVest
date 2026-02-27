@@ -335,7 +335,90 @@ _REQUIRED_COLS = [
     "Spike_Conf",
     "Crash_Conf",
     "Confidence",
+    # Signal contract fields (Day 4)
+    "symbol",
+    "horizon",
+    "side",
+    "ev",
+    "model_version",
+    "config_hash",
 ]
+
+
+def _load_manifest() -> dict:
+    """Load artifact_manifest.json to get model_version and config_hash."""
+    try:
+        with open(MODELS_DIR / "artifact_manifest.json") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _compute_ev(prob: float, avg_gain: float = 0.004, avg_loss: float = 0.003) -> float:
+    """Expected value = p*gain - (1-p)*loss (in return units)."""
+    return float(prob * avg_gain - (1.0 - prob) * avg_loss)
+
+
+def fill_realized_pnl(
+    signal_path: Path | None = None,
+    price_csv: Path | None = None,
+    horizon_days: int = 1,
+) -> None:
+    """
+    Annotate signals with realized PnL once the horizon has elapsed.
+    Adds/updates column 'realized_ret' and 'label_realized' in labeled_predictions.csv.
+    Only processes rows where horizon has elapsed and 'realized_ret' is NaN.
+    """
+    if signal_path is None:
+        signal_path = LOGS_DIR / "labeled_predictions.csv"
+    if price_csv is None:
+        price_csv = Path(os.getenv("SPY_DAILY_CSV", str(SPY_DAILY_CSV)))
+    if not signal_path.exists():
+        return
+
+    preds = pd.read_csv(signal_path, parse_dates=["Date"])
+    if preds.empty:
+        return
+
+    prices = pd.read_csv(price_csv, parse_dates=["Date"])
+    prices = prices.sort_values("Date").reset_index(drop=True)
+    price_map = prices.set_index("Date")["Close"].to_dict()
+
+    today = pd.Timestamp.now().normalize()
+    cutoff = today - pd.Timedelta(days=horizon_days)
+
+    if "realized_ret" not in preds.columns:
+        preds["realized_ret"] = float("nan")
+    if "label_realized" not in preds.columns:
+        preds["label_realized"] = pd.NA
+
+    updated = 0
+    for i, row in preds.iterrows():
+        if pd.notna(preds.at[i, "realized_ret"]):
+            continue  # already annotated
+        signal_date = pd.to_datetime(row["Date"])
+        if signal_date > cutoff:
+            continue  # horizon has not elapsed yet
+        exit_date = signal_date + pd.Timedelta(days=horizon_days)
+        entry = price_map.get(signal_date)
+        exit_ = price_map.get(exit_date)
+        if entry is None or exit_ is None:
+            # Try to find nearest exit price within ±3 days
+            candidates = [
+                price_map.get(exit_date + pd.Timedelta(days=d))
+                for d in range(-3, 4)
+                if price_map.get(exit_date + pd.Timedelta(days=d))
+            ]
+            exit_ = candidates[0] if candidates else None
+        if entry and exit_:
+            ret = float(exit_) / float(entry) - 1.0
+            preds.at[i, "realized_ret"] = ret
+            preds.at[i, "label_realized"] = 1 if ret > 0 else 0
+            updated += 1
+
+    if updated:
+        preds.to_csv(signal_path, index=False)
+        print(f"[realized_pnl] annotated {updated} signals with realized returns → {signal_path}")
 
 
 def _ensure_columns(df: pd.DataFrame, cols: Iterable[str]) -> pd.DataFrame:
@@ -361,7 +444,9 @@ def _append_single(pred_012: int, p1: float, when: pd.Timestamp) -> None:
 
     df = _ensure_columns(df, _REQUIRED_COLS)
 
+    manifest = _load_manifest()
     row_mask = df["Date"] == pd.to_datetime(when)
+    side = "long" if pred_012 == 2 else "flat"
     row = {
         "Date": pd.to_datetime(when),
         "Label": df.loc[row_mask, "Label"].iloc[0] if row_mask.any() else pd.NA,
@@ -371,6 +456,13 @@ def _append_single(pred_012: int, p1: float, when: pd.Timestamp) -> None:
         "Spike_Conf": float(p1),
         "Crash_Conf": float(1.0 - p1),
         "Confidence": float(abs(p1 - 0.5) * 2.0),
+        # Signal contract fields
+        "symbol": "SPY",
+        "horizon": int(PREDICT_CFG.get("horizon", 1)),
+        "side": side,
+        "ev": _compute_ev(p1, PREDICT_CFG.get("avg_gain", 0.004), PREDICT_CFG.get("avg_loss", 0.003)),
+        "model_version": manifest.get("code_git_sha", "unknown"),
+        "config_hash": manifest.get("config_hash", "unknown"),
     }
 
     if row_mask.any():
@@ -492,6 +584,14 @@ def _backfill_full(model, saved_feats: list[str], variant: str) -> None:
     # Binary 1 → 2 (SPIKE), binary 0 → 1 (NORMAL); CRASH (0) is not emitted here.
     pred_012 = np.where(pred_bin == 1, 2, 1).astype(int)
 
+    manifest = _load_manifest()
+    model_version = manifest.get("code_git_sha", "unknown")
+    config_hash = manifest.get("config_hash", "unknown")
+    ev_vals = np.array([
+        _compute_ev(float(p), PREDICT_CFG.get("avg_gain", 0.004), PREDICT_CFG.get("avg_loss", 0.003))
+        for p in p1
+    ])
+
     out = (
         pd.DataFrame(
             {
@@ -502,6 +602,13 @@ def _backfill_full(model, saved_feats: list[str], variant: str) -> None:
                 "Spike_Conf": p1.astype(float),
                 "Crash_Conf": (1.0 - p1).astype(float),
                 "Confidence": np.abs(p1 - 0.5) * 2.0,
+                # Signal contract fields
+                "symbol": "SPY",
+                "horizon": int(PREDICT_CFG.get("horizon", 1)),
+                "side": np.where(pred_bin == 1, "long", "flat"),
+                "ev": ev_vals,
+                "model_version": model_version,
+                "config_hash": config_hash,
             }
         )
         .sort_values("Date")
@@ -511,7 +618,10 @@ def _backfill_full(model, saved_feats: list[str], variant: str) -> None:
     if out_path.exists():
         prev = pd.read_csv(out_path, parse_dates=["Date"])
         prev = _ensure_columns(prev, _REQUIRED_COLS)
-        out = out.merge(prev[["Date", "Label"]], on="Date", how="left")
+        # Preserve Label and realized_ret from prior runs
+        merge_cols = [c for c in ["Label", "realized_ret", "label_realized"] if c in prev.columns]
+        if merge_cols:
+            out = out.merge(prev[["Date"] + merge_cols], on="Date", how="left")
 
     out = _ensure_columns(out, _REQUIRED_COLS)
 
@@ -563,22 +673,45 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Score full history and rewrite labeled_predictions.csv",
     )
+    p.add_argument(
+        "--asof",
+        default=None,
+        metavar="YYYY-MM-DD",
+        help="Only use SPY data up to this date (live or backfill). Defaults to today.",
+    )
+    p.add_argument(
+        "--fill-realized",
+        action="store_true",
+        help="Annotate past signals with realized PnL where horizon has elapsed.",
+    )
     return p.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
+
+    # --fill-realized: annotate past signals with actual PnL (no model needed)
+    if args.fill_realized:
+        fill_realized_pnl()
+        return 0
+
     model_path, variant = _resolve_model_path()
     model, saved_feats = _load_model_and_features(model_path, variant)
     _assert_binary_model(model)
 
-    if args.backfill:
-        _backfill_full(model, saved_feats, variant)
-        return 0
-
     raw = pd.read_csv(SPY_DAILY_CSV, low_memory=False)
     raw["Date"] = pd.to_datetime(raw["Date"], errors="coerce")
     raw = raw.dropna(subset=["Date"]).sort_values("Date").reset_index(drop=True)
+
+    # --asof: truncate data to a point-in-time date
+    if args.asof is not None:
+        cutoff = pd.to_datetime(args.asof)
+        raw = raw[raw["Date"] <= cutoff].reset_index(drop=True)
+        print(f"[predict] --asof {args.asof}: using {len(raw)} rows up to {cutoff.date()}")
+
+    if args.backfill:
+        _backfill_full(model, saved_feats, variant)
+        return 0
 
     feat = _build_inference_features_from_prices(raw, saved_feats, variant)
     X = _align_features(feat, saved_feats)

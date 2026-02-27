@@ -118,11 +118,71 @@ FWD_BLACKLIST = {"y", "fwd_price", "fwd_ret_raw", "fwd_ret_net", "horizon_forwar
 if os.getenv("TRAIN_USE_FORWARD_RETURNS", "").strip() in {"1", "true", "True"}:
     TRAIN_CFG["use_forward_returns"] = True
 
-# --- tolerate unknown CLI args when invoked like: python -m train --models xgb
+import hashlib
+import subprocess
 import sys
 
-if len(sys.argv) > 1:
-    sys.argv = sys.argv[:1]
+
+# =============================================================================
+# Artifact manifest helpers
+# =============================================================================
+def _git_sha() -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.DEVNULL
+        ).decode().strip()
+    except Exception:
+        return "unknown"
+
+
+def _file_sha256(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _config_hash(cfg: dict) -> str:
+    return hashlib.sha256(json.dumps(cfg, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def save_artifact_manifest(
+    model_path: str,
+    df: "pd.DataFrame",
+    params: dict,
+    metrics: dict,
+    variant: str = "fwd",
+) -> None:
+    """Write models/artifact_manifest.json with provenance metadata."""
+    from datetime import timezone
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+
+    date_col = "Date" if "Date" in df.columns else df.index.name
+    if date_col and date_col in df.columns:
+        dates = pd.to_datetime(df[date_col], errors="coerce").dropna()
+    else:
+        dates = pd.to_datetime(df.index, errors="coerce")
+
+    manifest = {
+        "model_path": str(model_path),
+        "model_hash_sha256": _file_sha256(model_path) if os.path.exists(model_path) else None,
+        "code_git_sha": _git_sha(),
+        "trained_at": datetime.now(timezone.utc).isoformat(),
+        "variant": variant,
+        "data_window": {
+            "first_date": str(dates.min().date()) if len(dates) else None,
+            "last_date": str(dates.max().date()) if len(dates) else None,
+            "n_rows": len(df),
+        },
+        "train_cfg": params,
+        "config_hash": _config_hash(params),
+        "val_metrics": metrics,
+    }
+    out = MODELS_DIR / "artifact_manifest.json"
+    with open(out, "w") as f:
+        json.dump(manifest, f, indent=2, default=str)
+    print(f"💾 Artifact manifest → {out}")
 
 
 # ====================== Time-series CV helpers ======================
@@ -442,22 +502,32 @@ def _load_top_signals(path = None) -> list[str]:
 
 
 # ====================== Public entry points ======================
-def train_model(models=None, fast=False):
+def train_model(models=None, fast=False, asof: str | None = None):
     df = load_SPY_data()
-    return train_best_xgboost_model(df)
+    return train_best_xgboost_model(df, asof=asof)
 
 
-def run(models=None, fast=False):
-    return train_model(models=models, fast=fast)
+def run(models=None, fast=False, asof: str | None = None):
+    return train_model(models=models, fast=fast, asof=asof)
 
 
-def main(models=None, fast=False):
-    ok = train_model(models=models, fast=fast)
+def main(models=None, fast=False, asof: str | None = None):
+    ok = train_model(models=models, fast=fast, asof=asof)
     return 0 if ok else 1
 
 
 # ====================== Trainer ======================
-def train_best_xgboost_model(df: pd.DataFrame) -> bool:
+def train_best_xgboost_model(df: pd.DataFrame, asof: str | None = None) -> bool:
+    # --asof: truncate data to reproduce a point-in-time model
+    if asof is not None:
+        cutoff = pd.to_datetime(asof)
+        date_col = "Date" if "Date" in df.columns else None
+        if date_col:
+            df = df[pd.to_datetime(df[date_col], errors="coerce") <= cutoff].copy()
+        elif hasattr(df.index, "dtype") and pd.api.types.is_datetime64_any_dtype(df.index):
+            df = df[df.index <= cutoff].copy()
+        print(f"[train] --asof {asof}: data truncated to {len(df)} rows (up to {cutoff.date()})")
+
     print("\n📊 Generating features...")
     df, all_feature_cols = add_features(df)
 
@@ -978,6 +1048,25 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             print(f"⚠️ Regime threshold computation failed: {e}")
             print("   Using static thresholds - run regime optimization separately")
 
+        # Save artifact manifest with provenance metadata
+        try:
+            save_artifact_manifest(
+                model_path=model_path_fwd,
+                df=df,
+                params=dict(TRAIN_CFG),
+                metrics={
+                    "val_f1": float(val_f1),
+                    "val_precision": float(val_prec),
+                    "val_recall": float(val_rec),
+                    "val_auc": float(val_auc),
+                    "threshold": float(t_star),
+                    "n_features": len(selected_features),
+                },
+                variant="fwd",
+            )
+        except Exception as _me:
+            print(f"⚠️ Artifact manifest save failed: {_me}")
+
         print("✅ [FWD] Forward-returns training completed.")
         print(
             "ℹ️ Predictor will automatically load this variant when PREDICT_VARIANT=forward_returns."
@@ -1400,18 +1489,36 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
 
 
 # ====================== CLI ======================
+def _parse_train_args(argv=None):
+    import argparse
+    p = argparse.ArgumentParser(description="NeuroVest model training")
+    p.add_argument(
+        "--asof",
+        default=None,
+        metavar="YYYY-MM-DD",
+        help="Train using data up to this date only (reproducible point-in-time training).",
+    )
+    p.add_argument(
+        "--no-predict",
+        action="store_true",
+        help="Skip running predict.py after training.",
+    )
+    return p.parse_args(argv)
+
+
 if __name__ == "__main__":
+    _args = _parse_train_args()
     print("📥 Loading SPY data...")
     df = load_SPY_data()
     try:
-        success = train_best_xgboost_model(df)
+        success = train_best_xgboost_model(df, asof=_args.asof)
     except Exception as e:
         import traceback
 
         traceback.print_exc()
         raise SystemExit(f"[train] hard failure: {e}") from e
 
-    if success:
+    if success and not _args.no_predict:
         from predict import run_predictions
 
         run_predictions()  # predict.py
