@@ -132,27 +132,90 @@ def _merge_external_if_available(df: pd.DataFrame, external_dir: Path) -> pd.Dat
     return base
 
 
-def _load_external_asset(ticker: str, ext_dir: Path = None) -> pd.DataFrame:
-    """Load external asset data from temp directory"""
-    if ext_dir is None:
-        ext_dir = Path("data/external_temp")
-
-    # Try multiple file name patterns
-    patterns = [
-        ext_dir / f"{ticker}.csv",
-        ext_dir / f"{ticker.replace('^', '')}.csv",
-        ext_dir / f"{ticker.replace('-', '_')}.csv",
+def _merge_precomputed_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Merge pre-computed feature files (cross_asset_features.csv, macro_features.csv).
+    These contain 50+ features that would otherwise require downloading individual assets.
+    """
+    data_dir = Path("data")
+    precomputed_files = [
+        ("cross_asset_features.csv", ""),  # Already has XAsset_ prefix
+        ("macro_features.csv", "Macro_"),
     ]
 
-    for path in patterns:
-        if path.exists():
-            try:
-                df = pd.read_csv(path)
-                df.columns = [c.lower() for c in df.columns]
-                if 'date' in df.columns:
-                    df['date'] = pd.to_datetime(df['date'])
-                    df = df.set_index('date')
-                return df
+    out = df.copy()
+
+    for filename, prefix in precomputed_files:
+        filepath = data_dir / filename
+        if not filepath.exists():
+            continue
+
+        try:
+            feat_df = pd.read_csv(filepath, low_memory=False)
+            feat_df = _ensure_datetime_index_any(feat_df)
+
+            # Get only numeric columns
+            num_cols = feat_df.select_dtypes(include=[np.number]).columns.tolist()
+            if not num_cols:
+                continue
+
+            # Add prefix if specified and not already prefixed
+            if prefix:
+                feat_df = feat_df[num_cols].add_prefix(prefix)
+            else:
+                feat_df = feat_df[num_cols]
+
+            # Merge by date (causal - use backward fill)
+            feat_df = feat_df.sort_index()
+            out = pd.merge_asof(
+                out.sort_index(),
+                feat_df,
+                left_index=True,
+                right_index=True,
+                direction="backward"
+            )
+            print(f"  Merged {len(num_cols)} features from {filename}")
+        except Exception as e:
+            print(f"  [warn] Could not merge {filename}: {e}")
+
+    return out
+
+
+def _load_external_asset(ticker: str, ext_dir: Path = None) -> pd.DataFrame:
+    """
+    Load external asset data from multiple possible directories.
+    Search order: ext_dir (if provided), data/, data_cache/, data/etfs/
+    """
+    search_dirs = []
+    if ext_dir is not None:
+        search_dirs.append(ext_dir)
+    search_dirs.extend([
+        Path("data"),
+        Path("data_cache"),
+        Path("data/etfs"),
+    ])
+
+    # Try multiple file name patterns in each directory
+    for search_dir in search_dirs:
+        if not search_dir.exists():
+            continue
+
+        patterns = [
+            search_dir / f"{ticker}.csv",
+            search_dir / f"{ticker.replace('^', '')}.csv",
+            search_dir / f"{ticker.replace('-', '_')}.csv",
+            search_dir / f"{ticker}_1d.csv",  # data_cache format
+        ]
+
+        for path in patterns:
+            if path.exists():
+                try:
+                    df = pd.read_csv(path)
+                    df.columns = [c.lower() for c in df.columns]
+                    if 'date' in df.columns:
+                        df['date'] = pd.to_datetime(df['date'])
+                        df = df.set_index('date')
+                    return df
             except Exception:
                 pass
     return None
@@ -380,11 +443,23 @@ def build_features(df: pd.DataFrame, ext_dir: Path = None, prune_features: bool 
     # Carry forward close for target calculation
     out["close"] = close.values
 
+    # ══════════════════════════════════════════════════════════════════════════
+    # MERGE PRE-COMPUTED FEATURES (cross_asset, macro)
+    # ══════════════════════════════════════════════════════════════════════════
+    # These files contain 50+ features that would otherwise require downloading
+    # individual assets. This is the key step that was missing!
+    initial_cols = len(out.columns)
+    out = _merge_precomputed_features(out)
+    added_cols = len(out.columns) - initial_cols
+    if added_cols > 0:
+        print(f"  Total: Added {added_cols} pre-computed features")
+
     # Apply feature pruning if enabled
     if prune_features:
         cols_to_drop = [c for c in out.columns if c in FEATURES_TO_PRUNE]
         if cols_to_drop:
             out = out.drop(columns=cols_to_drop)
+            print(f"  Pruned {len(cols_to_drop)} low-value features")
 
     # Drop rows with NaN in critical features
     return out
