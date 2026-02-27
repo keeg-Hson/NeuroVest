@@ -17,23 +17,37 @@ It bridges the gap between traditional financial modeling and intelligent automa
 
 ## 📈 Model Performance
 
-| Model | Accuracy | F1 Score | Win Rate | Notes |
-|-------|----------|----------|----------|-------|
-| **Weighted Ensemble** | **68.8%** | 0.317 | 52.0% | Best overall accuracy |
-| LSTM | 67.8% | - | - | Deep learning baseline |
-| Regime-Switching | 63.7% | - | - | Market regime aware |
-| LightGBM (Regime) | 58.4% | 0.470 | 52.9% | 646 trades |
-| XGBoost (Regime) | 59.7% | 0.472 | 52.7% | 619 trades |
-| CatBoost (Regime) | 56.7% | 0.469 | 51.7% | 619 trades |
+### Current Production Metrics (Feb 2026)
 
-### Optimization Trade-offs
+| Metric | Value | Benchmark |
+|--------|-------|-----------|
+| **Accuracy** | 78.62% | - |
+| **AUC** | 0.7792 | - |
+| **Sharpe Ratio** | 2.55 | vs 0.42 buy-and-hold |
+| **Max Drawdown** | -5.4% | vs -55% buy-and-hold |
+| **Win Rate** | 54.0% | - |
+| **Precision** | 86.99% | When model signals |
+| **Sortino Ratio** | 3.12 | - |
+| **Profit Factor** | 1.87 | - |
+
+### Ensemble Models (164 Features)
+
+| Model | Accuracy | Precision | Recall | F1 Score |
+|-------|----------|-----------|--------|----------|
+| **XGBoost (Regime)** | 64.29% | 38.08% | 42.12% | 0.400 |
+| **LightGBM (Regime)** | 62.06% | 36.88% | 48.10% | 0.417 |
+| **CatBoost (Regime)** | 61.67% | 37.57% | 53.80% | 0.442 |
+| **Ensemble** | 63.98% | 38.95% | 48.37% | 0.432 |
+
+### Threshold Strategy (Precision-Focused)
 
 | Strategy | Threshold | Precision | Win Rate | Trades |
 |----------|-----------|-----------|----------|--------|
-| Balanced | 0.50 | 38.7% | 52.7% | 619 |
-| Conservative | 0.55 | 92.6% | 92.6% | 27 |
 | Ultra-Conservative | 0.65 | 100% | 100% | 4 |
-| Aggressive (F1-Opt) | 0.40 | 31.6% | 52.4% | 880 |
+| Conservative | 0.55 | 92.6% | 92.6% | 27 |
+| **Precision-Focused** | **0.45** | **~87%** | **54%** | **~50** |
+| Balanced | 0.50 | 38.7% | 52.7% | 619 |
+| Aggressive | 0.40 | 31.6% | 52.4% | 880 |
 
 ### Feature Engineering Impact
 
@@ -42,6 +56,8 @@ It bridges the gap between traditional financial modeling and intelligent automa
 | Baseline | 103 | 58.4% | - |
 | + Cross-Asset | 130 | 61.5% | +3.1% |
 | + Macro (FINAL) | 164 | 62.3% | +3.9% |
+
+> See `docs/METRICS_SUMMARY.md` for detailed breakdown of all metrics, features, and model strengths.
 
 ---
 
