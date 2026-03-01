@@ -1,7 +1,8 @@
 # NeuroVest Model Metrics Summary
 
-**Last Updated:** 2026-02-27
+**Last Updated:** 2026-03-01
 **Source of Truth:** This document consolidates metrics from `config.py`, `configs/best_thresholds.json`, and latest evaluation runs.
+**Architecture:** See `SYSTEM_DESIGN.md` for canonical file references.
 
 ---
 
@@ -194,10 +195,9 @@ From `config.py` RISK_CFG:
 
 ## Known Issues (from Latest Run)
 
-1. **Missing Model Files**: Some analysis scripts look for deprecated model paths:
-   - `market_crash_model_fwd_improved.pkl`
-   - `xgboost_with_cross_asset.pkl`
-   - `xgboost_all_features_final.pkl`
+1. **Legacy Scripts Archived** (2026-03-01): Scripts referencing deprecated models moved to `archive/legacy_scripts/`:
+   - `market_crash_model_fwd_improved.pkl` references removed
+   - See `SYSTEM_DESIGN.md` for canonical entry points
 
 2. **Working Models**: Regime ensemble models are functional:
    - `xgboost_regime.pkl`
@@ -206,7 +206,9 @@ From `config.py` RISK_CFG:
 
 3. **API Limits**: NewsAPI returns 426 (plan limit) - falling back to top-headlines
 
+4. **Database**: Railway PostgreSQL is primary. Local SQLite shows empty data without `DATABASE_URL`.
+
 ---
 
-*Generated: 2026-02-27*
+*Generated: 2026-03-01*
 *Configuration: 1-day horizon, 0.5% threshold, 0.45 prediction threshold*

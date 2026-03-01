@@ -38,6 +38,19 @@ from typing import Any
 # Make stdout unbuffered for CI
 sys.stdout.reconfigure(line_buffering=True)
 
+# ─── DATABASE_URL Check ─────────────────────────────────────────────────────
+# Railway PostgreSQL is the primary data store. SQLite is fallback only.
+if not os.environ.get("DATABASE_URL"):
+    print("=" * 80)
+    print("⚠️  WARNING: DATABASE_URL not set")
+    print("=" * 80)
+    print("Using SQLite fallback (data/market_data.db)")
+    print("For production data, set DATABASE_URL to Railway PostgreSQL:")
+    print("  export DATABASE_URL='postgresql://...'")
+    print("See SYSTEM_DESIGN.md for architecture details.")
+    print("=" * 80)
+    print()
+
 ROOT = Path(__file__).resolve().parent
 LOGS = ROOT / "logs"
 MODELS = ROOT / "models"

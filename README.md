@@ -17,7 +17,7 @@ It bridges the gap between traditional financial modeling and intelligent automa
 
 ## 📈 Model Performance
 
-### Current Production Metrics (Feb 2026)
+### Current Production Metrics (March 2026)
 
 | Metric | Value | Benchmark |
 |--------|-------|-----------|
@@ -58,6 +58,7 @@ It bridges the gap between traditional financial modeling and intelligent automa
 | + Macro (FINAL) | 164 | 62.3% | +3.9% |
 
 > See `docs/METRICS_SUMMARY.md` for detailed breakdown of all metrics, features, and model strengths.
+> See `SYSTEM_DESIGN.md` for architecture and canonical file references.
 
 ---
 
@@ -77,16 +78,30 @@ It bridges the gap between traditional financial modeling and intelligent automa
 ## 🧩 Architecture
 
 ```
-DATA SOURCES -> FEATURE ENGINEERING -> MODEL TRAINING -> PREDICTION -> BACKTESTING -> OPTIMIZATION
-│                     │                          │                    │                     │
-│                     │                          │                    │                     │
-│              utils.py + external_signals.py     │                    │                     │
-│                         train.py                │                    │                     │
-│                                  predict.py      │                    │                     │
-│                                           backtest.py -> sweep_runner.py
-│
-└── run_all.py  (Master pipeline orchestrator)
+┌─────────────────────────────────────────────────────────────┐
+│                   Railway PostgreSQL                         │
+│              (PRIMARY DATA STORE)                            │
+└──────────────────────────┬──────────────────────────────────┘
+                           │
+              ┌────────────┴────────────┐
+              │   DataManager           │
+              │   (core/data_manager_   │
+              │    postgres.py)         │
+              └────────────┬────────────┘
+                           │
+              ┌────────────▼────────────┐
+              │   Feature Engineering   │
+              │   build_feature_table.py│
+              └────────────┬────────────┘
+                           │
+    ┌──────────┬───────────┼───────────┬──────────┐
+    │          │           │           │          │
+    ▼          ▼           ▼           ▼          ▼
+train.py  predict.py  backtest.py  dashboard_   api_server.py
+                                   comprehensive.py
 ```
+
+> See `SYSTEM_DESIGN.md` for complete architecture documentation.
 
 ---
 
@@ -94,18 +109,35 @@ DATA SOURCES -> FEATURE ENGINEERING -> MODEL TRAINING -> PREDICTION -> BACKTESTI
 
 ```
 .
-├── configs/              # Parameter and sweep configurations
-├── data/                 # Market and macroeconomic datasets
-├── logs/                 # Predictions, backtests, and optimization results
-├── models/               # Trained model files (XGBoost / RandomForest)
-├── train.py              # Model training pipeline
-├── predict.py            # Live and historical prediction module
-├── backtest.py           # Capital simulation and evaluation
-├── external_signals.py   # Reddit, NewsAPI, and FRED integration
-├── sweep_runner.py       # Threshold optimization sweeps
-├── utils.py              # Shared helper and feature functions
-├── run_all.py            # Full end-to-end pipeline
-└── .env                  # Environment variables (API keys)
+├── SYSTEM_DESIGN.md          # Architecture & single source of truth
+├── config.py                 # Global configuration (canonical)
+├── train.py                  # Model training entry point (canonical)
+├── predict.py                # Prediction entry point (canonical)
+├── backtest.py               # Backtesting entry point (canonical)
+├── main.py                   # Interactive menu
+├── neurovest_cli.py          # CLI interface
+├── build_feature_table.py    # Feature engineering (canonical)
+├── dashboard_comprehensive.py # Streamlit dashboard
+│
+├── core/                     # Core modules
+│   ├── data_manager_postgres.py  # Data management (PostgreSQL/SQLite)
+│   ├── data_pipeline.py          # Training pipeline
+│   ├── prediction_engine.py      # Prediction system
+│   └── models/base_models.py     # Model architectures
+│
+├── config/assets.yaml        # Asset definitions (59 assets)
+├── configs/                  # Trading profiles & thresholds
+├── data/                     # Local data cache
+├── logs/                     # Predictions & metrics
+├── models/                   # Trained model files
+│
+├── docs/
+│   └── METRICS_SUMMARY.md    # Detailed performance metrics
+│
+└── archive/                  # Deprecated code (DO NOT USE)
+    ├── legacy_scripts/
+    ├── train_scripts/
+    └── predict_scripts/
 ```
 
 ---
@@ -122,6 +154,10 @@ DATA SOURCES -> FEATURE ENGINEERING -> MODEL TRAINING -> PREDICTION -> BACKTESTI
 ### Environment Variables
 Create a `.env` file in the project root with your credentials:
 ```bash
+# Required for production (Railway PostgreSQL)
+DATABASE_URL=postgresql://user:pass@host:port/db
+
+# Optional integrations
 TELEGRAM_TOKEN=your_telegram_token
 TELEGRAM_CHAT_ID=your_chat_id
 REDDIT_CLIENT_ID=your_reddit_id
@@ -130,6 +166,8 @@ REDDIT_USER_AGENT=your_agent
 NEWSAPI_KEY=your_newsapi_key
 FRED_API_KEY=your_fred_api_key
 ```
+
+> **Note:** Without `DATABASE_URL`, the system falls back to local SQLite which may show empty data.
 
 ### Quick Start
 ```bash
@@ -187,8 +225,9 @@ python3 evaluate_targets.py           # Test labeling strategies
 
 ## 🧭 Development Status
 
-**Version:** Beta 1.0
+**Version:** Beta 1.1
 **Stage:** Production - Full ML pipeline deployed on Railway with automated scheduling.
+**Last Updated:** March 2026
 
 ### Completed
 - End-to-end pipeline: data → model → prediction → evaluation

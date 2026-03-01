@@ -2,8 +2,23 @@
 """
 Check which assets are missing predictions and why
 """
+import os
 import sys
 sys.path.insert(0, '.')
+
+# ─── DATABASE_URL Check ─────────────────────────────────────────────────────
+# Railway PostgreSQL is the primary data store. SQLite is fallback only.
+if not os.environ.get("DATABASE_URL"):
+    print("=" * 80)
+    print("⚠️  WARNING: DATABASE_URL not set")
+    print("=" * 80)
+    print("Using SQLite fallback (data/market_data.db)")
+    print("For production data, set DATABASE_URL to Railway PostgreSQL:")
+    print("  export DATABASE_URL='postgresql://...'")
+    print("See SYSTEM_DESIGN.md for architecture details.")
+    print("=" * 80)
+    print()
+
 from core.data_manager_postgres import DataManager
 
 dm = DataManager()
