@@ -216,8 +216,8 @@ def _load_external_asset(ticker: str, ext_dir: Path = None) -> pd.DataFrame:
                         df['date'] = pd.to_datetime(df['date'])
                         df = df.set_index('date')
                     return df
-            except Exception:
-                pass
+                except Exception:
+                    pass
     return None
 
 
