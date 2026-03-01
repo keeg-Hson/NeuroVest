@@ -2,6 +2,7 @@
 
 **Last Updated:** 2026-03-01
 **Source of Truth:** This document consolidates metrics from `config.py`, `configs/best_thresholds.json`, and latest evaluation runs.
+**Accuracy Alignment:** All accuracy metrics now computed from `logs/labeled_predictions.csv` (same source for evaluate.py and backtest).
 **Architecture:** See `SYSTEM_DESIGN.md` for canonical file references.
 
 ---
@@ -24,12 +25,12 @@
 
 | Metric | Value | Notes |
 |--------|-------|-------|
-| **Accuracy** | 78.62% | On 6,511 rows |
+| **Accuracy** | 80.88% | On 6,511 rows |
 | **AUC** | 0.7792 | Area under ROC curve |
 | **Balanced Accuracy** | 62.33% | Accounts for class imbalance |
-| **Precision (Class 1)** | 86.99% | When model predicts long |
-| **Recall (Class 1)** | 26.15% | Of actual events captured |
-| **F1 Score (Class 1)** | 0.402 | Harmonic mean |
+| **Precision (Class 1)** | 81.29% | When model predicts long |
+| **Recall (Class 1)** | 39.55% | Of actual events captured |
+| **F1 Score (Class 1)** | 0.516 | Harmonic mean |
 
 ### Prediction Distribution
 - **PredLong=0**: 5,973 (91.7%)
@@ -49,7 +50,7 @@
 | **Calmar Ratio** | 35.37 | - |
 | **Profit Factor** | 1.87 | - |
 | **Total Trades** | 50 | - |
-| **Model Accuracy** | 69.85% | - |
+| **Model Accuracy** | 80.88% | Aligned with evaluate.py |
 
 ---
 
@@ -130,14 +131,14 @@ From `compare_strategies.py`:
 
 1. **Risk-Adjusted Returns**: Sharpe of 2.55 vs 0.42 buy-and-hold (6x better)
 2. **Drawdown Protection**: -5.4% max DD vs -55% buy-and-hold (90% reduction)
-3. **Precision-Focused**: 87% precision when model signals a trade
+3. **Precision-Focused**: 81% precision when model signals a trade
 4. **Regime Awareness**: 11 regime features detect bull/bear/volatility environments
 5. **Multi-Asset Learning**: Trained on 10,500+ samples across 40+ assets
 6. **Realistic Costs**: Backtests include 2 bps fees + 3 bps slippage
 
 ### Trade-offs (Known Limitations)
 
-1. **Low Recall** (26%): Model misses many opportunities (by design - precision focus)
+1. **Moderate Recall** (40%): Model captures ~40% of opportunities (precision focus)
 2. **Few Trades**: ~50 trades total (quality over quantity)
 3. **Conservative**: Threshold 0.45 filters out lower-confidence signals
 4. **Asset Variation**: SOL per-asset model outperforms multi-asset (91% vs 54% win rate)
@@ -145,8 +146,8 @@ From `compare_strategies.py`:
 ### Strategy Rationale
 
 The model prioritizes **precision over recall**:
-- When it signals, it's right ~87% of the time
-- It only signals 8.3% of days (538 of 6,511)
+- When it signals, it's right ~81% of the time
+- It captures ~40% of actual positive events
 - Position sizing matters more than signal frequency
 - This matches a "weak but real edge" trading philosophy
 
