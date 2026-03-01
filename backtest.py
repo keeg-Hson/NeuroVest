@@ -65,6 +65,51 @@ def _to_jsonable(x):
     return x
 
 
+def _compute_classification_accuracy() -> dict:
+    """
+    Compute classification accuracy from logs/labeled_predictions.csv.
+
+    ALIGNMENT NOTE (Mar 2026): This uses the same methodology as evaluate.py
+    to ensure accuracy metrics are consistent across the codebase.
+
+    Returns dict with accuracy, precision, recall, f1 or empty dict if unavailable.
+    """
+    pred_path = Path("logs/labeled_predictions.csv")
+    if not pred_path.exists():
+        return {}
+
+    try:
+        df = pd.read_csv(pred_path)
+        if "PredLong" not in df.columns or "Actual_Event" not in df.columns:
+            return {}
+
+        # Same calculation as evaluate.py
+        total = len(df)
+        if total == 0:
+            return {}
+
+        correct = (df["PredLong"] == df["Actual_Event"]).sum()
+        accuracy = correct / total
+
+        # Precision/Recall for positive class (PredLong=1)
+        tp = ((df["PredLong"] == 1) & (df["Actual_Event"] == 1)).sum()
+        fp = ((df["PredLong"] == 1) & (df["Actual_Event"] == 0)).sum()
+        fn = ((df["PredLong"] == 0) & (df["Actual_Event"] == 1)).sum()
+
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+
+        return {
+            "model_accuracy": accuracy,  # Aligned with evaluate.py
+            "model_precision": precision,
+            "model_recall": recall,
+            "model_f1": f1,
+        }
+    except Exception:
+        return {}
+
+
 def save_run_record(
     config: dict,
     metrics: dict,
@@ -845,6 +890,10 @@ def run_backtest(
             "max_drawdown": 0.0,
             "profit_factor": 0.0,
         }
+        # Add classification accuracy even with zero trades (aligned with evaluate.py)
+        classification_metrics = _compute_classification_accuracy()
+        if classification_metrics:
+            zero.update(classification_metrics)
         return pd.DataFrame(), zero, simulate_mode
 
     # ── 11) Compute metrics ────────────────────────────────────────────────────
@@ -968,6 +1017,11 @@ def run_backtest(
         "alpha": alpha,
         "alpha_annual": alpha_annual,
     }
+
+    # Add classification accuracy (aligned with evaluate.py methodology)
+    classification_metrics = _compute_classification_accuracy()
+    if classification_metrics:
+        metrics.update(classification_metrics)
 
     # --- Optional top-K per week/month to force activity ---
     TOPK_MODE = os.getenv("BT_TOPK_MODE", "").strip().lower()  # "week" or "month" or ""

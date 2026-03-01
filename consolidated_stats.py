@@ -432,6 +432,8 @@ def main():
             issues.append(f"DATA: {issue}")
 
     # Accuracy discrepancy check
+    # NOTE (Mar 2026): Both sources now compute accuracy from logs/labeled_predictions.csv
+    # for alignment. If a mismatch is still flagged, it indicates stale data in one source.
     if model_metrics.get("accuracy") and backtest_metrics.get("model_accuracy"):
         # model_accuracy from backtest may be stored as percentage (e.g., 80.88)
         # while model_metrics["accuracy"] is a decimal (e.g., 0.8088)
@@ -442,7 +444,7 @@ def main():
         diff = abs(model_metrics["accuracy"] - backtest_acc)
         if diff > 0.05:
             issues.append(f"ACCURACY MISMATCH: evaluate.py ({model_metrics['accuracy']:.1%}) vs backtest ({backtest_acc:.1%})")
-            recommendations.append("Ensure same threshold/data used in both evaluations")
+            recommendations.append("Re-run: python generate_backtest_metrics.py to sync with evaluate.py")
 
     if issues:
         print("\n   ⚠ ISSUES FOUND:")

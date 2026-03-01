@@ -2,11 +2,60 @@
 """
 Generate comprehensive backtest metrics from existing model results
 Analyzes predictions and creates detailed performance statistics
+
+ALIGNMENT NOTE (Mar 2026):
+Model accuracy is now computed from logs/labeled_predictions.csv (same as evaluate.py)
+to ensure consistency between evaluate.py and backtest metrics. Falls back to
+all_models_comparison.csv only if labeled_predictions.csv is unavailable.
 """
 
 import csv
 import json
 from pathlib import Path
+
+import pandas as pd
+
+
+def _compute_accuracy_from_labeled_predictions() -> dict | None:
+    """
+    Compute model metrics from logs/labeled_predictions.csv.
+    This is the same source evaluate.py uses, ensuring alignment.
+    Returns dict with accuracy, precision, recall, f1 or None if unavailable.
+    """
+    pred_path = Path("logs/labeled_predictions.csv")
+    if not pred_path.exists():
+        return None
+
+    try:
+        df = pd.read_csv(pred_path)
+        if "PredLong" not in df.columns or "Actual_Event" not in df.columns:
+            return None
+
+        # Same calculation as evaluate.py / consolidated_stats.py
+        total = len(df)
+        correct = (df["PredLong"] == df["Actual_Event"]).sum()
+        accuracy = correct / total if total > 0 else 0
+
+        # Precision/Recall for positive class (PredLong=1)
+        tp = ((df["PredLong"] == 1) & (df["Actual_Event"] == 1)).sum()
+        fp = ((df["PredLong"] == 1) & (df["Actual_Event"] == 0)).sum()
+        fn = ((df["PredLong"] == 0) & (df["Actual_Event"] == 1)).sum()
+
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+
+        return {
+            "accuracy": accuracy,
+            "precision": precision,
+            "recall": recall,
+            "f1": f1,
+            "source": "logs/labeled_predictions.csv"
+        }
+    except Exception as e:
+        print(f"[warn] Could not read labeled_predictions.csv: {e}")
+        return None
+
 
 def calculate_comprehensive_metrics():
     """Calculate all important backtest metrics from available data"""
@@ -26,10 +75,22 @@ def calculate_comprehensive_metrics():
     win_rate = float(best_model['Win_Rate']) * 100
     avg_profit = float(best_model['Avg_Profit_Per_Trade'])
     n_trades = int(best_model['N_Trades'])
-    accuracy = float(best_model['Accuracy']) * 100
-    precision = float(best_model['Precision']) * 100
-    recall = float(best_model['Recall']) * 100
-    f1 = float(best_model['F1_Score']) * 100
+
+    # ALIGNED METRICS: Prefer labeled_predictions.csv (same as evaluate.py)
+    labeled_metrics = _compute_accuracy_from_labeled_predictions()
+    if labeled_metrics:
+        accuracy = labeled_metrics["accuracy"] * 100
+        precision = labeled_metrics["precision"] * 100
+        recall = labeled_metrics["recall"] * 100
+        f1 = labeled_metrics["f1"] * 100
+        print(f"[info] Using accuracy from {labeled_metrics['source']} (aligned with evaluate.py)")
+    else:
+        # Fallback to all_models_comparison.csv
+        accuracy = float(best_model['Accuracy']) * 100
+        precision = float(best_model['Precision']) * 100
+        recall = float(best_model['Recall']) * 100
+        f1 = float(best_model['F1_Score']) * 100
+        print("[info] Using accuracy from all_models_comparison.csv (fallback)")
 
     # Calculate comprehensive metrics based on 25-year SPY backtest
     # These are realistic estimates based on the model performance
