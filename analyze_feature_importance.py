@@ -25,6 +25,63 @@ except ImportError:
 import lightgbm as lgb
 import xgboost as xgb
 
+# Try importing joblib for alternative model loading
+try:
+    import joblib
+except ImportError:
+    joblib = None
+
+
+def load_model_robust(model_path):
+    """
+    Load a model file using multiple methods.
+    Handles pickle, joblib, and native model formats.
+    """
+    model_path = Path(model_path)
+    errors = []
+
+    # Method 1: Try standard pickle
+    try:
+        with open(model_path, 'rb') as f:
+            return pickle.load(f)
+    except Exception as e:
+        errors.append(f"pickle: {e}")
+
+    # Method 2: Try joblib if available
+    if joblib is not None:
+        try:
+            return joblib.load(model_path)
+        except Exception as e:
+            errors.append(f"joblib: {e}")
+
+    # Method 3: Try LightGBM native loading
+    if 'lightgbm' in str(model_path).lower() or 'lgb' in str(model_path).lower():
+        try:
+            return lgb.Booster(model_file=str(model_path))
+        except Exception as e:
+            errors.append(f"lightgbm native: {e}")
+
+    # Method 4: Try XGBoost native loading
+    if 'xgboost' in str(model_path).lower() or 'xgb' in str(model_path).lower():
+        try:
+            model = xgb.Booster()
+            model.load_model(str(model_path))
+            return model
+        except Exception as e:
+            errors.append(f"xgboost native: {e}")
+
+    # Method 5: Try with different pickle protocols
+    for protocol in [4, 3, 2]:
+        try:
+            import pickle as pk
+            with open(model_path, 'rb') as f:
+                return pk.load(f)
+        except Exception:
+            pass
+
+    raise RuntimeError(f"Could not load model from {model_path}. Errors: {'; '.join(errors)}")
+
+
 # Import from utils
 from utils import load_SPY_data, add_features, finalize_features, add_forward_returns_and_labels
 from train import TRAIN_CFG
@@ -108,20 +165,54 @@ print("ANALYZING MODEL-SPECIFIC FEATURE IMPORTANCE")
 print("=" * 80)
 print()
 
+# Helper function to get model feature names
+def get_model_features(model, fallback_features):
+    """Get feature names from model, return fallback if not available."""
+    # Try LightGBM
+    if hasattr(model, 'feature_name_'):
+        return model.feature_name_
+    # Try XGBoost
+    if hasattr(model, 'feature_names_in_'):
+        return list(model.feature_names_in_)
+    # Try CatBoost
+    if hasattr(model, 'feature_names_'):
+        return model.feature_names_
+    # Try booster for XGBoost/LightGBM
+    if hasattr(model, 'get_booster') and hasattr(model.get_booster(), 'feature_names'):
+        return model.get_booster().feature_names
+    # Fallback: use number of features to determine
+    n_features = None
+    if hasattr(model, 'n_features_in_'):
+        n_features = model.n_features_in_
+    elif hasattr(model, 'n_features_'):
+        n_features = model.n_features_
+    elif hasattr(model, 'num_features'):
+        n_features = model.num_features()
+
+    if n_features and n_features <= len(fallback_features):
+        return fallback_features[:n_features]
+    return fallback_features
+
 # 1. LightGBM Multi-Asset Model
 print("[1/3] LightGBM Multi-Asset Model...")
 try:
     model_path = MODELS_DIR / "lightgbm_multi_asset.pkl"
     if not model_path.exists():
         model_path = MODELS_DIR / "lightgbm_regime.pkl"  # fallback
-    with open(model_path, 'rb') as f:
-        lgb_model = pickle.load(f)
+    lgb_model = load_model_robust(model_path)
+
+    # Get the features this model expects
+    model_features = get_model_features(lgb_model, feature_cols)
+    # Filter to common features
+    common_features = [f for f in model_features if f in feature_cols]
+    if not common_features:
+        common_features = feature_cols[:len(model_features)] if len(model_features) < len(feature_cols) else feature_cols
 
     # SHAP analysis on subset
     sample_size = min(500, len(X_test))
-    X_sample = X_test.sample(n=sample_size, random_state=42)
+    X_sample = X_test[common_features].sample(n=sample_size, random_state=42)
 
-    print(f"   Computing SHAP values for {sample_size} samples...")
+    print(f"   Computing SHAP values for {sample_size} samples ({len(common_features)} features)...")
     explainer = shap.TreeExplainer(lgb_model)
     shap_values = explainer.shap_values(X_sample)
 
@@ -130,18 +221,24 @@ try:
         shap_values = shap_values[1]  # For binary classification
 
     mean_shap = np.abs(shap_values).mean(axis=0)
-    importance_results['LightGBM_SHAP'] = pd.Series(mean_shap, index=feature_cols)
+    # Create series with correct feature alignment
+    if len(mean_shap) == len(common_features):
+        importance_results['LightGBM_SHAP'] = pd.Series(mean_shap, index=common_features)
+    else:
+        print(f"   ⚠️  Feature count mismatch: SHAP values={len(mean_shap)}, features={len(common_features)}")
+        importance_results['LightGBM_SHAP'] = pd.Series(mean_shap, index=[f"feature_{i}" for i in range(len(mean_shap))])
 
     print(f"   ✅ Analyzed {sample_size} samples")
     top5 = importance_results['LightGBM_SHAP'].nlargest(5)
     for feat, val in top5.items():
         print(f"      {feat}: {val:.4f}")
-        
+
     # Also get built-in importance
     if hasattr(lgb_model, 'feature_importance'):
         lgb_importances = lgb_model.feature_importance(importance_type='gain')
-        importance_results['LGB_Gain'] = pd.Series(lgb_importances, index=feature_cols)
-        print(f"   ✅ Extracted LightGBM gain importance")
+        if len(lgb_importances) == len(common_features):
+            importance_results['LGB_Gain'] = pd.Series(lgb_importances, index=common_features)
+            print(f"   ✅ Extracted LightGBM gain importance")
 except Exception as e:
     print(f"   ⚠️  Error: {e}")
 print()
@@ -152,28 +249,39 @@ try:
     model_path = MODELS_DIR / "xgboost_multi_asset.pkl"
     if not model_path.exists():
         model_path = MODELS_DIR / "xgboost_regime.pkl"  # fallback
-    with open(model_path, 'rb') as f:
-        xgb_model = pickle.load(f)
+    xgb_model = load_model_robust(model_path)
+
+    # Get the features this model expects
+    model_features = get_model_features(xgb_model, feature_cols)
+    common_features = [f for f in model_features if f in feature_cols]
+    if not common_features:
+        common_features = feature_cols[:len(model_features)] if len(model_features) < len(feature_cols) else feature_cols
 
     sample_size = min(500, len(X_test))
-    X_sample = X_test.sample(n=sample_size, random_state=42)
+    X_sample = X_test[common_features].sample(n=sample_size, random_state=42)
 
-    print(f"   Computing SHAP values for {sample_size} samples...")
+    print(f"   Computing SHAP values for {sample_size} samples ({len(common_features)} features)...")
     explainer = shap.TreeExplainer(xgb_model)
     shap_values = explainer.shap_values(X_sample)
 
     mean_shap = np.abs(shap_values).mean(axis=0)
-    importance_results['XGBoost_SHAP'] = pd.Series(mean_shap, index=feature_cols)
+    # Create series with correct feature alignment
+    if len(mean_shap) == len(common_features):
+        importance_results['XGBoost_SHAP'] = pd.Series(mean_shap, index=common_features)
+    else:
+        print(f"   ⚠️  Feature count mismatch: SHAP values={len(mean_shap)}, features={len(common_features)}")
+        importance_results['XGBoost_SHAP'] = pd.Series(mean_shap, index=[f"feature_{i}" for i in range(len(mean_shap))])
 
     print(f"   ✅ Analyzed {sample_size} samples")
     top5 = importance_results['XGBoost_SHAP'].nlargest(5)
     for feat, val in top5.items():
         print(f"      {feat}: {val:.4f}")
-        
+
     # Also get built-in importance
     if hasattr(xgb_model, 'feature_importances_'):
-        importance_results['XGB_Gain'] = pd.Series(xgb_model.feature_importances_, index=feature_cols)
-        print(f"   ✅ Extracted XGBoost gain importance")
+        if len(xgb_model.feature_importances_) == len(common_features):
+            importance_results['XGB_Gain'] = pd.Series(xgb_model.feature_importances_, index=common_features)
+            print(f"   ✅ Extracted XGBoost gain importance")
 except Exception as e:
     print(f"   ⚠️  Error: {e}")
 print()
@@ -184,13 +292,18 @@ try:
     model_path = MODELS_DIR / "catboost_multi_asset.pkl"
     if not model_path.exists():
         raise FileNotFoundError(f"Model not found: {model_path}")
-    with open(model_path, 'rb') as f:
-        cb_model = pickle.load(f)
+    cb_model = load_model_robust(model_path)
+
+    # Get the features this model expects
+    model_features = get_model_features(cb_model, feature_cols)
+    common_features = [f for f in model_features if f in feature_cols]
+    if not common_features:
+        common_features = feature_cols[:len(model_features)] if len(model_features) < len(feature_cols) else feature_cols
 
     sample_size = min(500, len(X_test))
-    X_sample = X_test.sample(n=sample_size, random_state=42)
+    X_sample = X_test[common_features].sample(n=sample_size, random_state=42)
 
-    print(f"   Computing SHAP values for {sample_size} samples...")
+    print(f"   Computing SHAP values for {sample_size} samples ({len(common_features)} features)...")
     explainer = shap.TreeExplainer(cb_model)
     shap_values = explainer.shap_values(X_sample)
 
@@ -198,7 +311,12 @@ try:
         shap_values = shap_values[1]  # For binary classification
 
     mean_shap = np.abs(shap_values).mean(axis=0)
-    importance_results['CatBoost_SHAP'] = pd.Series(mean_shap, index=feature_cols)
+    # Create series with correct feature alignment
+    if len(mean_shap) == len(common_features):
+        importance_results['CatBoost_SHAP'] = pd.Series(mean_shap, index=common_features)
+    else:
+        print(f"   ⚠️  Feature count mismatch: SHAP values={len(mean_shap)}, features={len(common_features)}")
+        importance_results['CatBoost_SHAP'] = pd.Series(mean_shap, index=[f"feature_{i}" for i in range(len(mean_shap))])
 
     print(f"   ✅ Analyzed {sample_size} samples")
     top5 = importance_results['CatBoost_SHAP'].nlargest(5)
@@ -207,8 +325,9 @@ try:
 
     # Also get built-in importance
     if hasattr(cb_model, 'feature_importances_'):
-        importance_results['CB_Gain'] = pd.Series(cb_model.feature_importances_, index=feature_cols)
-        print(f"   ✅ Extracted CatBoost gain importance")
+        if len(cb_model.feature_importances_) == len(common_features):
+            importance_results['CB_Gain'] = pd.Series(cb_model.feature_importances_, index=common_features)
+            print(f"   ✅ Extracted CatBoost gain importance")
 except Exception as e:
     print(f"   ⚠️  Error: {e}")
 print()

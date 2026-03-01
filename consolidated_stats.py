@@ -433,9 +433,15 @@ def main():
 
     # Accuracy discrepancy check
     if model_metrics.get("accuracy") and backtest_metrics.get("model_accuracy"):
-        diff = abs(model_metrics["accuracy"] - backtest_metrics["model_accuracy"])
+        # model_accuracy from backtest may be stored as percentage (e.g., 80.88)
+        # while model_metrics["accuracy"] is a decimal (e.g., 0.8088)
+        backtest_acc = backtest_metrics["model_accuracy"]
+        if backtest_acc > 1:
+            backtest_acc = backtest_acc / 100  # Convert percentage to decimal
+
+        diff = abs(model_metrics["accuracy"] - backtest_acc)
         if diff > 0.05:
-            issues.append(f"ACCURACY MISMATCH: evaluate.py ({model_metrics['accuracy']:.1%}) vs backtest ({backtest_metrics['model_accuracy']:.1%})")
+            issues.append(f"ACCURACY MISMATCH: evaluate.py ({model_metrics['accuracy']:.1%}) vs backtest ({backtest_acc:.1%})")
             recommendations.append("Ensure same threshold/data used in both evaluations")
 
     if issues:
