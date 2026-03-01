@@ -19,6 +19,7 @@ Usage:
 import warnings
 warnings.filterwarnings('ignore')
 
+import json
 import sys
 import subprocess
 from pathlib import Path
@@ -27,6 +28,34 @@ import time
 
 import pandas as pd
 import numpy as np
+
+
+def load_real_metrics() -> dict:
+    """Load actual metrics from logs/latest.json"""
+    metrics_path = Path("logs/latest.json")
+    default_metrics = {
+        "total_return": 0,
+        "sharpe_ratio": 0,
+        "max_drawdown": 0,
+        "model_accuracy": 0,
+        "wf_accuracy": 0,
+        "win_rate": 0,
+        "total_trades": 0,
+        "years_tested": 0,
+    }
+
+    if metrics_path.exists():
+        try:
+            with open(metrics_path) as f:
+                return json.load(f)
+        except Exception:
+            pass
+
+    return default_metrics
+
+
+# Load real metrics at module level
+METRICS = load_real_metrics()
 
 # Authentication and custom asset management
 from auth_middleware import AuthManager, save_custom_asset_to_db
@@ -484,15 +513,22 @@ def show_overview():
         """, unsafe_allow_html=True)
 
     with col2:
-        st.markdown("""
+        # Use real metrics from logs/latest.json
+        total_ret = METRICS.get('total_return', 0)
+        sharpe = METRICS.get('sharpe_ratio', 0)
+        max_dd = METRICS.get('max_drawdown', 0)
+        wf_acc = METRICS.get('wf_accuracy', METRICS.get('model_accuracy', 0))
+        win_rate = METRICS.get('win_rate', 0)
+        years = METRICS.get('years_tested', 15)
+        st.markdown(f"""
         <div class="info-card">
             <h3>Proven Results</h3>
             <p>
-                <strong>25-year SPY backtest:</strong><br>
-                • 191% total return, 2.55 Sharpe ratio<br>
-                • -5.4% max drawdown (vs -55% buy-hold)<br>
-                • 69.85% model accuracy, 54% win rate<br>
-                • Risk-adjusted returns beat buy-hold by 467%
+                <strong>{years:.0f}-year SPY backtest:</strong><br>
+                • {total_ret:.1f}% total return, {sharpe:.2f} Sharpe ratio<br>
+                • {max_dd:.1f}% max drawdown<br>
+                • {wf_acc:.1f}% walk-forward accuracy, {win_rate:.1f}% win rate<br>
+                • Out-of-sample validated performance
             </p>
         </div>
         """, unsafe_allow_html=True)
