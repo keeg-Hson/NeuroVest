@@ -125,7 +125,14 @@ def collect_backtest_metrics() -> dict:
         try:
             with open(latest_path) as f:
                 data = json.load(f)
-            metrics.update(data.get("metrics", {}))
+            # Handle both formats:
+            # 1) backtest.py format: {"metrics": {...}, "config": {...}}
+            # 2) generate_backtest_metrics.py format: {"total_return": ..., ...}
+            if "metrics" in data:
+                metrics.update(data.get("metrics", {}))
+            else:
+                # Direct format from generate_backtest_metrics.py
+                metrics.update(data)
             metrics["source"] = "logs/latest.json"
         except Exception:
             pass
@@ -138,7 +145,10 @@ def collect_backtest_metrics() -> dict:
             with open(history_path) as f:
                 for line in f:
                     if line.strip():
-                        runs.append(json.load(json.loads(line) if isinstance(line, str) else line))
+                        try:
+                            runs.append(json.loads(line))
+                        except json.JSONDecodeError:
+                            pass
             metrics["historical_runs"] = len(runs)
         except Exception:
             pass
@@ -296,7 +306,7 @@ def main():
         if imbalance > 0.15:
             print(f"\n   ⚠ WARNING: Prediction imbalance detected!")
             print(f"     Model predicts {model_metrics['pred_ratio']:.1%} long vs {model_metrics['actual_ratio']:.1%} actual")
-            print(f"     Consider lowering threshold from 0.45 to ~0.35")
+            print(f"     Run: python3 evaluate.py to see updated metrics with new threshold")
 
     # ═══════════════════════════════════════════════════════════════════════════
     # SECTION 2: BACKTEST PERFORMANCE
@@ -304,20 +314,45 @@ def main():
     header("BACKTEST PERFORMANCE", "═")
 
     subheader("Returns & Risk")
-    if backtest_metrics:
-        metric_row("Total Return", backtest_metrics.get("total_return", "N/A"))
-        metric_row("Annualized Return", backtest_metrics.get("annualized_return", "N/A"))
-        metric_row("Sharpe Ratio", backtest_metrics.get("sharpe", "N/A"), "ok" if backtest_metrics.get("sharpe", 0) > 1.5 else "warn")
-        metric_row("Sortino Ratio", backtest_metrics.get("sortino", "N/A"))
-        metric_row("Max Drawdown", backtest_metrics.get("max_drawdown", "N/A"), "ok" if abs(backtest_metrics.get("max_drawdown", -1)) < 0.15 else "warn")
-        metric_row("Calmar Ratio", backtest_metrics.get("calmar", "N/A"))
+    if backtest_metrics and backtest_metrics.get("source"):
+        # Handle both key formats (backtest.py vs generate_backtest_metrics.py)
+        total_ret = backtest_metrics.get("total_return", "N/A")
+        annual_ret = backtest_metrics.get("annual_return", backtest_metrics.get("annualized_return", "N/A"))
+        sharpe = backtest_metrics.get("sharpe_ratio", backtest_metrics.get("sharpe", "N/A"))
+        sortino = backtest_metrics.get("sortino_ratio", backtest_metrics.get("sortino", "N/A"))
+        calmar = backtest_metrics.get("calmar_ratio", backtest_metrics.get("calmar", "N/A"))
+        max_dd = backtest_metrics.get("max_drawdown", "N/A")
+
+        # Convert percentage values (total_return=191.0 means 191%)
+        if isinstance(total_ret, (int, float)) and total_ret > 1:
+            total_ret = total_ret / 100  # Convert 191.0 to 1.91
+        if isinstance(annual_ret, (int, float)) and annual_ret > 1:
+            annual_ret = annual_ret / 100
+        if isinstance(max_dd, (int, float)) and max_dd < -1:
+            max_dd = max_dd / 100
+
+        metric_row("Total Return", total_ret)
+        metric_row("Annualized Return", annual_ret)
+        sharpe_val = sharpe if isinstance(sharpe, str) else sharpe
+        metric_row("Sharpe Ratio", sharpe_val, "ok" if isinstance(sharpe_val, (int, float)) and sharpe_val > 1.5 else "warn")
+        metric_row("Sortino Ratio", sortino)
+        dd_val = max_dd if isinstance(max_dd, str) else max_dd
+        metric_row("Max Drawdown", dd_val, "ok" if isinstance(dd_val, (int, float)) and abs(dd_val) < 0.15 else "warn")
+        metric_row("Calmar Ratio", calmar)
 
         subheader("Trade Statistics")
-        metric_row("Total Trades", backtest_metrics.get("trades", "N/A"))
-        metric_row("Win Rate", backtest_metrics.get("win_rate", "N/A"))
-        metric_row("Profit Factor", backtest_metrics.get("profit_factor", "N/A"), "ok" if backtest_metrics.get("profit_factor", 0) > 1.5 else "warn")
+        trades = backtest_metrics.get("total_trades", backtest_metrics.get("trades", "N/A"))
+        win_rate = backtest_metrics.get("win_rate", "N/A")
+        if isinstance(win_rate, (int, float)) and win_rate > 1:
+            win_rate = win_rate / 100  # Convert 54.0 to 0.54
+        pf = backtest_metrics.get("profit_factor", "N/A")
+
+        metric_row("Total Trades", trades)
+        metric_row("Win Rate", win_rate)
+        pf_val = pf if isinstance(pf, str) else pf
+        metric_row("Profit Factor", pf_val, "ok" if isinstance(pf_val, (int, float)) and pf_val > 1.5 else "warn")
     else:
-        print("   ⚠ No backtest metrics found (run backtest.py first)")
+        print("   ⚠ No backtest metrics found (run backtest.py or generate_backtest_metrics.py)")
 
     # ═══════════════════════════════════════════════════════════════════════════
     # SECTION 3: WALK-FORWARD VALIDATION
@@ -378,9 +413,15 @@ def main():
     recommendations = []
 
     # Check for issues
+    current_thresh = config_status.get("thresholds", {}).get("threshold", 0.45)
     if model_metrics.get("recall", 1) < 0.3:
-        issues.append("LOW RECALL: Model only predicting 'long' 8% of time vs 27% actual")
-        recommendations.append("Lower prediction threshold from 0.45 to ~0.35-0.40")
+        pred_pct = model_metrics.get("pred_ratio", 0) * 100
+        actual_pct = model_metrics.get("actual_ratio", 0) * 100
+        issues.append(f"LOW RECALL: Model predicting 'long' {pred_pct:.0f}% of time vs {actual_pct:.0f}% actual")
+        if current_thresh >= 0.40:
+            recommendations.append(f"Lower prediction threshold from {current_thresh} to ~0.35-0.38")
+        else:
+            recommendations.append("Re-run evaluate.py to see updated metrics with new threshold")
 
     if not any(data_status["models"].get(m, {}).get("ok") for m in data_status["models"]):
         issues.append("MODELS MISSING: No trained models found in models/")

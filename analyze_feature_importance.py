@@ -108,10 +108,13 @@ print("ANALYZING MODEL-SPECIFIC FEATURE IMPORTANCE")
 print("=" * 80)
 print()
 
-# 1. LightGBM Regime Model
-print("[1/4] LightGBM Regime Model...")
+# 1. LightGBM Multi-Asset Model
+print("[1/3] LightGBM Multi-Asset Model...")
 try:
-    with open(MODELS_DIR / "lightgbm_regime.pkl", 'rb') as f:
+    model_path = MODELS_DIR / "lightgbm_multi_asset.pkl"
+    if not model_path.exists():
+        model_path = MODELS_DIR / "lightgbm_regime.pkl"  # fallback
+    with open(model_path, 'rb') as f:
         lgb_model = pickle.load(f)
 
     # SHAP analysis on subset
@@ -143,10 +146,13 @@ except Exception as e:
     print(f"   ⚠️  Error: {e}")
 print()
 
-# 2. XGBoost Regime Model
-print("[2/4] XGBoost Regime Model...")
+# 2. XGBoost Multi-Asset Model
+print("[2/3] XGBoost Multi-Asset Model...")
 try:
-    with open(MODELS_DIR / "xgboost_regime.pkl", 'rb') as f:
+    model_path = MODELS_DIR / "xgboost_multi_asset.pkl"
+    if not model_path.exists():
+        model_path = MODELS_DIR / "xgboost_regime.pkl"  # fallback
+    with open(model_path, 'rb') as f:
         xgb_model = pickle.load(f)
 
     sample_size = min(500, len(X_test))
@@ -172,50 +178,37 @@ except Exception as e:
     print(f"   ⚠️  Error: {e}")
 print()
 
-# 3. XGBoost with Cross-Asset
-print("[3/4] XGBoost with Cross-Asset...")
+# 3. CatBoost Multi-Asset Model
+print("[3/3] CatBoost Multi-Asset Model...")
 try:
-    with open(MODELS_DIR / "xgboost_with_cross_asset.pkl", 'rb') as f:
-        xgb_ca_model = pickle.load(f)
+    model_path = MODELS_DIR / "catboost_multi_asset.pkl"
+    if not model_path.exists():
+        raise FileNotFoundError(f"Model not found: {model_path}")
+    with open(model_path, 'rb') as f:
+        cb_model = pickle.load(f)
 
     sample_size = min(500, len(X_test))
     X_sample = X_test.sample(n=sample_size, random_state=42)
 
     print(f"   Computing SHAP values for {sample_size} samples...")
-    explainer = shap.TreeExplainer(xgb_ca_model)
+    explainer = shap.TreeExplainer(cb_model)
     shap_values = explainer.shap_values(X_sample)
 
-    mean_shap = np.abs(shap_values).mean(axis=0)
-    importance_results['XGB_CrossAsset_SHAP'] = pd.Series(mean_shap, index=feature_cols)
-
-    print(f"   ✅ Analyzed {sample_size} samples")
-    top5 = importance_results['XGB_CrossAsset_SHAP'].nlargest(5)
-    for feat, val in top5.items():
-        print(f"      {feat}: {val:.4f}")
-except Exception as e:
-    print(f"   ⚠️  Error: {e}")
-print()
-
-# 4. XGBoost All Features Final
-print("[4/4] XGBoost All Features Final...")
-try:
-    with open(MODELS_DIR / "xgboost_all_features_final.pkl", 'rb') as f:
-        xgb_final_model = pickle.load(f)
-
-    sample_size = min(500, len(X_test))
-    X_sample = X_test.sample(n=sample_size, random_state=42)
-
-    print(f"   Computing SHAP values for {sample_size} samples...")
-    explainer = shap.TreeExplainer(xgb_final_model)
-    shap_values = explainer.shap_values(X_sample)
+    if isinstance(shap_values, list):
+        shap_values = shap_values[1]  # For binary classification
 
     mean_shap = np.abs(shap_values).mean(axis=0)
-    importance_results['XGB_Final_SHAP'] = pd.Series(mean_shap, index=feature_cols)
+    importance_results['CatBoost_SHAP'] = pd.Series(mean_shap, index=feature_cols)
 
     print(f"   ✅ Analyzed {sample_size} samples")
-    top5 = importance_results['XGB_Final_SHAP'].nlargest(5)
+    top5 = importance_results['CatBoost_SHAP'].nlargest(5)
     for feat, val in top5.items():
         print(f"      {feat}: {val:.4f}")
+
+    # Also get built-in importance
+    if hasattr(cb_model, 'feature_importances_'):
+        importance_results['CB_Gain'] = pd.Series(cb_model.feature_importances_, index=feature_cols)
+        print(f"   ✅ Extracted CatBoost gain importance")
 except Exception as e:
     print(f"   ⚠️  Error: {e}")
 print()

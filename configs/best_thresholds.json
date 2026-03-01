@@ -1,12 +1,13 @@
 {
-  "threshold": 0.45,
-  "spike_thresh": 0.45,
-  "crash_thresh": 0.45,
+  "threshold": 0.38,
+  "spike_thresh": 0.38,
+  "crash_thresh": 0.38,
   "confidence_thresh": 0.30,
   "invert_proba": false,
   "meta": {
-    "objective": "max_precision",
-    "note": "Precision-focused threshold for high-accuracy signals. Trade less, be right more.",
-    "timestamp": "2026-02-13T00:00:00"
+    "objective": "balanced_f1",
+    "note": "Balanced threshold for improved recall. Previous 0.45 had 87% precision but only 26% recall (F1=0.40). Target: ~70% precision, ~50% recall (F1>0.55).",
+    "previous_threshold": 0.45,
+    "timestamp": "2026-03-01T00:00:00"
   }
 }
