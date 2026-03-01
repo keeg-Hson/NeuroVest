@@ -17,9 +17,10 @@ from utils import load_SPY_data, load_asset_data
 # Regime-adaptive position sizing (Feb 2026)
 USE_REGIME_POSITION_SIZING = os.getenv("USE_REGIME_SIZING", "1").lower() in ("1", "true", "yes")
 
-subprocess.run(
-    [sys.executable, str(pathlib.Path(__file__).with_name("update_spy_data.py"))], check=False
-)
+# Auto-refresh SPY data on backtest run (optional, silently skips if script missing)
+_update_script = pathlib.Path(__file__).with_name("update_spy_data.py")
+if _update_script.exists():
+    subprocess.run([sys.executable, str(_update_script)], check=False)
 
 
 def _assert_predictions_schema(df: pd.DataFrame) -> None:
