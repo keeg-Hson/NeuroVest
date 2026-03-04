@@ -11,7 +11,6 @@ from predict import live_predict
 from utils import add_features, load_SPY_data, notify_user
 
 INTERVAL_MINUTES = 5  # Configurable prediction interval
-INTERVAL_MINUTES = 5  # Change to however often you want
 
 print(f"🔁 Starting live prediction loop every {INTERVAL_MINUTES} minutes...")
 

@@ -32,20 +32,32 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--assets', nargs='+', help='Specific assets to predict (default: all)')
 args = parser.parse_args()
 
-# Load models
+# Load models (check both naming conventions)
 print("\n📥 Loading ensemble models...")
 models = {}
 for name in ['xgboost', 'lightgbm', 'catboost']:
-    filepath = MODELS_DIR / f"{name}_multi_asset.pkl"
+    # Try new naming convention first (train_unified.py)
+    filepath = MODELS_DIR / f"multi_asset_{name}.pkl"
+    if not filepath.exists():
+        # Fall back to old naming convention
+        filepath = MODELS_DIR / f"{name}_multi_asset.pkl"
     if filepath.exists():
-        models[name] = joblib.load(filepath)
-        print(f"   ✓ {name}")
+        loaded = joblib.load(filepath)
+        # Handle wrapper dict format (from BaseModel.save())
+        if isinstance(loaded, dict) and 'model' in loaded:
+            models[name] = loaded['model']
+            print(f"   ✓ {name} (unwrapped from dict)")
+        else:
+            models[name] = loaded
+            print(f"   ✓ {name}")
 
 if len(models) == 0:
-    raise SystemExit("❌ No models found. Run train_multi_asset.py first.")
+    raise SystemExit("❌ No models found. Run train_unified.py first.")
 
-# Load feature list
+# Load feature list (check both naming conventions)
 feature_file = MODELS_DIR / "multi_asset_features.txt"
+if not feature_file.exists():
+    feature_file = MODELS_DIR / "multi_asset_features.txt"  # Same for both conventions
 if feature_file.exists():
     saved_feats = [line.strip() for line in feature_file.read_text().splitlines() if line.strip()]
     print(f"   Features: {len(saved_feats)}")

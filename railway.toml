@@ -64,7 +64,8 @@ restartPolicyMaxRetries = 10
 
 [[services.env]]
 UPDATE_INTERVAL = "60"
-DATABASE_PATH = "data/market_data.db"
+# Note: DATABASE_URL must be set at project level to use PostgreSQL
+# Reference: ${{Postgres.DATABASE_URL}}
 
 [[services.volumes]]
 name = "neurovest-data"

@@ -70,182 +70,104 @@ def init_labeled_log_file():
 
 
 # --- Feature List ---
-def get_feature_list():
+# Use FeatureRegistry as SINGULAR SOURCE OF TRUTH
+def get_feature_list(include_extended: bool = False):
+    """
+    Get the production feature list.
+
+    This uses FeatureRegistry as the singular source of truth to ensure
+    consistency across dashboard, training, and prediction.
+
+    Args:
+        include_extended: If True, includes experimental macro features
+
+    Returns:
+        List of feature names
+    """
+    try:
+        from core.feature_registry import FeatureRegistry
+        if include_extended:
+            return FeatureRegistry.get_all_features()
+        return FeatureRegistry.get_production_features()
+    except ImportError:
+        # Fallback to hardcoded list if registry not available
+        pass
+
+    # Fallback feature list (matches FeatureRegistry.get_production_features())
     return [
         # Core technical features
-        "MA_20",
-        "EMA_12",
-        "EMA_26",
-        "MACD",
-        "MACD_Signal",
-        "MACD_Histogram",
-        "BB_Width",
-        "Volatility",
-        "OBV",
-        "Vol_Ratio",
-        "Price_Momentum_10",
-        "Acceleration",
-        "RSI",
-        "RSI_Delta",
-        "ZMomentum",
-        "Return_Lag1",
-        "Return_Lag3",
-        "Return_Lag5",
-        "RSI_Lag_1",
-        "RSI_Lag_3",
-        "RSI_Lag_5",
-        "Rolling_STD_5",
-        "Daily_Return",
-        "MACD_x_RSI",
-        "Volume_per_ATR",
-        "Stoch_K",
-        "Stoch_D",
-        "BB_PctB",
-        "KC_Width",
-        "VWAP_Dev",
-        "Ret_Skew_20",
-        "Ret_Kurt_20",
-        # Removed zero-importance sentiment features (analysis Nov 2025):
-        # "Sent_x_Vol", "RSI_x_NewsZ", "RSI_x_RedditZ"
-        # Enhanced features from importance analysis
-        # 1. Feature interactions for top features
-        "BB_Width_x_RSI",
-        "BB_Width_x_Return_Lag1",
-        "BB_Width_x_Vol_Ratio",
-        "Return_Lag1_x_Return_Lag3",
-        "Return_Trend_Strength",
-        "RSI_x_Vol_Ratio",
-        "OBV_x_Return_Lag1",
-        # 2. Enhanced lags for top features
-        "BB_Width_Lag1",
-        "BB_Width_Lag3",
-        "BB_Width_Change",
-        "RSI_Lag7",
-        "RSI_Lag10",
-        "Return_Lag7",
-        "Return_Lag10",
-        "Return_Lag15",
-        # 3. Volatility regime features
-        # Removed: "Vol_Expanding" (zero importance)
-        "Vol_Percentile",
-        "Volatility_Acceleration",
-        "BB_Width_Mean_10",
-        "BB_Width_Std_10",
-        "BB_Width_ZScore",
-        # 4. Return-based enhancements
-        "Return_Momentum_Ratio",
-        "Return_Acceleration",
-        "Positive_Return_Streak",
-        # Removed: "Return_Reversal" (zero importance)
-        # 5. Rolling window statistics
-        "Return_Lag1_MA5",
-        "Return_Lag1_MA10",
-        "Return_Volatility_20",
-        "Return_Skew_10",
-        "Return_Kurt_10",
-        # 6. Volume enhancements
-        "Volume_Momentum_5",
-        "OBV_Change_5",
-        "OBV_Trend",
-        # 7. Cross-sectional features
-        "Return_1d_vs_10d",
-        "Return_3d_vs_10d",
-        # 8. RSI regime features
-        # Removed binary indicators (zero importance): "RSI_Overbought", "RSI_Oversold", "RSI_Neutral"
-        "RSI_Momentum_5",
-        "RSI_ROC_5",
-        # 9. Market regime detection features
-        "MA_200",
-        "Price_vs_MA200",
-        # Removed: "Bull_Market" (zero importance, binary)
-        "MA200_Slope",
-        "MA200_Distance_Vol",
-        "VIX_Percentile",
-        # Removed: "High_Fear" (zero importance, binary)
-        # Removed: "VIX_Spike" (zero importance, binary - keep Vol_Spike from CSV)
-        "VIX_Change",
-        "Vol_Percentile_252",
-        "High_Volatility",
-        # Removed: "MA_20_50_Cross" (zero importance, binary)
-        # Removed: "Pct_Above_MA20" (zero importance, binary)
-        "Near_52w_High",
-        # Removed: "Near_52w_Low" (zero importance)
-        "ADX",
-        "Plus_DI",
-        "Minus_DI",
-        # Removed: "Strong_Trend" (zero importance, binary)
-        "Days_Above_MA20",
-        "Trend_Consistency",
-        "Regime_Score",
-        # 10. Multi-timeframe features (selective - removed redundant short-term)
-        # Removed: "Returns_5d", "Returns_10d" (redundant with Return_Lag5/10)
-        "Returns_50d",  # Keep long-term for regime detection
-        # Removed: "Volatility_5d", "Volatility_10d" (redundant with Rolling_STD_5, Volatility)
-        "Volatility_50d",  # Keep long-term for regime detection
-        # Removed: "RSI_5", "RSI_10" (redundant with RSI, RSI_Lag_1/3/5)
-        "RSI_50",  # Keep long-term for regime detection
-        # 11. Advanced feature interactions (already computed)
-        "RSI_x_Volatility",
-        "Volume_x_Returns",
-        "Volume_x_Volatility",
-        "MACD_divergence",
-        # 12. Enhanced momentum features (removed redundant)
-        # Removed: "ROC_5", "ROC_10" (redundant with Return_Lag5/10)
-        # Removed: "MOM_ratio" (redundant with Return_Momentum_Ratio)
-        # 13. Trend strength indicators (already computed)
-        "Trend_strength_10",
-        "Trend_strength_20",
-        "Trend_strength_50",
-        # 14. Volume profile features (removed redundant)
-        # Removed: "Volume_trend" (redundant with Vol_Ratio)
-        # Removed: "Volume_volatility" (low added value)
-        # 15. Temporal features (removed - binary encodings don't work well with gradient boosting)
-        # Removed: "DayOfWeek_sin", "DayOfWeek_cos", "Month_sin", "Month_cos", "Quarter"
-        # Tree models handle raw temporal features better than cyclic encodings
-        # 16. Cross-asset features (from pre-computed CSV)
-        "Credit_Ratio",
-        "Credit_Change_20d",
-        "Credit_Stress",
-        "Yield_10Y",
-        "Yield_Change_20d",
-        "High_Yield_Regime",
-        "DXY_Level",
-        "DXY_Change_20d",
-        "Strong_Dollar",
-        "Realized_Vol_20",
-        "Realized_Vol_60",
-        "High_Vol_Regime",
-        "Vol_Spike",
-        # 17. Macro features (from pre-computed CSV - selective, continuous over binary)
-        "Macro_10Y_Yield",  # Continuous - KEEP
-        # Removed binary regime flags: "Low_Rate_Regime", "High_Rate_Regime" (prefer continuous)
-        "Rate_Change_3m",  # Continuous - KEEP (was #14 in importance)
-        "Rate_Change_6m",  # Continuous - KEEP
-        "Tightening_Cycle",  # Keep - important for economic modeling
-        "Easing_Cycle",  # Keep - important for economic modeling
-        "Recession_Signal",  # Keep - critical for economic modeling
-        "Recovery_Signal",  # Keep - critical for economic modeling
-        "Inflation_Proxy",  # Continuous - KEEP
-        # Removed: "High_Inflation" (binary version, keep Inflation_Proxy instead)
-        # Removed: "Expansion", "Contraction" (binary, covered by Recession/Recovery signals)
-        "Financial_Stress",  # Keep - important risk indicator
-        # 18. Economic Modeling Interaction Features (Nov 2025)
-        # These capture regime shifts and cross-domain relationships
-        "Near_52w_High_x_Volatility",  # Position × Market stress
-        "Near_52w_High_x_KC_Width",  # Position × Volatility bands
-        "Stoch_K_x_Volatility",  # Momentum × Market stress
-        "Return_Lag3_x_Volatility",  # Returns × Market regime
-        "Return_Lag5_x_ATR",  # Returns × Volatility measure
-        "Near_52w_High_x_Return_Lag3",  # Position × Momentum (trend confirmation)
-        "BB_PctB_x_Stoch_K",  # Bands × Momentum
-        "Credit_Ratio_x_Volatility",  # Credit stress × Market stress
-        "Realized_Vol_60_x_Volatility",  # Cross-asset vol × SPY vol
-        "Rate_Change_3m_x_MA200_Slope",  # Fed policy × Market trend
-        "DXY_Level_x_Return_Lag5",  # Dollar strength × Returns
-        "Yield_10Y_x_Price_vs_MA200",  # Interest rates × Market position
-        "Sent_x_Vol",
-        "RSI_x_NewsZ",
-        "RSI_x_RedditZ",
+        "MA_20", "EMA_12", "EMA_26", "MACD", "MACD_Signal", "MACD_Histogram",
+        "BB_Width", "BB_PctB", "ATR_14", "Stoch_K", "Stoch_D", "RSI", "RSI_Delta",
+        "VWAP_Dev", "KC_Width", "ADX", "Plus_DI", "Minus_DI",
+        # Momentum
+        "Price_Momentum_10", "ZMomentum", "Acceleration", "RSI_Momentum_5",
+        "RSI_ROC_5", "Return_Momentum_Ratio", "Return_Acceleration",
+        # Volatility
+        "Volatility", "Rolling_STD_5", "Vol_Percentile", "Volatility_Acceleration",
+        "BB_Width_Mean_10", "BB_Width_Std_10", "BB_Width_ZScore", "BB_Width_Lag1",
+        "BB_Width_Lag3", "BB_Width_Change", "Vol_Percentile_252", "High_Volatility",
+        "Ret_Skew_20", "Ret_Kurt_20",
+        # Volume
+        "OBV", "Vol_Ratio", "Volume_per_ATR", "Volume_Momentum_5", "OBV_Change_5", "OBV_Trend",
+        # Returns
+        "Daily_Return", "Return_Lag1", "Return_Lag3", "Return_Lag5", "Return_Lag7",
+        "Return_Lag10", "Return_Lag15", "RSI_Lag_1", "RSI_Lag_3", "RSI_Lag_5",
+        "RSI_Lag7", "RSI_Lag10", "Return_Lag1_MA5", "Return_Lag1_MA10",
+        "Return_Volatility_20", "Return_Skew_10", "Return_Kurt_10",
+        "Positive_Return_Streak", "Return_1d_vs_10d", "Return_3d_vs_10d",
+        "Returns_50d", "Volatility_50d", "RSI_50",
+        # Cross-asset (from CSV)
+        "Credit_Ratio", "Credit_Change_20d", "Credit_Stress", "Yield_10Y",
+        "Yield_Change_20d", "High_Yield_Regime", "DXY_Level", "DXY_Change_20d",
+        "Strong_Dollar", "Realized_Vol_20", "Realized_Vol_60", "High_Vol_Regime", "Vol_Spike",
+        # Macro (from CSV)
+        "Macro_10Y_Yield", "Rate_Change_3m", "Rate_Change_6m", "Tightening_Cycle",
+        "Easing_Cycle", "Recession_Signal", "Recovery_Signal", "Inflation_Proxy",
+        "Financial_Stress",
+        # Regime
+        "MA_200", "Price_vs_MA200", "MA200_Slope", "MA200_Distance_Vol", "Near_52w_High",
+        "Days_Above_MA20", "Trend_Consistency", "Regime_Score", "VIX_Percentile",
+        "VIX_Change", "Vol_Regime_Low", "Vol_Regime_Med", "Vol_Regime_High",
+        "Vol_Regime_Change", "Vol_Mean_Reversion", "Risk_On_Score", "Risk_On_Regime",
+        "Regime_MeanRevert", "Regime_Trending", "Regime_StrongTrend", "Trend_Direction",
+        "ADX_Slope", "Trend_Strengthening", "Market_Stress_Index", "High_Stress_Regime",
+        "Dollar_Strengthening", "Yields_Rising", "Credit_Tightening",
+        # Interactions
+        "BB_Width_x_RSI", "BB_Width_x_Return_Lag1", "BB_Width_x_Vol_Ratio",
+        "Return_Lag1_x_Return_Lag3", "Return_Trend_Strength", "RSI_x_Vol_Ratio",
+        "OBV_x_Return_Lag1", "RSI_x_Volatility", "Volume_x_Returns", "Volume_x_Volatility",
+        "MACD_x_RSI", "MACD_divergence", "Near_52w_High_x_Volatility",
+        "Near_52w_High_x_KC_Width", "Stoch_K_x_Volatility", "Return_Lag3_x_Volatility",
+        "Return_Lag5_x_ATR", "Near_52w_High_x_Return_Lag3", "BB_PctB_x_Stoch_K",
+        "Credit_Ratio_x_Volatility", "Realized_Vol_60_x_Volatility",
+        "Rate_Change_3m_x_MA200_Slope", "DXY_Level_x_Return_Lag5",
+        "Yield_10Y_x_Price_vs_MA200", "Trend_x_RiskOn", "HighVol_x_Trending",
+        "Stress_x_Downtrend", "MeanRevert_Opportunity",
+        "Trend_strength_10", "Trend_strength_20", "Trend_strength_50",
+    ]
+
+
+def get_excluded_features():
+    """
+    Get features that should be excluded (zero importance or harmful).
+
+    Returns:
+        List of feature names to exclude
+    """
+    try:
+        from core.feature_registry import FeatureRegistry
+        return FeatureRegistry.get_excluded_features()
+    except ImportError:
+        pass
+
+    # Fallback list
+    return [
+        "RSI_Overbought", "RSI_Oversold", "RSI_Neutral", "Bull_Market",
+        "High_Fear", "VIX_Spike", "MA_20_50_Cross", "Pct_Above_MA20",
+        "Near_52w_Low", "Strong_Trend", "Vol_Expanding", "Return_Reversal",
+        "Low_Rate_Regime", "High_Rate_Regime", "High_Inflation",
+        "Expansion", "Contraction", "Sent_x_Vol", "RSI_x_NewsZ", "RSI_x_RedditZ",
+        "DayOfWeek_sin", "DayOfWeek_cos", "Month_sin", "Month_cos", "Quarter",
     ]
 
 
@@ -562,7 +484,9 @@ def add_features(df):
     d["Volatility"] = d["Daily_Return"].rolling(20).std()
 
     # Moving averages and MACD family
-    d["MA_20"] = d["Close"].rolling(20).mean()
+    # SMA_50 is the primary trend filter (Feb 2026 - replaced MA_20)
+    d["SMA_50"] = d["Close"].rolling(50).mean()
+    d["MA_20"] = d["Close"].rolling(20).mean()  # Kept for compatibility, excluded in production
     d["EMA_12"] = d["Close"].ewm(span=12, adjust=False).mean()
     d["EMA_26"] = d["Close"].ewm(span=26, adjust=False).mean()
     d["MACD"] = d["EMA_12"] - d["EMA_26"]
@@ -660,6 +584,7 @@ def add_features(df):
 
     # ==========================================================================
     # Pre-computed features integration (cross-asset, sentiment, macro)
+    # Uses CROSS_ASSET_COLUMN_MAP from feature_registry for consistency
     # ==========================================================================
 
     # Cross-asset features (HYG, LQD, TNX, DXY correlations and spreads)
@@ -668,22 +593,29 @@ def add_features(df):
         if os.path.exists(cross_path):
             cross = pd.read_csv(cross_path, parse_dates=['Date'])
             cross = cross.set_index('Date')
-            # High-value features with XAsset_ prefix (actual column names)
-            cross_cols_map = {
-                'XAsset_Credit_Ratio': 'Credit_Ratio',
-                'XAsset_Credit_Change_20d': 'Credit_Change_20d',
-                'XAsset_Credit_Stress': 'Credit_Stress',
-                'XAsset_10Y_Yield': 'Yield_10Y',
-                'XAsset_10Y_Change_20d': 'Yield_Change_20d',
-                'XAsset_High_Yield_Regime': 'High_Yield_Regime',
-                'XAsset_DXY': 'DXY_Level',
-                'XAsset_DXY_Change_20d': 'DXY_Change_20d',
-                'XAsset_Strong_Dollar': 'Strong_Dollar',
-                'XAsset_Realized_Vol_20': 'Realized_Vol_20',
-                'XAsset_Realized_Vol_60': 'Realized_Vol_60',
-                'XAsset_High_Vol_Regime': 'High_Vol_Regime',
-                'XAsset_Vol_Spike': 'Vol_Spike',
-            }
+
+            # Try to use feature registry mapping, fallback to hardcoded
+            try:
+                from core.feature_registry import CROSS_ASSET_COLUMN_MAP
+                cross_cols_map = CROSS_ASSET_COLUMN_MAP
+            except ImportError:
+                # Fallback mapping
+                cross_cols_map = {
+                    'XAsset_Credit_Ratio': 'Credit_Ratio',
+                    'XAsset_Credit_Change_20d': 'Credit_Change_20d',
+                    'XAsset_Credit_Stress': 'Credit_Stress',
+                    'XAsset_10Y_Yield': 'Yield_10Y',
+                    'XAsset_10Y_Change_20d': 'Yield_Change_20d',
+                    'XAsset_High_Yield_Regime': 'High_Yield_Regime',
+                    'XAsset_DXY': 'DXY_Level',
+                    'XAsset_DXY_Change_20d': 'DXY_Change_20d',
+                    'XAsset_Strong_Dollar': 'Strong_Dollar',
+                    'XAsset_Realized_Vol_20': 'Realized_Vol_20',
+                    'XAsset_Realized_Vol_60': 'Realized_Vol_60',
+                    'XAsset_High_Vol_Regime': 'High_Vol_Regime',
+                    'XAsset_Vol_Spike': 'Vol_Spike',
+                }
+
             cross_available = cross[[c for c in cross_cols_map.keys() if c in cross.columns]]
             cross_aligned = cross_available.reindex(d.index)
             for old_col, new_col in cross_cols_map.items():
@@ -699,28 +631,41 @@ def add_features(df):
     # Sentiment is already handled via external_signals.py
 
     # Macro features (FRED economic indicators)
+    # Uses MACRO_COLUMN_MAP from feature_registry for consistency
     try:
         macro_path = os.path.join(DATA_DIR, "macro_features.csv")
         if os.path.exists(macro_path):
             macro = pd.read_csv(macro_path, parse_dates=['Date'])
             macro = macro.set_index('Date')
-            # High-value macro features with Macro_ prefix (actual column names)
-            macro_cols_map = {
-                'Macro_10Y_Yield': 'Macro_10Y_Yield',
-                'Macro_Low_Rate_Regime': 'Low_Rate_Regime',
-                'Macro_High_Rate_Regime': 'High_Rate_Regime',
-                'Macro_Rate_Change_3m': 'Rate_Change_3m',
-                'Macro_Rate_Change_6m': 'Rate_Change_6m',
-                'Macro_Tightening_Cycle': 'Tightening_Cycle',
-                'Macro_Easing_Cycle': 'Easing_Cycle',
-                'Macro_Recession_Signal': 'Recession_Signal',
-                'Macro_Recovery_Signal': 'Recovery_Signal',
-                'Macro_Inflation_Proxy': 'Inflation_Proxy',
-                'Macro_High_Inflation': 'High_Inflation',
-                'Macro_Expansion': 'Expansion',
-                'Macro_Contraction': 'Contraction',
-                'Macro_Financial_Stress': 'Financial_Stress',
-            }
+
+            # Try to use feature registry mapping, fallback to hardcoded
+            try:
+                from core.feature_registry import MACRO_COLUMN_MAP
+                macro_cols_map = MACRO_COLUMN_MAP
+            except ImportError:
+                # Core macro features (continuous preferred over binary)
+                macro_cols_map = {
+                    'Macro_10Y_Yield': 'Macro_10Y_Yield',
+                    'Macro_Rate_Change_3m': 'Rate_Change_3m',
+                    'Macro_Rate_Change_6m': 'Rate_Change_6m',
+                    'Macro_Tightening_Cycle': 'Tightening_Cycle',
+                    'Macro_Easing_Cycle': 'Easing_Cycle',
+                    'Macro_Recession_Signal': 'Recession_Signal',
+                    'Macro_Recovery_Signal': 'Recovery_Signal',
+                    'Macro_Inflation_Proxy': 'Inflation_Proxy',
+                    'Macro_Financial_Stress': 'Financial_Stress',
+                    # Extended macro features (for testing via analyze_features.py)
+                    'Macro_Rate_Volatility': 'Macro_Rate_Volatility',
+                    'Macro_Growth_Momentum_3m': 'Macro_Growth_Momentum_3m',
+                    'Macro_Growth_Momentum_6m': 'Macro_Growth_Momentum_6m',
+                    'Macro_Growth_Momentum_1y': 'Macro_Growth_Momentum_1y',
+                    'Macro_Cycle_Position': 'Macro_Cycle_Position',
+                    'Macro_Financial_Conditions_Tight': 'Macro_Financial_Conditions_Tight',
+                    'Macro_Financial_Conditions_Loose': 'Macro_Financial_Conditions_Loose',
+                    'Macro_Policy_Error_Risk': 'Macro_Policy_Error_Risk',
+                    'Macro_Complacency': 'Macro_Complacency',
+                }
+
             macro_available = macro[[c for c in macro_cols_map.keys() if c in macro.columns]]
             macro_aligned = macro_available.reindex(d.index)
             for old_col, new_col in macro_cols_map.items():
@@ -1073,6 +1018,143 @@ def add_features(df):
     if "Yield_10Y" in d.columns and "Price_vs_MA200" in d.columns:
         d["Yield_10Y_x_Price_vs_MA200"] = d["Yield_10Y"] * d["Price_vs_MA200"]
 
+    # =========================================================================
+    # ENHANCED REGIME DETECTION FEATURES
+    # Help model adapt to different market conditions
+    # =========================================================================
+
+    # 1. VOLATILITY REGIME CLASSIFICATION (explicit categories)
+    if "Volatility" in d.columns:
+        # Rolling percentile for regime detection
+        vol_percentile = d["Volatility"].rolling(252, min_periods=60).rank(pct=True)
+
+        # Explicit regime categories (one-hot style for interpretability)
+        d["Vol_Regime_Low"] = (vol_percentile < 0.33).astype(int)
+        d["Vol_Regime_Med"] = ((vol_percentile >= 0.33) & (vol_percentile < 0.67)).astype(int)
+        d["Vol_Regime_High"] = (vol_percentile >= 0.67).astype(int)
+
+        # Volatility regime transitions (important for timing)
+        vol_regime = pd.cut(vol_percentile, bins=[0, 0.33, 0.67, 1.0], labels=[0, 1, 2])
+        d["Vol_Regime_Change"] = (vol_regime != vol_regime.shift(1)).astype(int)
+
+        # Volatility mean reversion signal
+        vol_ma = d["Volatility"].rolling(60).mean()
+        d["Vol_Mean_Reversion"] = (d["Volatility"] - vol_ma) / (vol_ma + 1e-9)
+
+    # 2. RISK-ON / RISK-OFF INDICATOR
+    # Combines multiple factors to determine market risk appetite
+    risk_signals = []
+
+    # Risk signal: Price above 200MA = risk-on
+    if "Price_vs_MA200" in d.columns:
+        d["RiskOn_Price"] = (d["Price_vs_MA200"] > 1.0).astype(int)
+        risk_signals.append("RiskOn_Price")
+
+    # Risk signal: Low volatility = risk-on
+    if "Vol_Regime_Low" in d.columns:
+        d["RiskOn_Vol"] = d["Vol_Regime_Low"]
+        risk_signals.append("RiskOn_Vol")
+
+    # Risk signal: Positive momentum = risk-on
+    if "Return_Lag5" in d.columns:
+        d["RiskOn_Momentum"] = (d["Return_Lag5"] > 0).astype(int)
+        risk_signals.append("RiskOn_Momentum")
+
+    # Risk signal: Credit spreads (if available) - low spread = risk-on
+    if "Credit_Stress" in d.columns:
+        d["RiskOn_Credit"] = (d["Credit_Stress"] == 0).astype(int)
+        risk_signals.append("RiskOn_Credit")
+
+    # Composite Risk-On Score (0 to 1)
+    if len(risk_signals) > 0:
+        d["Risk_On_Score"] = sum(d[s] for s in risk_signals) / len(risk_signals)
+        d["Risk_On_Regime"] = (d["Risk_On_Score"] > 0.5).astype(int)
+
+    # 3. MEAN REVERSION vs TRENDING REGIME
+    # Helps model know which strategy to apply
+    if "ADX" in d.columns:
+        # ADX < 20: Mean reverting market
+        # ADX 20-40: Trending market
+        # ADX > 40: Strong trend
+        d["Regime_MeanRevert"] = (d["ADX"] < 20).astype(int)
+        d["Regime_Trending"] = ((d["ADX"] >= 20) & (d["ADX"] < 40)).astype(int)
+        d["Regime_StrongTrend"] = (d["ADX"] >= 40).astype(int)
+
+        # Trend direction when trending
+        if "Plus_DI" in d.columns and "Minus_DI" in d.columns:
+            d["Trend_Direction"] = np.where(
+                d["ADX"] >= 20,
+                np.where(d["Plus_DI"] > d["Minus_DI"], 1, -1),
+                0
+            )
+
+        # ADX slope (trend strengthening or weakening)
+        d["ADX_Slope"] = d["ADX"].diff(5)
+        d["Trend_Strengthening"] = (d["ADX_Slope"] > 0).astype(int)
+
+    # 4. MARKET STRESS COMPOSITE INDEX
+    stress_components = []
+
+    # High volatility contributes to stress
+    if "Vol_Regime_High" in d.columns:
+        stress_components.append(d["Vol_Regime_High"])
+
+    # Negative momentum contributes to stress
+    if "Return_Lag5" in d.columns:
+        stress_components.append((d["Return_Lag5"] < -0.02).astype(int))
+
+    # Below 200MA contributes to stress
+    if "Bull_Market" in d.columns:
+        stress_components.append((1 - d["Bull_Market"]))
+
+    # Near 52-week low contributes to stress
+    if "Near_52w_Low" in d.columns:
+        stress_components.append(d["Near_52w_Low"])
+
+    # RSI oversold contributes to stress
+    if "RSI_Oversold" in d.columns:
+        stress_components.append(d["RSI_Oversold"])
+
+    # Credit stress (if available)
+    if "Credit_Stress" in d.columns:
+        stress_components.append(d["Credit_Stress"])
+
+    if len(stress_components) > 0:
+        d["Market_Stress_Index"] = sum(stress_components) / len(stress_components)
+        d["High_Stress_Regime"] = (d["Market_Stress_Index"] > 0.5).astype(int)
+
+    # 5. CROSS-ASSET REGIME SIGNALS (using available cross-asset data)
+    # Dollar strength regime
+    if "DXY_Change_20d" in d.columns:
+        d["Dollar_Strengthening"] = (d["DXY_Change_20d"] > 0).astype(int)
+
+    # Yield environment
+    if "Yield_Change_20d" in d.columns:
+        d["Yields_Rising"] = (d["Yield_Change_20d"] > 0).astype(int)
+
+    # Credit conditions
+    if "Credit_Change_20d" in d.columns:
+        d["Credit_Tightening"] = (d["Credit_Change_20d"] > 0).astype(int)
+
+    # 6. REGIME INTERACTION FEATURES
+    # These capture how different regime states interact
+
+    # Trending in risk-on vs risk-off
+    if "Strong_Trend" in d.columns and "Risk_On_Regime" in d.columns:
+        d["Trend_x_RiskOn"] = d["Strong_Trend"] * d["Risk_On_Regime"]
+
+    # Volatility regime x trend regime
+    if "Vol_Regime_High" in d.columns and "Regime_Trending" in d.columns:
+        d["HighVol_x_Trending"] = d["Vol_Regime_High"] * d["Regime_Trending"]
+
+    # Stress during downtrend (capitulation signal)
+    if "Market_Stress_Index" in d.columns and "Trend_Direction" in d.columns:
+        d["Stress_x_Downtrend"] = d["Market_Stress_Index"] * (d["Trend_Direction"] == -1).astype(int)
+
+    # Mean reversion opportunity (high vol + mean reverting)
+    if "Vol_Regime_High" in d.columns and "Regime_MeanRevert" in d.columns:
+        d["MeanRevert_Opportunity"] = d["Vol_Regime_High"] * d["Regime_MeanRevert"]
+
     # Build the rich feature set: technical core + macro/sentiment extras
     core_features = get_feature_list()
     extra_features = [
@@ -1115,8 +1197,6 @@ def finalize_features(df, feature_cols):
     # Fill any remaining NaN at start of series with 0
     out = out.fillna(0)
 
-    # median impute per-column (scalar), safe for TS when used inside CV/pipelines
-    out = out.fillna(out.median(numeric_only=True))
     return out
 
 
@@ -1182,28 +1262,33 @@ def add_forward_returns_and_labels(
     d["fwd_ret_net"] = d["fwd_ret_raw"] - cost
     d["horizon_forward"] = int(horizon)
 
-    # FIX: Volatility-adjusted thresholds
+    # FIX: Volatility-adjusted thresholds using EXPANDING window (no lookahead bias)
     # In high volatility (VIX 30+), a 0.5% move is noise
     # In low volatility (VIX 10), a 0.5% move is significant
+    # CRITICAL: Using expanding median instead of global median to prevent lookahead bias
     if volatility_adjusted and "Volatility" in d.columns:
-        median_vol = d["Volatility"].median()
-        if median_vol > 0:
-            # Scale threshold by realized volatility
-            vol_ratio = d["Volatility"] / median_vol
+        # Use EXPANDING window median - only uses data available at each point in time
+        # This prevents lookahead bias by not using future volatility data
+        vol_series = pd.to_numeric(d["Volatility"], errors="coerce")
+        expanding_median_vol = vol_series.expanding(min_periods=60).median()
+
+        # For early rows where we don't have enough history, use fixed threshold
+        valid_expanding = expanding_median_vol.notna() & (expanding_median_vol > 0)
+
+        # Initialize with fixed threshold
+        d["y"] = (d["fwd_ret_net"] >= float(pos_threshold)).astype(int)
+
+        # Apply volatility-adjusted threshold only where we have valid expanding median
+        if valid_expanding.any():
+            vol_ratio = vol_series[valid_expanding] / expanding_median_vol[valid_expanding]
             adjusted_threshold = float(pos_threshold) * vol_ratio
-            d["y"] = (d["fwd_ret_net"] >= adjusted_threshold).astype(int)
-        else:
-            # Fallback to fixed threshold if volatility is invalid
-            d["y"] = (d["fwd_ret_net"] >= float(pos_threshold)).astype(int)
+            d.loc[valid_expanding, "y"] = (
+                d.loc[valid_expanding, "fwd_ret_net"] >= adjusted_threshold
+            ).astype(int)
     else:
         # Use fixed threshold (original behavior)
         d["y"] = (d["fwd_ret_net"] >= float(pos_threshold)).astype(int)
 
-    d["y"] = (
-        (d["fwd_ret_net"] >= float(pos_threshold)).astype(int)
-        if long_only
-        else (d["fwd_ret_net"] >= float(pos_threshold)).astype(int)
-    )
     return d
 
 
@@ -1243,13 +1328,21 @@ def compute_sample_weights(
     recency_weight = recency_weight / recency_weight.mean()  # Normalize to mean=1
 
     # 3. Volatility-adjusted weights (down-weight high volatility periods for stability)
+    # CRITICAL FIX: Use EXPANDING window median instead of global median to prevent lookahead bias
     vol_weight = np.ones(n)
     if "Volatility" in df.columns:
-        vol = pd.to_numeric(df["Volatility"], errors="coerce").fillna(df["Volatility"].median())
-        vol_median = vol.median()
-        if vol_median > 0:
-            vol_weight = 1.0 / (1.0 + vol / vol_median)  # Inverse volatility
-            vol_weight = vol_weight / vol_weight.mean()  # Normalize to mean=1
+        vol = pd.to_numeric(df["Volatility"], errors="coerce")
+        # Use expanding median - only uses data available at each point in time
+        expanding_vol_median = vol.expanding(min_periods=60).median()
+        # Fill early NaNs with first available expanding median
+        expanding_vol_median = expanding_vol_median.ffill().bfill()
+        vol = vol.fillna(expanding_vol_median)
+
+        valid_mask = (expanding_vol_median > 0) & expanding_vol_median.notna()
+        if valid_mask.any():
+            vol_weight[valid_mask] = 1.0 / (1.0 + vol[valid_mask].values / expanding_vol_median[valid_mask].values)
+            # Normalize to mean=1
+            vol_weight = vol_weight / vol_weight.mean()
 
     # 4. Combine weights multiplicatively (but with dampening to prevent extremes)
     # More conservative powers to reduce overfitting to recent regime
@@ -1356,14 +1449,11 @@ def load_asset_data(ticker: str = "SPY", data_dir: str = "data_cache") -> pd.Dat
 
     # Read and validate
     header = pd.read_csv(csv_path, nrows=1, low_memory=False)
-def load_SPY_data() -> pd.DataFrame:
-    header = pd.read_csv(CSV_PATH, nrows=1, low_memory=False)
     want = ["Date", "Open", "High", "Low", "Close", "Adj Close", "Volume"]
     usecols = [c for c in want if c in header.columns]
 
     df = pd.read_csv(
         csv_path,
-        CSV_PATH,
         usecols=usecols,
         parse_dates=["Date"],
         low_memory=False,
@@ -1377,11 +1467,6 @@ def load_SPY_data() -> pd.DataFrame:
         df.index = df.index.tz_localize(None)
     if "Open" not in df.columns or "Close" not in df.columns:
         raise AssertionError(f"{ticker} loader: missing required OHLC columns")
-        raise AssertionError("SPY loader: index is not DatetimeIndex")
-    if df.index.tz is not None:
-        df.index = df.index.tz_localize(None)
-    if "Open" not in df.columns or "Close" not in df.columns:
-        raise AssertionError("SPY loader: missing required OHLC columns")
 
     for c in ["Open", "High", "Low", "Close", "Adj Close", "Volume"]:
         if c in df.columns:

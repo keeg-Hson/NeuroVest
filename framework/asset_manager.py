@@ -161,6 +161,130 @@ class AssetManager:
             assets = self.get_all_assets()
         return [a.ticker for a in assets]
 
+    def get_dashboard_categories(self) -> Dict[str, Dict[str, str]]:
+        """
+        Get assets organized by dashboard categories.
+        Returns dict of {category_name: {ticker: display_name}}
+        """
+        categories = {
+            'stocks_etfs': {},
+            'precious_metals': {},
+            'crypto': {},
+            'bonds': {},
+            'sectors': {},
+        }
+
+        for asset in self.get_all_assets():
+            ticker = asset.ticker
+            name = asset.name
+
+            if asset.asset_type == 'crypto':
+                categories['crypto'][ticker] = name
+            elif asset.asset_type == 'bond':
+                categories['bonds'][ticker] = name
+            elif asset.asset_type == 'commodity':
+                # Check if it's a precious metal
+                if asset.category and 'Precious' in asset.category or asset.category and 'Mining' in asset.category:
+                    categories['precious_metals'][ticker] = name
+                else:
+                    categories['stocks_etfs'][ticker] = name
+            elif asset.asset_type == 'equity':
+                if asset.group == 'equity_sectors':
+                    categories['sectors'][ticker] = name
+                else:
+                    categories['stocks_etfs'][ticker] = name
+
+        return categories
+
+    def get_yfinance_tickers(self) -> List[str]:
+        """
+        Get list of tickers suitable for yfinance download.
+        Converts crypto symbols to proxy ETFs where needed.
+        """
+        yf_tickers = []
+
+        # Mapping of assets to yfinance-compatible symbols
+        yf_mappings = {
+            'DXY': 'DX-Y.NYB',  # Dollar index
+            'TNX': '^TNX',      # 10Y Treasury
+            'VIX': '^VIX',      # Volatility index
+        }
+
+        # Crypto proxy ETFs (since yfinance doesn't handle spot crypto well)
+        crypto_proxies = {
+            'BTC/USDT': 'BITO',   # Bitcoin ETF
+            'ETH/USDT': 'ETHE',   # Ethereum Trust
+        }
+
+        for asset in self.get_all_assets():
+            ticker = asset.ticker
+
+            # Skip crypto (we'll use proxies or skip)
+            if asset.asset_type == 'crypto':
+                if ticker in crypto_proxies:
+                    yf_tickers.append(crypto_proxies[ticker])
+                continue
+
+            # Apply mappings
+            yf_ticker = yf_mappings.get(ticker, ticker)
+            yf_tickers.append(yf_ticker)
+
+        # Add additional useful assets not in config
+        extra_assets = [
+            '^VIX',     # VIX volatility
+            'GBTC',     # Grayscale Bitcoin
+            'DBA',      # Agriculture
+            'CORN',     # Corn
+            'WEAT',     # Wheat
+            'PPLT',     # Platinum
+            'PALL',     # Palladium
+            'GDXJ',     # Junior Gold Miners
+            'IAU',      # iShares Gold
+        ]
+
+        for ticker in extra_assets:
+            if ticker not in yf_tickers:
+                yf_tickers.append(ticker)
+
+        return list(set(yf_tickers))  # Remove duplicates
+
+    def get_feature_analysis_assets(self) -> Dict[str, List[str]]:
+        """
+        Get assets organized for feature analysis.
+        Returns dict with categorized ticker lists.
+        """
+        assets = {
+            'primary': ['SPY'],  # Main prediction target
+            'indices': [],
+            'sectors': [],
+            'bonds': [],
+            'commodities': [],
+            'macro': [],
+        }
+
+        for asset in self.get_all_assets():
+            ticker = asset.ticker
+
+            if ticker == 'SPY':
+                continue  # Already in primary
+
+            if asset.asset_type == 'crypto':
+                continue  # Skip crypto for feature analysis
+
+            if asset.group == 'equity_major_indices':
+                assets['indices'].append(ticker)
+            elif asset.group == 'equity_sectors':
+                assets['sectors'].append(ticker)
+            elif asset.asset_type == 'bond':
+                assets['bonds'].append(ticker)
+            elif asset.asset_type == 'commodity':
+                assets['commodities'].append(ticker)
+
+        # Add macro indicators
+        assets['macro'] = ['^TNX', 'DX-Y.NYB', '^VIX']
+
+        return assets
+
     def print_summary(self):
         """Print summary of all configured assets"""
         print("=" * 80)

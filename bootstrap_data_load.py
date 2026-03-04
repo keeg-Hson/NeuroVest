@@ -24,25 +24,36 @@ def main():
     # Initialize data manager (auto-detects DATABASE_URL for PostgreSQL)
     dm = DataManager()
 
-    # Stock/ETF assets - matches dashboard expectations
+    # Stock/ETF assets - ALL 31 stock/ETF/commodity assets
     stock_tickers = [
-        # Dashboard's STOCK_ETFS (14 assets)
-        'SPY', 'QQQ', 'IWM', 'DIA', 'VTI', 'EEM',  # Major indices
-        'XLF', 'XLK', 'XLE',  # Sector ETFs
-        'DXY', 'HYG', 'LQD', 'TNX', 'UUP',  # Dollar, Bonds, Treasury
+        # Major indices (6)
+        'SPY', 'QQQ', 'IWM', 'DIA', 'VTI', 'EEM',
+        # Sector ETFs (3)
+        'XLF', 'XLK', 'XLE',
+        # Bonds & Treasury (6)
+        'TLT', 'IEF', 'SHY', 'HYG', 'LQD', 'TNX',
+        # Dollar (2)
+        'DXY', 'UUP',
     ]
 
-    # Dashboard's PRECIOUS_METALS (7 assets)
+    # Precious metals (7)
     precious_metals = [
         'GLD', 'SLV', 'GDX', 'GDXJ', 'IAU', 'PPLT', 'PALL'
     ]
 
-    # Combine for loading
-    all_stock_assets = stock_tickers + precious_metals
+    # Commodities - Energy & Agriculture (5)
+    commodities = [
+        'USO', 'UNG',  # Energy
+        'DBA', 'CORN', 'WEAT'  # Agriculture
+    ]
 
-    print("📈 Loading Stock/ETF/Metals Data (MAX HISTORY)...")
+    # Combine for loading
+    all_stock_assets = stock_tickers + precious_metals + commodities
+
+    print("📈 Loading Stock/ETF/Metals/Commodities Data (MAX HISTORY)...")
     print(f"Stocks & ETFs: {len(stock_tickers)}")
     print(f"Precious Metals: {len(precious_metals)}")
+    print(f"Commodities: {len(commodities)}")
     print(f"Total: {len(all_stock_assets)}")
     print()
 
@@ -107,7 +118,7 @@ def main():
             try:
                 callback = create_ccxt_callback(symbol, exchange, '1d', limit=3000)
                 data = callback()
-            except:
+            except Exception:
                 # If Coinbase fails (BNB/MATIC not available), try Binance
                 if ticker in ['BNB_USDT', 'MATIC_USDT']:
                     exchange = 'binance'

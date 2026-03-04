@@ -13,11 +13,14 @@ import numpy as np
 import pandas as pd
 
 from utils import load_SPY_data, load_asset_data
-from utils import load_SPY_data
 
-subprocess.run(
-    [sys.executable, str(pathlib.Path(__file__).with_name("update_spy_data.py"))], check=False
-)
+# Regime-adaptive position sizing (Feb 2026)
+USE_REGIME_POSITION_SIZING = os.getenv("USE_REGIME_SIZING", "1").lower() in ("1", "true", "yes")
+
+# Auto-refresh SPY data on backtest run (optional, silently skips if script missing)
+_update_script = pathlib.Path(__file__).with_name("update_spy_data.py")
+if _update_script.exists():
+    subprocess.run([sys.executable, str(_update_script)], check=False)
 
 
 def _assert_predictions_schema(df: pd.DataFrame) -> None:
@@ -59,9 +62,52 @@ def _to_jsonable(x):
             return None
     except (ValueError, TypeError):
         pass  # x is array-like, skip isna check
-    if pd.isna(x):
-        return None
     return x
+
+
+def _compute_classification_accuracy() -> dict:
+    """
+    Compute classification accuracy from logs/labeled_predictions.csv.
+
+    ALIGNMENT NOTE (Mar 2026): This uses the same methodology as evaluate.py
+    to ensure accuracy metrics are consistent across the codebase.
+
+    Returns dict with accuracy, precision, recall, f1 or empty dict if unavailable.
+    """
+    pred_path = Path("logs/labeled_predictions.csv")
+    if not pred_path.exists():
+        return {}
+
+    try:
+        df = pd.read_csv(pred_path)
+        if "PredLong" not in df.columns or "Actual_Event" not in df.columns:
+            return {}
+
+        # Same calculation as evaluate.py
+        total = len(df)
+        if total == 0:
+            return {}
+
+        correct = (df["PredLong"] == df["Actual_Event"]).sum()
+        accuracy = correct / total
+
+        # Precision/Recall for positive class (PredLong=1)
+        tp = ((df["PredLong"] == 1) & (df["Actual_Event"] == 1)).sum()
+        fp = ((df["PredLong"] == 1) & (df["Actual_Event"] == 0)).sum()
+        fn = ((df["PredLong"] == 0) & (df["Actual_Event"] == 1)).sum()
+
+        precision = tp / (tp + fp) if (tp + fp) > 0 else 0
+        recall = tp / (tp + fn) if (tp + fn) > 0 else 0
+        f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
+
+        return {
+            "model_accuracy": accuracy,  # Aligned with evaluate.py
+            "model_precision": precision,
+            "model_recall": recall,
+            "model_f1": f1,
+        }
+    except Exception:
+        return {}
 
 
 def save_run_record(
@@ -287,7 +333,6 @@ def run_backtest(
     End-to-end backtest:
       - loads predictions (logs/daily_predictions.csv)
       - loads asset history (default: SPY, configurable via --asset)
-      - loads SPY history and normalizes duplicate/multiindex columns
       - optional pre-filter by confidence
       - optional explicit class thresholds (else use model-provided labels)
       - joins by Date and simulates ENTRY_SHIFT/EXIT_SHIFT trade rules
@@ -320,8 +365,6 @@ def run_backtest(
             print(f"   ℹ️  Predictions already in 3-class format (0/1/2), skipping 1→2 mapping")
         elif "Prediction" in preds.columns:
             # Binary format {0,1} (No-Trade/Trade) -> map to {1,2} (Hold/Spike=long)
-        # Map {0,1} (No-Trade/Trade) -> {0,2} (Hold/Spike=long) to match backtest logic
-        if "Prediction" in preds.columns:
             preds["Prediction"] = preds["Prediction"].replace({1: 2})
 
     print(f"🔧 [bt] PREDICT_VARIANT = {VAR}")
@@ -331,8 +374,6 @@ def run_backtest(
     # ── 2) Load & normalize asset data ──────────────────────────────────────────
     print(f"📊 [bt] Loading asset data for: {asset}")
     spy_df = load_asset_data(asset)
-    # ── 2) Load & normalize SPY ─────────────────────────────────────────────────
-    spy_df = load_SPY_data()
 
     spy_df = spy_df[~spy_df.index.duplicated(keep="last")].sort_index()
 
@@ -372,7 +413,6 @@ def run_backtest(
     spy_df = pd.DataFrame(canonical, index=spy_df.index)
 
     # 2d) Keep only required OHLCV columns and enforce daily DatetimeIndex
-    # 2d) Keep only OHLCV we need and enforce daily DatetimeIndex
     needed = [c for c in ["Open", "Close", "High", "Low", "Volume"] if c in spy_df.columns]
     spy_df = spy_df[needed].copy()
     if not isinstance(spy_df.index, pd.DatetimeIndex):
@@ -683,7 +723,20 @@ def run_backtest(
         else:
             kelly = 0.0
 
-        pos_mult_final = pos_conf * size_vol * size_conf * (1.0 + kelly)
+        # (5) Regime-adaptive sizing (Feb 2026) - reduce size in risky regimes
+        regime_mult = 1.0
+        if USE_REGIME_POSITION_SIZING:
+            try:
+                from core.regime_position_sizing import RegimePositionSizer
+                # Use data up to signal date for regime detection (no lookahead)
+                regime_df = spy_df.loc[:signal_date].copy()
+                if len(regime_df) > 200:  # Need enough history for regime detection
+                    sizer = RegimePositionSizer(regime_df)
+                    regime_mult = sizer.get_multiplier()
+            except Exception:
+                regime_mult = 1.0  # Fallback to no adjustment
+
+        pos_mult_final = pos_conf * size_vol * size_conf * (1.0 + kelly) * regime_mult
 
         # --- prices/targets on the actual entry trading day ---
         entry_px = float(entry_bar["Open"])
@@ -837,6 +890,10 @@ def run_backtest(
             "max_drawdown": 0.0,
             "profit_factor": 0.0,
         }
+        # Add classification accuracy even with zero trades (aligned with evaluate.py)
+        classification_metrics = _compute_classification_accuracy()
+        if classification_metrics:
+            zero.update(classification_metrics)
         return pd.DataFrame(), zero, simulate_mode
 
     # ── 11) Compute metrics ────────────────────────────────────────────────────
@@ -961,6 +1018,11 @@ def run_backtest(
         "alpha_annual": alpha_annual,
     }
 
+    # Add classification accuracy (aligned with evaluate.py methodology)
+    classification_metrics = _compute_classification_accuracy()
+    if classification_metrics:
+        metrics.update(classification_metrics)
+
     # --- Optional top-K per week/month to force activity ---
     TOPK_MODE = os.getenv("BT_TOPK_MODE", "").strip().lower()  # "week" or "month" or ""
     TOPK_PER_BUCKET = int(os.getenv("BT_TOPK_K", "0"))  # e.g. 2
@@ -1011,7 +1073,6 @@ def optimize_thresholds(
     Returns: (confidence_thresh, crash_thresh, spike_thresh, best_metrics)
     """
     # Default search space (configurable)
-    # Default search space (tighten/loosen as you like)
     if grid is None:
         grid = {
             "confidence_thresh": [None, 0.60, 0.70, 0.80, 0.85, 0.90],
@@ -1125,7 +1186,6 @@ if __name__ == "__main__":
     from copy import deepcopy
 
     # ---- defaults mirroring current hard-coded configuration ----
-    # ---- defaults mirroring your current hard-coded run ----
     base_cfg = dict(
         window_days=None,
         lookahead=5,
@@ -1574,7 +1634,6 @@ if __name__ == "__main__":
     trades, m, simulate_mode = run_backtest(**kwargs)
 
     # --- print existing backtest report (unchanged) ---
-    # --- print your existing backtest report (unchanged) ---
     print("\n📈 Backtest Report")
     print(f"  Trades taken:       {m['trades']}")
     print(f"  Total return:       {m['total_return']:.2%}")
@@ -1594,7 +1653,6 @@ if __name__ == "__main__":
         print(f"  Alpha (annual):     {alpha_annual:+.2%}")
 
     # optional summary/record (if helper functions available)
-    # optional summary/record (if you pasted the helpers earlier)
     try:
         print_run_summary(m, cfg)
         save_run_record(cfg, m, simulate_mode, trades)
@@ -1615,7 +1673,15 @@ if __name__ == "__main__":
         trades = trades.rename(columns={"equity_curve": "Equity"})
         trades["Drawdown %"] = trades["drawdown"] * 100
 
+        import matplotlib
+        matplotlib.use("Agg")  # non-interactive backend
         import matplotlib.pyplot as plt
+
+        # --- Save plots to outputs/plots/ ---
+        outputs_dir = Path("outputs")
+        plots_dir = outputs_dir / "plots"
+        plots_dir.mkdir(parents=True, exist_ok=True)
+        ts_str = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
         trades["Equity"].plot(ax=ax1, title="Equity Curve")
@@ -1627,9 +1693,45 @@ if __name__ == "__main__":
         ax2.grid(True)
         plt.xlabel("Signal Time")
         plt.tight_layout()
-        plt.show()
-        fig.savefig("logs/equity_drawdown_plot.png", dpi=300)
-        print("📸 Saved equity and drawdown chart to logs/equity_drawdown_plot.png")
+        plot_path = plots_dir / f"equity_drawdown_{ts_str}.png"
+        fig.savefig(str(plot_path), dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        # Also keep backward-compat copy in logs/
+        Path("logs").mkdir(parents=True, exist_ok=True)
+        import shutil
+        shutil.copy(str(plot_path), "logs/equity_drawdown_plot.png")
+        print(f"📸 Saved equity chart → {plot_path}")
+
+        # --- Compute Sortino ratio ---
+        if "return_pct" in trades.columns:
+            rets = trades["return_pct"].dropna()
+            downside = rets[rets < 0]
+            downside_std = float(downside.std()) if len(downside) > 1 else float("nan")
+            mean_ret_252 = float(rets.mean()) * 252
+            sortino = (mean_ret_252 / (downside_std * np.sqrt(252))) if downside_std and not np.isnan(downside_std) else float("nan")
+        else:
+            sortino = float("nan")
+
+        # --- Save metrics to outputs/metrics_*.json ---
+        metrics_out = {
+            "run_at": datetime.now().isoformat(timespec="seconds"),
+            "git_sha": _git_sha(),
+            "trades": int(m.get("trades", 0)),
+            "cagr": float(m.get("annualized_return", float("nan"))),
+            "total_return": float(m.get("total_return", float("nan"))),
+            "sharpe": float(m.get("sharpe", float("nan"))),
+            "sortino": float(sortino),
+            "max_drawdown": float(m.get("max_drawdown", float("nan"))),
+            "hit_rate": float(m.get("win_rate", float("nan"))),
+            "profit_factor": float(m.get("profit_factor", float("nan"))),
+            "buy_hold_return": float(m.get("buy_hold_return", float("nan"))),
+            "alpha": float(m.get("alpha", float("nan"))),
+            "plot_path": str(plot_path),
+        }
+        metrics_path = outputs_dir / f"metrics_{ts_str}.json"
+        with open(metrics_path, "w") as _mf:
+            json.dump(metrics_out, _mf, indent=2)
+        print(f"📊 Metrics saved → {metrics_path}")
 
     if simulate_mode:
         print("\n⚠️ NOTE: This was a simulated run with injected predictions.")

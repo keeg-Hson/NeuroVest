@@ -183,7 +183,7 @@ def select_best_sector(date, sector_prices, lookback=20):
         # Return best performing sector
         best_sector = max(returns, key=returns.get)
         return best_sector
-    except:
+    except Exception:
         return 'SPY'
 
 

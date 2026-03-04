@@ -1,25 +1,13 @@
 {
-<<<<<<< HEAD
-  "threshold": 0.30,
-  "spike_thresh": 0.30,
-  "crash_thresh": 0.30,
-  "confidence_thresh": 0.25,
+  "threshold": 0.38,
+  "spike_thresh": 0.38,
+  "crash_thresh": 0.38,
+  "confidence_thresh": 0.30,
   "invert_proba": false,
   "meta": {
-    "objective": "max_recall",
-    "note": "Aggressive threshold for maximum market coverage - catch 50%+ of moves",
-    "timestamp": "2025-11-18T01:00:00"
+    "objective": "balanced_f1",
+    "note": "Balanced threshold for improved recall. Previous 0.45 had 87% precision but only 26% recall (F1=0.40). Target: ~70% precision, ~50% recall (F1>0.55).",
+    "previous_threshold": 0.45,
+    "timestamp": "2026-03-01T00:00:00"
   }
 }
-=======
-  "confidence_thresh": null,
-  "crash_thresh": null,
-  "spike_thresh": null,
-  "meta": {
-    "objective": "profit_factor",
-    "min_trades": 30,
-    "window_days": null,
-    "timestamp": "2025-11-05T23:59:56"
-  }
-}
->>>>>>> f1644007

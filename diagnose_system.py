@@ -6,6 +6,7 @@ Comprehensive testing and diagnostics for the entire prediction pipeline.
 Run this to identify issues with training, predictions, and backtesting.
 """
 
+import os
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -13,6 +14,19 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 import joblib
+
+# ─── DATABASE_URL Check ─────────────────────────────────────────────────────
+# Railway PostgreSQL is the primary data store. SQLite is fallback only.
+if not os.environ.get("DATABASE_URL"):
+    print("=" * 80)
+    print("⚠️  WARNING: DATABASE_URL not set")
+    print("=" * 80)
+    print("Using SQLite fallback (data/market_data.db)")
+    print("For production data, set DATABASE_URL to Railway PostgreSQL:")
+    print("  export DATABASE_URL='postgresql://...'")
+    print("See SYSTEM_DESIGN.md for architecture details.")
+    print("=" * 80)
+    print()
 
 print("=" * 80)
 print("NEUROVEST SYSTEM DIAGNOSTICS")
@@ -302,7 +316,7 @@ try:
         spike_count = (pred_df['Prediction'] == 2).sum()
         if spike_count < 100:
             recommendations.append("Regenerate predictions - too few SPIKE signals for meaningful backtest")
-except:
+except Exception:
     pass
 
 if recommendations:

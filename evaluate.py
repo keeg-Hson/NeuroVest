@@ -1,37 +1,33 @@
 #!/usr/bin/env python3
 # evaluate.py
 """
-evaluate.py - robust evaluation with class-aware PredLong and correct threshold sourcing.
+evaluate.py - unified evaluation with Proba-based thresholding and correct hurdle.
 
 Purpose
 -------
 Provides a unified evaluation pipeline that:
-- Aligns Actual_Event with the training horizon and hurdle.
-- Derives PredLong from legacy class labels (0=CRASH, 1=NORMAL, 2=SPIKE) when available.
-- Resolves decision thresholds from model/config artifacts.
-- Falls back to probability/confidence-based gating when class labels are not usable.
+- Aligns Actual_Event with the training horizon and hurdle (pos_threshold + costs).
+- Derives PredLong from the Proba column using the resolved threshold (NOT from
+  stale Prediction column, so threshold changes take effect immediately).
+- Falls back to legacy class labels only when Proba is unavailable.
 
-Label and decision conventions
-------------------------------
-Legacy 3-class convention:
-    0 = CRASH
-    1 = NORMAL
-    2 = SPIKE
+Hurdle calculation
+------------------
+The hurdle for Actual_Event matches training labels exactly:
+    hurdle = pos_threshold + (fee_bps + slippage_bps) / 10000
+    (NOT min_edge_bps, which is for EV gating only)
 
-PredLong is interpreted as:
-    PredLong = 1 → long signal (event predicted)
-    PredLong = 0 → no-trade
+PredLong derivation (priority order)
+-------------------------------------
+    1) Proba column + resolved threshold (PREFERRED - always re-thresholds)
+    2) Legacy Prediction column (fallback: 2=SPIKE → PredLong=1)
+    3) Spike_Conf/Crash_Conf (rare fallback)
 
-Threshold resolution (probability-based)
-----------------------------------------
-Priority order:
+Threshold resolution
+--------------------
     1) configs/best_thresholds.json  -> keys: spike_thresh, invert_proba
     2) models/thresholds_fwd.json    -> keys: p_min or spike_thresh
     3) models/thresholds.json        -> keys: threshold or p_min
-
-If no class column is usable, PredLong is derived from:
-    - Proba (with optional inversion and threshold), or
-    - Spike_Conf vs Crash_Conf and a resolved threshold.
 """
 
 from __future__ import annotations
@@ -64,10 +60,25 @@ PRICE_CANDIDATES = [
 # Threshold and hurdle helpers
 # ---------------------------------------------------------------------------
 def _train_hurdle() -> float:
+    """
+    Compute the hurdle that matches training labels exactly.
+
+    Training labels (add_forward_returns_and_labels) use:
+        fwd_ret_net = fwd_ret_raw - (fee_bps + slippage_bps) / 10000
+        y = 1 if fwd_ret_net >= pos_threshold
+
+    In raw-return terms the hurdle is:
+        fwd_ret_raw >= pos_threshold + (fee_bps + slippage_bps) / 10000
+
+    evaluate.py computes Actual_Event from raw forward returns, so the
+    hurdle must include pos_threshold + cost (NOT min_edge_bps, which is
+    only used for EV gating in predictions, not for label creation).
+    """
     fee_bps = float(TRAIN_CFG.get("fee_bps", 1.5))
     slip_bps = float(TRAIN_CFG.get("slippage_bps", 2.0))
-    edge_bps = float(TRAIN_CFG.get("min_edge_bps", 10.0))
-    return (fee_bps + slip_bps + edge_bps) / 10_000.0
+    pos_threshold = float(TRAIN_CFG.get("pos_threshold", 0.005))
+    cost = (fee_bps + slip_bps) / 10_000.0
+    return pos_threshold + cost
 
 
 def _resolve_eval_threshold_and_inversion() -> tuple[float, bool, str]:
@@ -278,41 +289,54 @@ def _ensure_targets(df: pd.DataFrame) -> pd.DataFrame:
             f"expected subset of {{0,1}}, found {sorted(unique_actual)}"
         )
 
-    # -------- PredLong (class → proba/conf) --------
-    pred_like = _first_present(df.columns, ["Prediction", "Pred", "Label"])
-    used_class = False
-    if pred_like is not None:
-        try:
-            pred_int = pd.to_numeric(df[pred_like], errors="coerce").astype("Int64")
-            uniques = set(pred_int.dropna().unique().tolist())
-            if uniques.issubset({0, 1, 2}) and len(uniques) > 0:
-                df["PredLong"] = (pred_int == 2).astype(int)
-                used_class = True
-                print(f"[debug] PredLong derived from legacy class '{pred_like}' (2=SPIKE → long)")
-            else:
-                print(
-                    f"[debug] legacy class column '{pred_like}' has non-0/1/2 values; "
-                    "falling back to probability/confidence."
-                )
-        except Exception:
-            used_class = False
+    # -------- PredLong: ALWAYS derive from Proba + threshold for consistency --------
+    # Previously, PredLong was derived from the stale Prediction column (which
+    # baked in whatever threshold predict.py used at backfill time). This meant
+    # changing the threshold in best_thresholds.json had no effect on evaluate.py
+    # metrics unless predict.py --backfill was re-run first.
+    #
+    # Now: always re-threshold from raw Proba so evaluate.py metrics reflect
+    # the current threshold setting without requiring a predict.py re-run.
+    thr, invert, _ = _resolve_eval_threshold_and_inversion()
+    used_proba = False
 
-    if not used_class:
-        thr, invert, _ = _resolve_eval_threshold_and_inversion()
-        if "Proba" in df.columns:
-            p = pd.to_numeric(df["Proba"], errors="coerce")
+    if "Proba" in df.columns:
+        p = pd.to_numeric(df["Proba"], errors="coerce")
+        if p.notna().any():
             if invert:
                 p = 1.0 - p
             df["PredLong"] = (p >= thr).astype(int)
+            used_proba = True
             print(
                 f"[debug] PredLong derived from Proba using threshold={thr:.3f}"
                 f"{' (inverted)' if invert else ''}"
             )
+
+    if not used_proba:
+        # Fallback: derive from legacy class column
+        pred_like = _first_present(df.columns, ["Prediction", "Pred", "Label"])
+        if pred_like is not None:
+            try:
+                pred_int = pd.to_numeric(df[pred_like], errors="coerce").astype("Int64")
+                uniques = set(pred_int.dropna().unique().tolist())
+                if uniques.issubset({0, 1, 2}) and len(uniques) > 0:
+                    df["PredLong"] = (pred_int == 2).astype(int)
+                    print(f"[debug] PredLong fallback from legacy class '{pred_like}' (2=SPIKE → long)")
+                else:
+                    raise SystemExit(
+                        "Missing columns for evaluation: could not find/derive 'PredLong'."
+                    )
+            except SystemExit:
+                raise
+            except Exception:
+                raise SystemExit(
+                    "Missing columns for evaluation: could not find/derive 'PredLong'."
+                )
         elif {"Spike_Conf", "Crash_Conf"} <= set(df.columns):
             sc = pd.to_numeric(df["Spike_Conf"], errors="coerce")
             cc = pd.to_numeric(df["Crash_Conf"], errors="coerce")
             df["PredLong"] = ((sc >= thr) & (sc >= cc)).astype(int)
-            print(f"[debug] PredLong derived from Spike_Conf with threshold={thr:.3f}")
+            print(f"[debug] PredLong fallback from Spike_Conf with threshold={thr:.3f}")
         else:
             raise SystemExit("Missing columns for evaluation: could not find/derive 'PredLong'.")
 

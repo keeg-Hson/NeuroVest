@@ -384,7 +384,7 @@ def plot_cumulative_returns():
         signals = preds[preds['Prediction'] == 2]
         for date in signals.index[::3]:  # Every 3rd signal to avoid clutter
             ax.axvspan(date, date + pd.Timedelta(days=3), alpha=0.05, color='green')
-    except:
+    except Exception:
         pass
 
     ax.set_ylabel('Cumulative Return (Base 1.0)', fontsize=12)
@@ -558,7 +558,7 @@ def plot_economic_indicators():
         ax.set_title('10-Year Treasury Yield', fontsize=12, fontweight='bold')
         ax.legend()
         ax.grid(True, alpha=0.3)
-    except:
+    except Exception:
         axes[0].text(0.5, 0.5, 'TNX data not available', ha='center', va='center', transform=axes[0].transAxes)
 
     # Credit Spread (HYG/LQD)
@@ -578,7 +578,7 @@ def plot_economic_indicators():
         ax.set_title('Credit Spread Indicator (20-day MA)', fontsize=12, fontweight='bold')
         ax.legend()
         ax.grid(True, alpha=0.3)
-    except:
+    except Exception:
         axes[1].text(0.5, 0.5, 'Credit data not available', ha='center', va='center', transform=axes[1].transAxes)
 
     # SPY with prediction signals

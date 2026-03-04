@@ -25,12 +25,26 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/analytics", tags=["Analytics"])
 
 
-def require_admin_or_self(user_id: Optional[int] = None):
+def require_admin_or_self(requesting_user_id: int, target_user_id: Optional[int] = None, is_admin: bool = False):
     """
-    Simple auth check - in production, verify user has permission
-    For now, returns True (open access)
+    Auth check - verify user has permission to access data
+
+    Args:
+        requesting_user_id: The ID of the user making the request
+        target_user_id: The ID of the user whose data is being accessed (if applicable)
+        is_admin: Whether the requesting user has admin privileges
+
+    Returns:
+        True if access is allowed, False otherwise
     """
-    # TODO: Add proper admin role checking
+    # Admins can access anything
+    if is_admin:
+        return True
+
+    # Users can only access their own data
+    if target_user_id is not None and requesting_user_id != target_user_id:
+        return False
+
     return True
 
 

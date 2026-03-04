@@ -42,11 +42,14 @@ for p in (DATA_DIR, CACHE_DIR, MODELS_DIR, LOGS_DIR, OUTPUT_DIR):
 SPY_DAILY_CSV = DATA_DIR / "SPY.csv"
 
 # ─── Training configuration ──────────────────────────────────
+# LOCKED CONFIGURATION (Feb 2026): 1-day horizon + 0.5% binary threshold
+# Rationale: Feature analysis confirmed this is the optimal setup for
+# capturing short-term directional moves with acceptable precision (~42%).
 TRAIN_CFG = {
     # Price column used when deriving forward returns
     "price_col": "Close",
-    # Forward horizon in days; must match evaluation horizon (Actual_Event)
-    # and DuckDB eval_join forward-return construction.
+    # Forward horizon in days - LOCKED at 1 day for event matching
+    # Do not change without re-evaluating feature importance
     "horizon": 1,
     # Trading cost and edge assumptions (in basis points)
     "fee_bps": 1.5,
@@ -54,8 +57,8 @@ TRAIN_CFG = {
     "min_edge_bps": 10.0,
     # Long-only labeling; 1 = positive event, 0 = no-trade
     "long_only": True,
-    # Labeling threshold: minimum net forward return to label a positive event.
-    # 0.005 = +0.5% forward move; used by label logic to match Actual_Event_1d.
+    # Labeling threshold - LOCKED at 0.5% binary threshold
+    # This threshold yields ~42% precision with acceptable recall
     "pos_threshold": 0.005,
     # Sample-weighting parameters for training:
     # weights ∝ |forward_return|^weight_power, clipped to [min_weight, max_weight].
@@ -68,22 +71,20 @@ TRAIN_CFG = {
 
 # ─── Prediction / decision gating ────────────────────────────
 # Single source of truth for prediction threshold (DO NOT hardcode elsewhere)
-PREDICTION_THRESHOLD = 0.35  # Lowered Nov 18 2025 to improve recall (target 40-50%)
+# PRECISION-FOCUSED STRATEGY (Feb 2026):
+# With ~42% precision, we optimize for high-confidence signals only.
+# Low recall is acceptable - position sizing matters more than signal frequency.
+PREDICTION_THRESHOLD = 0.45  # Raised for precision focus (~42% precision target)
 
 PREDICT_CFG = {
     # Minimum probability of event (long) to consider a trade.
-    # Threshold evolution:
-    # - 0.55: 97.6% precision, 14.7% recall (too conservative)
-    # - 0.45: 92.3% precision, 20.0% recall (still too low)
-    # - 0.35: ~70% precision, ~40-50% recall (balanced for market mapping)
-    # This acts as a default; live runs may override via thresholds_fwd.json
-    # or configs/best_thresholds.json.
+    # PRECISION-FOCUSED THRESHOLD STRATEGY:
+    # - 0.55: 97.6% precision, 14.7% recall (max precision)
+    # - 0.45: 92.3% precision, 20.0% recall (precision-focused - CURRENT)
+    # - 0.35: ~70% precision, ~40-50% recall (balanced)
+    # Current strategy: Prioritize precision over recall
+    # When the model signals, we want it to be right ~42%+ of the time
     "p_min": PREDICTION_THRESHOLD,  # Use constant above
-PREDICT_CFG = {
-    # Minimum probability of event (long) to consider a trade.
-    # This acts as a default; live runs may override via thresholds_fwd.json
-    # or configs/best_thresholds.json.
-    "p_min": 0.55,
     # Minimum expected value (in return units) for a trade to pass EV gating.
     "ev_min": 0.0005,  # 5 bps minimum expected value
     # Typical winner/loser magnitudes used for EV heuristics.
@@ -92,4 +93,24 @@ PREDICT_CFG = {
     # Trading cost assumptions for EV gating (basis points).
     "fee_bps": 1.5,
     "slippage_bps": 2.0,
+}
+
+# ─── Risk Management Configuration ────────────────────────────
+# CRITICAL: This is a weak-but-real signal system.
+# Position sizing and risk management matter MORE than the model.
+RISK_CFG = {
+    # Maximum position size as fraction of portfolio
+    "max_position_pct": 0.05,  # 5% max per trade
+    # Risk per trade (stop loss distance * position size)
+    "risk_per_trade_pct": 0.01,  # 1% portfolio risk per trade
+    # Kelly fraction scaling (use fractional Kelly for safety)
+    "kelly_fraction": 0.25,  # Use 25% of Kelly-optimal sizing
+    # Maximum daily drawdown before halting
+    "max_daily_drawdown_pct": 0.03,  # 3% max daily loss
+    # Confidence scaling: size positions by model confidence
+    "confidence_scaling": True,
+    # Minimum confidence to take full position
+    "min_confidence_full_size": 0.60,
+    # Correlation limit: reduce exposure in correlated positions
+    "max_correlated_exposure_pct": 0.15,  # 15% max in correlated assets
 }

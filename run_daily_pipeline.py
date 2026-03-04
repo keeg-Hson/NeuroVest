@@ -19,9 +19,6 @@ def run_prediction():
     print(f"[⏳] {datetime.now()} - Running ensemble predictor...")
     subprocess.run(["python3", "predict_multi_asset_ensemble.py"], check=True)
     print(f"[✅] {datetime.now()} - Ensemble prediction complete.")
-    print(f"[⏳] {datetime.now()} - Running predict.py...")
-    subprocess.run(["python3", "predict.py"], check=True)
-    print(f"[✅] {datetime.now()} - Prediction complete.")
 
 
 # Setup scheduler

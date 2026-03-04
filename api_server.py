@@ -76,12 +76,24 @@ app.include_router(analytics_router)
 # Add request logging middleware
 app.add_middleware(RequestLoggerMiddleware)
 
-# CORS middleware (restrict in production)
+# CORS middleware - configurable origins for security
+ALLOWED_ORIGINS = os.getenv("CORS_ORIGINS", "").split(",")
+if not ALLOWED_ORIGINS or ALLOWED_ORIGINS == [""]:
+    # Default to restrictive origins in production
+    ALLOWED_ORIGINS = [
+        "https://neurovestdemo.up.railway.app",
+        "http://localhost:8501",  # Streamlit dev
+        "http://localhost:3000",  # React dev
+    ]
+    logger.info(f"Using default CORS origins: {ALLOWED_ORIGINS}")
+else:
+    logger.info(f"Using configured CORS origins: {ALLOWED_ORIGINS}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # TODO: Restrict to specific domains in production
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
 

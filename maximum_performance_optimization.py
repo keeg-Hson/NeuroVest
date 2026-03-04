@@ -522,7 +522,7 @@ try:
     print(f"   Trades: {result['n_trades']}, Win Rate: {result['win_rate']:.2%}")
 
     results.append(result)
-except:
+except Exception:
     print("   ⚠️ Previous ensemble models not found, skipping baseline")
 
 # Strategy 1: New Ensemble with 2/4 voting (50% threshold)

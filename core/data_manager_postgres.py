@@ -773,6 +773,44 @@ class DataManager:
             logger.error(f"Error getting latest predictions: {e}")
             return pd.DataFrame()
 
+    def get_all_predictions(self, ticker: str = None, days: int = 30, limit: int = 1000) -> pd.DataFrame:
+        """Get full prediction history from PostgreSQL
+
+        Args:
+            ticker: Optional ticker to filter by
+            days: Number of days of history to return
+            limit: Maximum number of predictions to return
+
+        Returns:
+            DataFrame with prediction history including individual model probabilities
+        """
+        if self.backend != 'postgresql':
+            return pd.DataFrame()
+
+        try:
+            with self.engine.connect() as conn:
+                if ticker:
+                    result = conn.execute(text("""
+                        SELECT * FROM predictions
+                        WHERE ticker = :ticker
+                        AND prediction_date >= CURRENT_DATE - :days
+                        ORDER BY prediction_date DESC, prediction_timestamp DESC
+                        LIMIT :limit
+                    """), {'ticker': ticker, 'days': days, 'limit': limit})
+                else:
+                    result = conn.execute(text("""
+                        SELECT * FROM predictions
+                        WHERE prediction_date >= CURRENT_DATE - :days
+                        ORDER BY prediction_date DESC, prediction_timestamp DESC
+                        LIMIT :limit
+                    """), {'days': days, 'limit': limit})
+                df = pd.DataFrame(result.fetchall(), columns=result.keys())
+                return df
+
+        except Exception as e:
+            logger.error(f"Error getting all predictions: {e}")
+            return pd.DataFrame()
+
     def save_model_metadata(self, model_name: str, model_type: str,
                            feature_count: int = None, training_samples: int = None,
                            assets_used: list = None, metrics: dict = None,

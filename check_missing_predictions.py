@@ -2,8 +2,23 @@
 """
 Check which assets are missing predictions and why
 """
+import os
 import sys
 sys.path.insert(0, '.')
+
+# ─── DATABASE_URL Check ─────────────────────────────────────────────────────
+# Railway PostgreSQL is the primary data store. SQLite is fallback only.
+if not os.environ.get("DATABASE_URL"):
+    print("=" * 80)
+    print("⚠️  WARNING: DATABASE_URL not set")
+    print("=" * 80)
+    print("Using SQLite fallback (data/market_data.db)")
+    print("For production data, set DATABASE_URL to Railway PostgreSQL:")
+    print("  export DATABASE_URL='postgresql://...'")
+    print("See SYSTEM_DESIGN.md for architecture details.")
+    print("=" * 80)
+    print()
+
 from core.data_manager_postgres import DataManager
 
 dm = DataManager()
@@ -16,15 +31,31 @@ print("=" * 80)
 all_assets = dm.get_all_assets()
 print(f"\nTotal assets in database: {len(all_assets)}")
 
-# Get assets with predictions
-from sqlalchemy import text
-with dm.engine.connect() as conn:
-    result = conn.execute(text("""
-        SELECT DISTINCT ticker
-        FROM predictions
-        ORDER BY ticker
-    """))
-    assets_with_predictions = set(row[0] for row in result)
+# Get assets with predictions based on backend type
+if dm.backend == 'postgresql':
+    from sqlalchemy import text
+    with dm.engine.connect() as conn:
+        result = conn.execute(text("""
+            SELECT DISTINCT ticker
+            FROM predictions
+            ORDER BY ticker
+        """))
+        assets_with_predictions = set(row[0] for row in result)
+else:
+    # SQLite backend
+    conn = dm._get_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT DISTINCT ticker
+            FROM predictions
+            ORDER BY ticker
+        """)
+        assets_with_predictions = set(row[0] for row in cursor.fetchall())
+    except Exception:
+        # Predictions table may not exist in SQLite
+        print("⚠️  Predictions table not found in SQLite database")
+        assets_with_predictions = set()
 
 print(f"Assets with predictions: {len(assets_with_predictions)}")
 

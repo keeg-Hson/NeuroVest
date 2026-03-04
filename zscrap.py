@@ -116,9 +116,4 @@ if __name__ == "__main__":
     test_external_signals_idempotent()
     test_training_has_close_and_labels()
     # Optional: comment out to skip full predict path invocation
-    # These mirror what you’re already running in Terminal
-    test_external_signals_smoke()
-    test_external_signals_idempotent()
-    test_training_has_close_and_labels()
-    # Optional: comment out if you don’t want to invoke the full predict path here
     test_predictions_and_reliability()

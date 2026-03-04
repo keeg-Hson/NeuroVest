@@ -79,7 +79,6 @@ from xgboost import XGBClassifier
 socket.setdefaulttimeout(float(os.getenv("NET_TIMEOUT", 3)))
 
 from config import MODELS_DIR, LOGS_DIR, TRAIN_CFG
-from config import MODELS_DIR, TRAIN_CFG
 from utils import (
     add_features,
     add_forward_returns_and_labels,
@@ -89,6 +88,29 @@ from utils import (
     load_SPY_data,
 )
 
+# Modern ML components - consolidated as source of truth (dashboard.py line 329)
+from core.model_improvements import (
+    EnhancedEnsemble,
+    EnsembleConfig,
+    CalibratedModel,
+    prune_features_rfe,
+    RFEConfig,
+    WalkForwardValidator,
+    WalkForwardConfig,
+)
+from core.feature_selection import FeatureSelector, FeatureSelectionConfig
+
+# Bayesian HPO - replaces GridSearchCV for better parameter search
+try:
+    from core.hyperparameter_tuning import HyperparameterTuner, TuningConfig
+    OPTUNA_AVAILABLE = True
+except ImportError:
+    OPTUNA_AVAILABLE = False
+    print("[train] Optuna not available, falling back to GridSearchCV")
+
+# Model drift detection for monitoring
+from core.model_drift import DriftDetector, DriftConfig, monitor_model
+
 # === GLOBAL: forward-looking feature blacklist (never in model inputs) =========
 FWD_BLACKLIST = {"y", "fwd_price", "fwd_ret_raw", "fwd_ret_net", "horizon_forward"}
 
@@ -96,11 +118,71 @@ FWD_BLACKLIST = {"y", "fwd_price", "fwd_ret_raw", "fwd_ret_net", "horizon_forwar
 if os.getenv("TRAIN_USE_FORWARD_RETURNS", "").strip() in {"1", "true", "True"}:
     TRAIN_CFG["use_forward_returns"] = True
 
-# --- tolerate unknown CLI args when invoked like: python -m train --models xgb
+import hashlib
+import subprocess
 import sys
 
-if len(sys.argv) > 1:
-    sys.argv = sys.argv[:1]
+
+# =============================================================================
+# Artifact manifest helpers
+# =============================================================================
+def _git_sha() -> str:
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--short", "HEAD"], stderr=subprocess.DEVNULL
+        ).decode().strip()
+    except Exception:
+        return "unknown"
+
+
+def _file_sha256(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _config_hash(cfg: dict) -> str:
+    return hashlib.sha256(json.dumps(cfg, sort_keys=True).encode()).hexdigest()[:16]
+
+
+def save_artifact_manifest(
+    model_path: str,
+    df: "pd.DataFrame",
+    params: dict,
+    metrics: dict,
+    variant: str = "fwd",
+) -> None:
+    """Write models/artifact_manifest.json with provenance metadata."""
+    from datetime import timezone
+    MODELS_DIR.mkdir(parents=True, exist_ok=True)
+
+    date_col = "Date" if "Date" in df.columns else df.index.name
+    if date_col and date_col in df.columns:
+        dates = pd.to_datetime(df[date_col], errors="coerce").dropna()
+    else:
+        dates = pd.to_datetime(df.index, errors="coerce")
+
+    manifest = {
+        "model_path": str(model_path),
+        "model_hash_sha256": _file_sha256(model_path) if os.path.exists(model_path) else None,
+        "code_git_sha": _git_sha(),
+        "trained_at": datetime.now(timezone.utc).isoformat(),
+        "variant": variant,
+        "data_window": {
+            "first_date": str(dates.min().date()) if len(dates) else None,
+            "last_date": str(dates.max().date()) if len(dates) else None,
+            "n_rows": len(df),
+        },
+        "train_cfg": params,
+        "config_hash": _config_hash(params),
+        "val_metrics": metrics,
+    }
+    out = MODELS_DIR / "artifact_manifest.json"
+    with open(out, "w") as f:
+        json.dump(manifest, f, indent=2, default=str)
+    print(f"💾 Artifact manifest → {out}")
 
 
 # ====================== Time-series CV helpers ======================
@@ -123,7 +205,6 @@ class PurgedWalkForwardSplit(BaseCrossValidator):
         test_size = self._resolved_test_size(n)
         # FIX: Match the fix in split() method
         start_test = self.min_train_size + self.embargo
-        start_test = self.min_train_size
         made = 0
         for _ in range(self.n_splits):
             test_start = start_test
@@ -143,7 +224,6 @@ class PurgedWalkForwardSplit(BaseCrossValidator):
         # Previous: start_test = self.min_train_size caused first split to fail
         # Now: start_test = self.min_train_size + self.embargo ensures train_end >= min_train_size
         start_test = self.min_train_size + self.embargo
-        start_test = self.min_train_size
         made = 0
         for _ in range(self.n_splits):
             test_start = start_test
@@ -333,7 +413,8 @@ def pick_threshold_from_oof(pipe, X, y, cv, pos_label=1):
     f1_scores = 2 * (prec_curve * rec_curve) / (prec_curve + rec_curve + 1e-9)
 
     # Find threshold with best F1 score (with minimum precision constraint)
-    min_precision = 0.40
+    # Lowered from 0.40 to 0.30 to allow higher recall
+    min_precision = 0.30
     valid_idx = np.where(prec_curve >= min_precision)[0]
 
     if len(valid_idx) > 0:
@@ -394,7 +475,6 @@ def pick_threshold_from_oof(pipe, X, y, cv, pos_label=1):
 
 # ====================== Top-signal utilities ======================
 def _load_top_signals(path = None) -> list[str]:
-def _load_top_signals(path: str = "logs/top_signals.txt") -> list[str]:
     """
     Loads top feature names from analyze_signals/select_top_signals output.
 
@@ -406,7 +486,6 @@ def _load_top_signals(path: str = "logs/top_signals.txt") -> list[str]:
     if path is None:
         path = LOGS_DIR / "top_signals.txt"
     p = Path(path)
-    p = os.path.join(path)
     try:
         with open(p) as f:
             lines = f.readlines()
@@ -423,22 +502,32 @@ def _load_top_signals(path: str = "logs/top_signals.txt") -> list[str]:
 
 
 # ====================== Public entry points ======================
-def train_model(models=None, fast=False):
+def train_model(models=None, fast=False, asof: str | None = None):
     df = load_SPY_data()
-    return train_best_xgboost_model(df)
+    return train_best_xgboost_model(df, asof=asof)
 
 
-def run(models=None, fast=False):
-    return train_model(models=models, fast=fast)
+def run(models=None, fast=False, asof: str | None = None):
+    return train_model(models=models, fast=fast, asof=asof)
 
 
-def main(models=None, fast=False):
-    ok = train_model(models=models, fast=fast)
+def main(models=None, fast=False, asof: str | None = None):
+    ok = train_model(models=models, fast=fast, asof=asof)
     return 0 if ok else 1
 
 
 # ====================== Trainer ======================
-def train_best_xgboost_model(df: pd.DataFrame) -> bool:
+def train_best_xgboost_model(df: pd.DataFrame, asof: str | None = None) -> bool:
+    # --asof: truncate data to reproduce a point-in-time model
+    if asof is not None:
+        cutoff = pd.to_datetime(asof)
+        date_col = "Date" if "Date" in df.columns else None
+        if date_col:
+            df = df[pd.to_datetime(df[date_col], errors="coerce") <= cutoff].copy()
+        elif hasattr(df.index, "dtype") and pd.api.types.is_datetime64_any_dtype(df.index):
+            df = df[df.index <= cutoff].copy()
+        print(f"[train] --asof {asof}: data truncated to {len(df)} rows (up to {cutoff.date()})")
+
     print("\n📊 Generating features...")
     df, all_feature_cols = add_features(df)
 
@@ -538,7 +627,6 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         )
 
         INPUT_SCHEMA_FPATH = MODELS_DIR / "input_features_fwd.txt"
-        INPUT_SCHEMA_FPATH = "models/input_features_fwd.txt"
 
         def _clean_names(names):
             return [c for c in names if c not in FWD_BLACKLIST]
@@ -589,132 +677,11 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         except Exception:
             use_smote, smote_step = (False, "passthrough")
 
-        xgb_common = dict(
-            random_state=42,
-            n_jobs=-1,
-            verbosity=0,
-            tree_method="hist",
-            use_label_encoder=False,
-            early_stopping_rounds=75,  # Stop if no improvement for 75 rounds (allow more exploration)
-        )
-        xgb_obj = dict(objective="binary:logistic", eval_metric="logloss")
-
-        use_kbest = X.shape[1] >= 2
-        if use_kbest:
-            max_k = X.shape[1]
-            # Optimized for ~114 features (Nov 2025): Focus on 30-60 range
-            # Analysis showed 20-30 features was too aggressive for expanded feature set
-            k_choices = sorted(set([30, 40, 50, 60, max(30, max_k // 2), max_k]))
-            k_choices = [k for k in k_choices if 5 <= k <= max_k]
-            # Ensure minimum choices for smaller feature sets
-            # Expanded feature set: allow more features to improve model capacity
-            k_choices = sorted(set([15, 20, 25, 30, max(15, max_k // 2), max_k]))
-            k_choices = [k for k in k_choices if 5 <= k <= max_k]
-            # Ensure we have at least some choices even with smaller feature sets
-            if not k_choices:
-                k_choices = sorted(set([min(5, max_k), min(10, max_k), max_k]))
-            print(f"🔧 Feature selection k_choices: {k_choices}")
-
-            # Optional: Pre-filter with tree-based importance for large feature sets
-            # Optional: Pre-filter with tree-based importance if we have many features
-            use_tree_prefilter = X.shape[1] > 40
-            if use_tree_prefilter:
-                print("🌲 Using tree-based feature pre-filtering (ExtraTrees importance)")
-                tree_selector = SelectFromModel(
-                    ExtraTreesClassifier(n_estimators=100, max_depth=5, random_state=42, n_jobs=-1),
-                    threshold="median",  # Keep top 50% of features by importance
-                )
-                steps = [
-                    ("imputer", SimpleImputer(strategy="median")),
-                    ("varth", VarianceThreshold(threshold=0.0)),
-                    ("tree_selector", tree_selector),
-                    ("smote", smote_step),
-                    ("kbest", SelectKBest(score_func=mutual_info_classif)),
-                    ("clf", XGBClassifier(**xgb_common, **xgb_obj)),
-                ]
-            else:
-                steps = [
-                    ("imputer", SimpleImputer(strategy="median")),
-                    ("varth", VarianceThreshold(threshold=0.0)),
-                    ("smote", smote_step),
-                    ("kbest", SelectKBest(score_func=mutual_info_classif)),
-                    ("clf", XGBClassifier(**xgb_common, **xgb_obj)),
-                ]
-            pipe = Pipeline(steps=steps)
-            # FIX: Reduced hyperparameter grid to prevent overfitting
-            # Previous: 118,098 combinations (massive overfitting!)
-            # Current: ~48 combinations (focus on key parameters)
-            param_grid = {
-                "kbest__k": k_choices,  # Keep all k choices for feature selection
-                "clf__n_estimators": [500],  # Fix to middle value
-                "clf__max_depth": [4, 6],  # MOST IMPORTANT - keep 2 values
-                "clf__learning_rate": [0.02, 0.03],  # MOST IMPORTANT - keep 2 values
-                "clf__subsample": [0.8],  # Fix to best value
-                "clf__colsample_bytree": [0.8],  # Fix to best value
-                "clf__min_child_weight": [10],  # Fix to best for class imbalance
-                "clf__gamma": [0],  # Fix to 0 (usually best)
-                "clf__reg_alpha": [0, 0.05],  # L1 regularization - keep 2 values
-                "clf__reg_lambda": [1.5],  # L2 regularization - fix to middle
-            # Enhanced hyperparameter grid with regularization and better exploration
-            param_grid = {
-                "kbest__k": k_choices,
-                "clf__n_estimators": [300, 500, 700],  # More trees for better learning
-                "clf__max_depth": [4, 6, 8],  # Slightly deeper trees
-                "clf__learning_rate": [0.01, 0.02, 0.03],  # Focus on proven optimal range
-                "clf__subsample": [0.7, 0.8, 0.9],  # Finer gradations
-                "clf__colsample_bytree": [0.7, 0.8, 0.9],  # Finer gradations
-                "clf__min_child_weight": [5, 10, 15],  # Prevent overfitting on class imbalance
-                "clf__gamma": [0, 0.5, 1.0],  # More exploration
-                "clf__reg_alpha": [
-                    0,
-                    0.05,
-                    0.2,
-                ],  # L1 regularization - better granularity in critical range
-                "clf__reg_lambda": [
-                    0.5,
-                    1.5,
-                    3.0,
-                ],  # L2 regularization - lower starting point for 80+ features
-            }
-            print(
-                f"🔧 Hyperparameter grid size: {np.prod([len(v) for v in param_grid.values()])} combinations"
-            )
-        else:
-            steps = [
-                ("imputer", SimpleImputer(strategy="median")),
-                ("varth", VarianceThreshold(threshold=0.0)),
-                ("smote", smote_step),
-                ("clf", XGBClassifier(**xgb_common, **xgb_obj)),
-            ]
-            pipe = Pipeline(steps=steps)
-            # FIX: Reduced hyperparameter grid (no KBest version)
-            # Previous: 3^9 = 19,683 combinations
-            # Current: ~8 combinations
-            param_grid = {
-                "clf__n_estimators": [500],  # Fix to middle value
-                "clf__max_depth": [4, 6],  # MOST IMPORTANT - keep 2 values
-                "clf__learning_rate": [0.02, 0.03],  # MOST IMPORTANT - keep 2 values
-                "clf__subsample": [0.8],  # Fix to best value
-                "clf__colsample_bytree": [0.8],  # Fix to best value
-                "clf__min_child_weight": [10],  # Fix to best value
-                "clf__gamma": [0],  # Fix to 0
-                "clf__reg_alpha": [0, 0.05],  # L1 regularization - keep 2 values
-                "clf__reg_lambda": [1.5],  # L2 regularization - fix to middle
-            # Enhanced hyperparameter grid (no KBest) with regularization
-            param_grid = {
-                "clf__n_estimators": [300, 500, 700],
-                "clf__max_depth": [4, 6, 8],
-                "clf__learning_rate": [0.01, 0.03, 0.05],
-                "clf__subsample": [0.7, 0.8, 0.9],
-                "clf__colsample_bytree": [0.7, 0.8, 0.9],
-                "clf__min_child_weight": [3, 5, 10],
-                "clf__gamma": [0, 0.5, 1.0],
-                "clf__reg_alpha": [0, 0.1, 0.5],
-                "clf__reg_lambda": [1.0, 2.0, 5.0],
-            }
-            print(
-                f"🔧 Hyperparameter grid size: {np.prod([len(v) for v in param_grid.values()])} combinations"
-            )
+        # Calculate class imbalance ratio for scale_pos_weight
+        n_neg = int((y == 0).sum())
+        n_pos = int((y == 1).sum())
+        class_ratio = n_neg / max(1, n_pos)
+        print(f"📊 Class distribution: neg={n_neg}, pos={n_pos}, ratio={class_ratio:.2f}")
 
         # IMPORTANT FIX: align profit-based sample weights to X.index
         sample_weight_profit = compute_sample_weights(
@@ -732,65 +699,230 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             f"mean={float(sample_weight_profit.mean()):.3f}"
         )
 
-        grid_search = GridSearchCV(
-            estimator=pipe,
-            param_grid=param_grid,
-            scoring="f1_macro",
-            cv=tscv_local,
-            n_jobs=-1,
-            verbose=2,
-            error_score=0,
+        # ============================================================================
+        # MODERN ML PIPELINE - Using EnhancedEnsemble + Bayesian HPO
+        # This replaces legacy single-XGBoost + GridSearchCV approach
+        # Source of truth: dashboard.py line 329 (XGBoost + LightGBM + CatBoost ensemble)
+        # ============================================================================
+
+        print("\n" + "=" * 60)
+        print("🚀 MODERN ML PIPELINE - CONSOLIDATED TRAINING")
+        print("=" * 60)
+
+        # Step 1: Preprocess features with imputation
+        from sklearn.impute import SimpleImputer
+        imputer = SimpleImputer(strategy="median")
+        X_imputed = pd.DataFrame(
+            imputer.fit_transform(X),
+            columns=X.columns,
+            index=X.index,
         )
-        print(f"[{datetime.now():%H:%M:%S}] starting GridSearchCV...")
-        grid_search.fit(X, y)
-        print(f"[{datetime.now():%H:%M:%S}] gridsearch done.")
 
-        print(f"\n✅ [FWD] Best Params: {grid_search.best_params_}")
-        print(f"🎯 [FWD] Best Score (F1 Macro): {grid_search.best_score_:.4f}")
+        # Step 2: Feature Selection using SHAP-based selector
+        print("\n📊 Step 1: Feature Selection (SHAP + RFE)")
+        feature_config = FeatureSelectionConfig(
+            correlation_threshold=0.75,  # TIGHTENED (Feb 2026): from 0.85 to reduce overfitting
+            min_features=40,
+            max_features=70,
+            shap_sample_size=1000,  # More samples for accurate importance
+            use_shap=True,
+            use_rfe=True,
+        )
 
-        best_model = grid_search.best_estimator_
+        try:
+            selector = FeatureSelector(feature_config)
+            X_selected = selector.fit_transform(X_imputed, y)
+            selected_features = selector.selected_features_
+            print(f"✅ Selected {len(selected_features)} features via SHAP+RFE")
+        except Exception as e:
+            print(f"⚠️ FeatureSelector failed ({e}), using all features")
+            X_selected = X_imputed
+            selected_features = list(X_imputed.columns)
 
-        from sklearn.utils.class_weight import compute_sample_weight as _csw
+        # Split data for validation (needed for ensemble weight calibration)
+        from sklearn.model_selection import train_test_split
+        X_train, X_val, y_train, y_val, sw_train, sw_val = train_test_split(
+            X_selected, y, sample_weight_profit,
+            test_size=0.15,
+            shuffle=False,  # Preserve time order
+        )
 
-        y_pred0 = best_model.predict(X)
-        w_miss = 1.0 + 2.0 * (y_pred0 != y).astype(float)
-        w_bal = _csw(class_weight="balanced", y=y)
-        w_final = w_miss * w_bal * sample_weight_profit
+        print(f"📊 Train: {len(X_train)} samples, Val: {len(X_val)} samples")
 
-        from copy import deepcopy
-
-        best_model_wn = deepcopy(best_model)
-        if hasattr(best_model_wn, "steps"):
-            steps_map = dict(best_model_wn.steps)
-            if "smote" in steps_map:
-                best_model_wn.set_params(smote="passthrough")
-
-        best_model_wn.fit(X, y, **{"clf__sample_weight": w_final})
-
-        # Check if calibration will actually help (quality gate)
-        from sklearn.calibration import CalibratedClassifierCV, calibration_curve
-
-        p_base = best_model_wn.predict_proba(X)[:, 1]
-        prob_true, prob_pred = calibration_curve(y, p_base, n_bins=10, strategy="uniform")
-        calibration_error = np.mean(np.abs(prob_true - prob_pred))
-
-        print(f"📊 Calibration error: {calibration_error:.4f}")
-
-        if calibration_error < 0.03:
-            # Model is already well-calibrated, skip calibration to avoid degradation
-            print("✅ Model already well-calibrated (error < 0.03), skipping calibration")
-            best_model = best_model_wn
-        else:
-            print(f"📈 Applying calibration (error = {calibration_error:.4f} >= 0.03)")
+        # Step 3: Bayesian Hyperparameter Optimization (if Optuna available)
+        best_params = {}
+        if OPTUNA_AVAILABLE:
+            print("\n🎯 Step 2: Bayesian Hyperparameter Optimization (Optuna)")
             try:
-                cal = CalibratedClassifierCV(best_model_wn, cv=3, method="isotonic")
-                cal.fit(X, y, sample_weight=w_final)
-            except Exception as e:
-                print(f"⚠️ [FWD] Isotonic calibration failed ({e}) — falling back to sigmoid.")
-                cal = CalibratedClassifierCV(best_model_wn, cv=3, method="sigmoid")
-                cal.fit(X, y, sample_weight=w_final)
+                tuning_config = TuningConfig(
+                    n_trials=50,  # Efficient Bayesian search
+                    n_cv_splits=3,
+                    scoring='f1',
+                    early_stopping_rounds=15,
+                    verbose=True,
+                )
+                tuner = HyperparameterTuner(tuning_config)
 
-            best_model = cal
+                # Tune XGBoost params (will be used for ensemble base)
+                best_params = tuner.tune(
+                    X_train.values,
+                    y_train.values,
+                    model_type='xgboost',
+                    sample_weight=sw_train.values if hasattr(sw_train, 'values') else sw_train,
+                )
+                print(f"✅ Optuna found best params: {best_params}")
+            except Exception as e:
+                print(f"⚠️ Optuna tuning failed ({e}), using defaults")
+                best_params = {
+                    'n_estimators': 500,
+                    'max_depth': 6,
+                    'learning_rate': 0.03,
+                    'subsample': 0.8,
+                    'colsample_bytree': 0.8,
+                }
+        else:
+            print("\n⚠️ Optuna not available, using tuned default parameters")
+            best_params = {
+                'n_estimators': 500,
+                'max_depth': 6,
+                'learning_rate': 0.03,
+                'subsample': 0.8,
+                'colsample_bytree': 0.8,
+                'min_child_weight': 10,
+                'reg_alpha': 0.05,
+                'reg_lambda': 1.5,
+            }
+
+        # Step 4: Train Enhanced Ensemble (XGBoost + LightGBM + CatBoost)
+        print("\n🔥 Step 3: Training Enhanced Ensemble (XGBoost + LightGBM + CatBoost)")
+        ensemble_config = EnsembleConfig(
+            n_models=3,
+            model_types=['xgboost', 'lightgbm', 'catboost'],
+            use_calibration=True,  # Built-in calibration
+            aggregation='weighted',  # Weight by validation performance
+            random_state=42,
+        )
+
+        ensemble = EnhancedEnsemble(config=ensemble_config)
+
+        try:
+            ensemble.fit(
+                X_train.values,
+                y_train.values,
+                X_val.values,
+                y_val.values,
+            )
+            print("✅ EnhancedEnsemble trained successfully")
+        except Exception as e:
+            print(f"⚠️ EnhancedEnsemble failed ({e}), falling back to single XGBoost")
+            # Fallback to single calibrated model
+            from xgboost import XGBClassifier
+            xgb_params = {
+                **best_params,
+                'random_state': 42,
+                'n_jobs': -1,
+                'scale_pos_weight': class_ratio,
+                'use_label_encoder': False,
+                'eval_metric': 'logloss',
+            }
+            base_model = XGBClassifier(**xgb_params)
+            ensemble = CalibratedModel(base_estimator=base_model, method='isotonic')
+            ensemble.fit(X_train.values, y_train.values, X_val.values, y_val.values)
+
+        # Step 5: Evaluate on validation set
+        print("\n📈 Step 4: Validation Performance")
+        val_probs = ensemble.predict_proba(X_val.values)
+        if val_probs.ndim > 1:
+            val_probs = val_probs[:, 1]
+        val_preds = (val_probs > 0.5).astype(int)
+
+        from sklearn.metrics import f1_score, precision_score, recall_score, roc_auc_score
+        val_f1 = f1_score(y_val, val_preds, zero_division=0)
+        val_prec = precision_score(y_val, val_preds, zero_division=0)
+        val_rec = recall_score(y_val, val_preds, zero_division=0)
+        try:
+            val_auc = roc_auc_score(y_val, val_probs)
+        except Exception:
+            val_auc = 0.5
+
+        print(f"    F1 Score:  {val_f1:.4f}")
+        print(f"    Precision: {val_prec:.4f}")
+        print(f"    Recall:    {val_rec:.4f}")
+        print(f"    AUC-ROC:   {val_auc:.4f}")
+
+        # Get uncertainty estimates (unique to ensemble)
+        if hasattr(ensemble, 'predict_proba_with_uncertainty'):
+            probs_unc, uncertainty = ensemble.predict_proba_with_uncertainty(X_val.values)
+            mean_uncertainty = float(np.mean(uncertainty))
+            print(f"    Mean Uncertainty: {mean_uncertainty:.4f}")
+        else:
+            mean_uncertainty = None
+
+        # Step 6: Final refit on all data
+        print("\n🔄 Step 5: Final refit on full dataset")
+        if hasattr(ensemble, 'fit'):
+            # For EnhancedEnsemble, we refit with all data
+            # Split off a small portion for calibration
+            cal_size = min(200, int(len(X_selected) * 0.1))
+            X_final_train = X_selected.iloc[:-cal_size]
+            y_final_train = y.iloc[:-cal_size]
+            X_cal = X_selected.iloc[-cal_size:]
+            y_cal = y.iloc[-cal_size:]
+
+            final_ensemble = EnhancedEnsemble(config=ensemble_config)
+            try:
+                final_ensemble.fit(
+                    X_final_train.values,
+                    y_final_train.values,
+                    X_cal.values,
+                    y_cal.values,
+                )
+                best_model = final_ensemble
+            except Exception as e:
+                print(f"⚠️ Final refit failed ({e}), using validation-trained model")
+                best_model = ensemble
+        else:
+            best_model = ensemble
+
+        # Step 7: Setup drift monitoring
+        print("\n📡 Step 6: Setting up drift monitoring")
+        drift_detector = DriftDetector(DriftConfig(
+            f1_drop_threshold=0.05,
+            precision_drop_threshold=0.05,
+            recall_drop_threshold=0.10,
+        ))
+
+        # Set baseline from training data
+        train_probs = best_model.predict_proba(X_selected.values)
+        if train_probs.ndim > 1:
+            train_probs = train_probs[:, 1]
+        drift_detector.set_baseline(
+            X_selected.values,
+            y.values,
+            train_probs,
+            feature_names=list(X_selected.columns),
+        )
+
+        # Save drift detector
+        drift_path = MODELS_DIR / "drift_detector.json"
+        drift_detector.save(str(drift_path))
+        print(f"💾 Saved drift detector → {drift_path}")
+
+        # Store baseline metrics for future drift checks
+        baseline_metrics = {
+            'f1': val_f1,
+            'precision': val_prec,
+            'recall': val_rec,
+            'auc': val_auc,
+            'uncertainty': mean_uncertainty,
+        }
+        with open(MODELS_DIR / "baseline_metrics.json", "w") as f:
+            json.dump(baseline_metrics, f, indent=2)
+        print(f"💾 Saved baseline metrics → {MODELS_DIR}/baseline_metrics.json")
+
+        print("\n" + "=" * 60)
+        print("✅ MODERN ML PIPELINE COMPLETE")
+        print("=" * 60)
 
         MODEL_DIR = "models"
         os.makedirs(MODEL_DIR, exist_ok=True)
@@ -798,15 +930,27 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             "MODEL_PATH_FWD", os.path.join(MODEL_DIR, "market_crash_model_fwd.pkl")
         )
 
-        payload = {"model": best_model, "features": list(X.columns)}
+        # Save model with selected features (from feature selection step)
+        payload = {
+            "model": best_model,
+            "features": selected_features,  # Use selected features, not original
+            "model_type": "EnhancedEnsemble",
+            "ensemble_config": ensemble_config.__dict__ if hasattr(ensemble_config, '__dict__') else {},
+            "best_params": best_params,
+            "baseline_metrics": baseline_metrics,
+            "training_date": datetime.now().isoformat(),
+        }
         joblib.dump(payload, model_path_fwd)
-        print(f"💾 [FWD] Model saved to {model_path_fwd} (with feature schema)")
+        print(f"💾 [FWD] Model saved to {model_path_fwd} (EnhancedEnsemble with {len(selected_features)} features)")
+
+        # Update input schema to reflect selected features (critical for prediction)
+        pd.Series(selected_features, dtype=str).to_csv(INPUT_SCHEMA_FPATH, index=False, header=False)
+        print(f"💾 Updated input schema → {INPUT_SCHEMA_FPATH} ({len(selected_features)} selected features)")
 
         label_values = sorted(pd.Series(y).unique().tolist())
         label_map = {int(v): int(v) for v in label_values}
         inv_label_map = {int(v): int(v) for v in label_values}
         with open(MODELS_DIR / "label_map_fwd.json", "w") as f:
-        with open("models/label_map_fwd.json", "w") as f:
             json.dump(
                 {
                     "label_map": {str(k): int(v) for k, v in label_map.items()},
@@ -816,13 +960,48 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
                 indent=2,
             )
         print(f"💾 [FWD] Label maps → {MODELS_DIR}/label_map_fwd.json")
-        print("💾 [FWD] Label maps → models/label_map_fwd.json")
 
+        # Threshold selection using validation set (replaces OOF on GridSearchCV)
+        # For ensemble models, we optimize threshold on validation predictions
+        print("\n🎯 Optimizing decision threshold on validation set...")
         try:
-            best_pipe_for_oof = grid_search.best_estimator_
-            t_star, metr = pick_threshold_from_oof(best_pipe_for_oof, X, y, tscv_local, pos_label=1)
+            val_probs_full = best_model.predict_proba(X_val.values)
+            if val_probs_full.ndim > 1:
+                val_probs_thr = val_probs_full[:, 1]
+            else:
+                val_probs_thr = val_probs_full
+
+            # Grid search for best threshold based on F1 with precision constraint
+            ts = np.linspace(0.30, 0.70, 41)
+            best_t, best_f1_thr, best_prec_thr, best_rec_thr = 0.50, -1.0, 0.0, 0.0
+            min_precision = 0.30  # Allow higher recall
+
+            for t_ in ts:
+                y_hat = (val_probs_thr >= t_).astype(int)
+                prec = precision_score(y_val, y_hat, zero_division=0)
+                rec = recall_score(y_val, y_hat, zero_division=0)
+
+                if prec < min_precision:
+                    continue
+
+                f1 = f1_score(y_val, y_hat, zero_division=0)
+                if f1 > best_f1_thr:
+                    best_f1_thr = f1
+                    best_t = t_
+                    best_prec_thr = prec
+                    best_rec_thr = rec
+
+            t_star = best_t
+            metr = {
+                "precision": best_prec_thr,
+                "recall": best_rec_thr,
+                "f1": best_f1_thr,
+                "proba_col_index": 1,
+                "pos_enc": 1,
+            }
+            print(f"✅ Optimal threshold: {t_star:.3f} (F1={best_f1_thr:.3f}, P={best_prec_thr:.3f}, R={best_rec_thr:.3f})")
         except Exception as e:
-            print(f"⚠️ [FWD] OOF threshold selection failed ({e}) — falling back to 0.50.")
+            print(f"⚠️ [FWD] Threshold optimization failed ({e}) — falling back to 0.50.")
             t_star, metr = (
                 0.50,
                 {"precision": 0.0, "recall": 0.0, "f1": 0.0, "proba_col_index": 1, "pos_enc": 1},
@@ -833,22 +1012,60 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             "pos_enc": metr.get("pos_enc", 1),
             "proba_col_index": metr.get("proba_col_index", 1),
             "threshold": float(t_star),
-            "metric": "f1_positive_only_oof",
-            "precision_oof": float(metr.get("precision", 0.0)),
-            "recall_oof": float(metr.get("recall", 0.0)),
-            "f1_oof": float(metr.get("f1", 0.0)),
+            "metric": "f1_validation_optimized",
+            "precision_val": float(metr.get("precision", 0.0)),
+            "recall_val": float(metr.get("recall", 0.0)),
+            "f1_val": float(metr.get("f1", 0.0)),
+            "model_type": "EnhancedEnsemble",
         }
         with open(MODELS_DIR / "thresholds_fwd.json", "w") as f:
             json.dump(thr_payload, f, indent=2)
         print(
             f"💾 [FWD] Thresholds → {MODELS_DIR}/thresholds_fwd.json: "
-        with open("models/thresholds_fwd.json", "w") as f:
-            json.dump(thr_payload, f, indent=2)
-        print(
-            f"💾 [FWD] Thresholds → models/thresholds_fwd.json: "
-            f"t={t_star:.3f} (P_oof={thr_payload['precision_oof']:.3f}, "
-            f"R_oof={thr_payload['recall_oof']:.3f}, F1_oof={thr_payload['f1_oof']:.3f})"
+            f"t={t_star:.3f} (P_val={thr_payload['precision_val']:.3f}, "
+            f"R_val={thr_payload['recall_val']:.3f}, F1_val={thr_payload['f1_val']:.3f})"
         )
+
+        # Compute regime-adaptive thresholds (Feb 2026)
+        try:
+            from core.regime_adaptive_thresholds import compute_regime_thresholds
+
+            print("\n📊 Computing regime-adaptive thresholds...")
+            # Get OOF predictions for regime threshold optimization
+            # y and oof_proba should be available from the training loop above
+            if 'y' in dir() and 'oof_proba' in dir() and oof_proba is not None:
+                regime_thresholds = compute_regime_thresholds(
+                    df=df,
+                    y_true=y.values if hasattr(y, 'values') else y,
+                    y_proba=oof_proba,
+                    output_path=str(MODELS_DIR / "regime_thresholds.json"),
+                )
+                print("✅ Regime-adaptive thresholds saved")
+            else:
+                print("⚠️ OOF predictions not available for regime threshold optimization")
+                print("   Run predict.py --backfill then core/regime_adaptive_thresholds.py")
+        except Exception as e:
+            print(f"⚠️ Regime threshold computation failed: {e}")
+            print("   Using static thresholds - run regime optimization separately")
+
+        # Save artifact manifest with provenance metadata
+        try:
+            save_artifact_manifest(
+                model_path=model_path_fwd,
+                df=df,
+                params=dict(TRAIN_CFG),
+                metrics={
+                    "val_f1": float(val_f1),
+                    "val_precision": float(val_prec),
+                    "val_recall": float(val_rec),
+                    "val_auc": float(val_auc),
+                    "threshold": float(t_star),
+                    "n_features": len(selected_features),
+                },
+                variant="fwd",
+            )
+        except Exception as _me:
+            print(f"⚠️ Artifact manifest save failed: {_me}")
 
         print("✅ [FWD] Forward-returns training completed.")
         print(
@@ -908,11 +1125,6 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     except Exception as e:
         print(
             f"⚠️ {MODELS_DIR}/input_features.txt missing or unreadable ({e}); using available columns as-is."
-        with open("models/input_features.txt") as f:
-            input_cols = [line.strip() for line in f if line.strip()]
-    except Exception as e:
-        print(
-            f"⚠️ models/input_features.txt missing or unreadable ({e}); using available columns as-is."
         )
         input_cols = [c for c in df.columns if c not in ("Event",)]
 
@@ -928,11 +1140,6 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         MODELS_DIR / "input_features.txt", index=False, header=False
     )
     print(f"💾 Input feature columns saved to {MODELS_DIR}/input_features.txt")
-    os.makedirs("models", exist_ok=True)
-    pd.Series(list(X.columns), dtype=str).to_csv(
-        "models/input_features.txt", index=False, header=False
-    )
-    print("💾 Input feature columns saved to models/input_features.txt")
 
     label_values = sorted(y_orig.unique())
     label_map = {lab: i for i, lab in enumerate(label_values)}
@@ -949,7 +1156,6 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     print(y.value_counts())
 
     with open(MODELS_DIR / "label_map.json", "w") as f:
-    with open("models/label_map.json", "w") as f:
         json.dump(
             {
                 "label_map": {str(k): int(v) for k, v in label_map.items()},
@@ -962,11 +1168,6 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
 
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     model_path = MODELS_DIR / "market_crash_model.pkl"
-    print("💾 Saved label maps to models/label_map.json")
-
-    MODEL_DIR = "models"
-    os.makedirs(MODEL_DIR, exist_ok=True)
-    model_path = os.path.join(MODEL_DIR, "market_crash_model.pkl")
 
     if X.shape[0] == 0:
         raise RuntimeError("Empty training matrix after cleaning.")
@@ -1159,8 +1360,6 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
         LOGS_DIR.mkdir(parents=True, exist_ok=True)
         shap_df.to_csv(LOGS_DIR / "shap_importance.csv", index=False)
         print(f"💾 Wrote SHAP importances → {LOGS_DIR}/shap_importance.csv")
-        shap_df.to_csv("logs/shap_importance.csv", index=False)
-        print("💾 Wrote SHAP importances → logs/shap_importance.csv")
 
     except ModuleNotFoundError:
         print("ℹ️ SHAP not installed — falling back to permutation importance.")
@@ -1175,8 +1374,6 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             LOGS_DIR.mkdir(parents=True, exist_ok=True)
             shap_df.to_csv(LOGS_DIR / "shap_importance.csv", index=False)
             print(f"💾 Wrote permutation importance → {LOGS_DIR}/shap_importance.csv")
-            shap_df.to_csv("logs/shap_importance.csv", index=False)
-            print("💾 Wrote permutation importance → logs/shap_importance.csv")
         except Exception as e2:
             print(f"⚠️ Permutation importance also failed: {e2}")
     except Exception as e:
@@ -1202,12 +1399,6 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     )
     print(
         f"💾 Selected feature columns saved to {MODELS_DIR}/selected_features.txt ({len(selected_cols)} cols)"
-    os.makedirs("models", exist_ok=True)
-    pd.Series(selected_cols, dtype=str).to_csv(
-        "models/selected_features.txt", index=False, header=False
-    )
-    print(
-        f"💾 Selected feature columns saved to models/selected_features.txt ({len(selected_cols)} cols)"
     )
 
     y_pred = best_model.predict(X)
@@ -1269,7 +1460,6 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
 
         MODELS_DIR.mkdir(parents=True, exist_ok=True)
         with open(MODELS_DIR / "thresholds.json", "w") as f:
-        with open("models/thresholds.json", "w") as f:
             json.dump(
                 {
                     "pos_orig": int(pos_orig),
@@ -1286,7 +1476,6 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
             )
         print(
             f"💾 Saved decision threshold → {MODELS_DIR}/thresholds.json: "
-            f"💾 Saved decision threshold → models/thresholds.json: "
             f"t={best_t:.3f} (Crash: P={best_prec:.3f}, R={best_rec:.3f}, F1={best_f1:.3f})"
         )
     except Exception as e:
@@ -1296,24 +1485,40 @@ def train_best_xgboost_model(df: pd.DataFrame) -> bool:
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
     grid_results.to_csv(LOGS_DIR / "gridsearch_xgb_results.csv", index=False)
     print(f"📊 Grid search results saved to {LOGS_DIR}/gridsearch_xgb_results.csv")
-    grid_results.to_csv("logs/gridsearch_xgb_results.csv", index=False)
-    print("📊 Grid search results saved to logs/gridsearch_xgb_results.csv")
     return True
 
 
 # ====================== CLI ======================
+def _parse_train_args(argv=None):
+    import argparse
+    p = argparse.ArgumentParser(description="NeuroVest model training")
+    p.add_argument(
+        "--asof",
+        default=None,
+        metavar="YYYY-MM-DD",
+        help="Train using data up to this date only (reproducible point-in-time training).",
+    )
+    p.add_argument(
+        "--no-predict",
+        action="store_true",
+        help="Skip running predict.py after training.",
+    )
+    return p.parse_args(argv)
+
+
 if __name__ == "__main__":
+    _args = _parse_train_args()
     print("📥 Loading SPY data...")
     df = load_SPY_data()
     try:
-        success = train_best_xgboost_model(df)
+        success = train_best_xgboost_model(df, asof=_args.asof)
     except Exception as e:
         import traceback
 
         traceback.print_exc()
         raise SystemExit(f"[train] hard failure: {e}") from e
 
-    if success:
+    if success and not _args.no_predict:
         from predict import run_predictions
 
         run_predictions()  # predict.py

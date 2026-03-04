@@ -6,6 +6,7 @@ Professional demonstration of the NeuroVest Forecasting API for prospective cust
 Complete feature showcase with API examples, integrations, and pricing.
 """
 
+import json
 import sys
 from pathlib import Path
 
@@ -14,6 +15,34 @@ try:
 except ImportError:
     print("Install required packages: pip install streamlit")
     sys.exit(1)
+
+
+def load_real_metrics() -> dict:
+    """Load actual metrics from logs/latest.json"""
+    metrics_path = Path("logs/latest.json")
+    default_metrics = {
+        "total_return": 0,
+        "sharpe_ratio": 0,
+        "max_drawdown": 0,
+        "model_accuracy": 0,
+        "wf_accuracy": 0,
+        "win_rate": 0,
+        "total_trades": 0,
+        "years_tested": 0,
+    }
+
+    if metrics_path.exists():
+        try:
+            with open(metrics_path) as f:
+                return json.load(f)
+        except Exception as e:
+            st.warning(f"Could not load metrics: {e}")
+
+    return default_metrics
+
+
+# Load real metrics at startup
+METRICS = load_real_metrics()
 
 st.set_page_config(
     page_title="NeuroVest API - Market Forecasting",
@@ -165,33 +194,38 @@ if logo_path.exists():
 
 st.markdown("# NeuroVest Forecasting API")
 st.markdown("### AI-Powered Market Intelligence for Quantitative Developers")
-st.markdown("Real-time predictions for 59+ assets • Sub-500ms latency • Proven 25-year track record")
+years_tested = METRICS.get('years_tested', 15)
+st.markdown(f"Real-time predictions for 59+ assets • Sub-500ms latency • {years_tested:.0f}-year track record")
 st.markdown("---")
 
-# Performance Metrics
+# Performance Metrics - REAL DATA from logs/latest.json
 col1, col2, col3, col4 = st.columns(4)
 
+total_return = METRICS.get('total_return', 0)
+sharpe_ratio = METRICS.get('sharpe_ratio', 0)
+max_drawdown = METRICS.get('max_drawdown', 0)
+
 with col1:
-    st.markdown("""
+    st.markdown(f"""
     <div class="metric-box">
-        <h2>191%</h2>
-        <p>Total Return<br>25-year SPY backtest</p>
+        <h2>{total_return:.1f}%</h2>
+        <p>Total Return<br>{years_tested:.0f}-year SPY backtest</p>
     </div>
     """, unsafe_allow_html=True)
 
 with col2:
-    st.markdown("""
+    st.markdown(f"""
     <div class="metric-box">
-        <h2>2.55</h2>
+        <h2>{sharpe_ratio:.2f}</h2>
         <p>Sharpe Ratio<br>Risk-adjusted returns</p>
     </div>
     """, unsafe_allow_html=True)
 
 with col3:
-    st.markdown("""
+    st.markdown(f"""
     <div class="metric-box">
-        <h2>-5.4%</h2>
-        <p>Max Drawdown<br>vs -55% buy-hold</p>
+        <h2>{max_drawdown:.1f}%</h2>
+        <p>Max Drawdown<br>Capital preservation</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -234,16 +268,20 @@ with col2:
     """, unsafe_allow_html=True)
 
 with col3:
-    st.markdown("""
+    model_acc = METRICS.get('model_accuracy', 0)
+    wf_acc = METRICS.get('wf_accuracy', model_acc)
+    win_rate = METRICS.get('win_rate', 0)
+    total_trades = METRICS.get('total_trades', 0)
+    st.markdown(f"""
     <div class="info-card">
         <h3>📊 Track Record</h3>
         <p>
-            <strong>25-year SPY backtest:</strong><br>
-            • 69.85% model accuracy<br>
-            • 2.55 Sharpe ratio<br>
-            • 467% better than buy-hold<br>
-            • -5.4% max drawdown<br>
-            Performance proven across multiple market regimes including 2008 and 2020 crashes.
+            <strong>{years_tested:.0f}-year SPY backtest:</strong><br>
+            • {wf_acc:.1f}% walk-forward accuracy<br>
+            • {sharpe_ratio:.2f} Sharpe ratio<br>
+            • {win_rate:.1f}% win rate ({total_trades:,} trades)<br>
+            • {max_drawdown:.1f}% max drawdown<br>
+            Performance validated with rolling out-of-sample testing.
         </p>
     </div>
     """, unsafe_allow_html=True)

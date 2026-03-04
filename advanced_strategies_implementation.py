@@ -631,7 +631,7 @@ try:
         'scaler': joblib.load(MODELS_DIR / "scaler_max_perf.pkl")
     }
     print("   ✅ Loaded diverse model ensemble")
-except:
+except Exception:
     print("   ⚠️ Could not load max_perf models, loading alternative...")
     models = {
         'xgboost': joblib.load(MODELS_DIR / "xgboost_ultimate.pkl"),

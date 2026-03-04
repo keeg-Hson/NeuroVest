@@ -3,8 +3,22 @@
 Infrastructure Health Check
 Verifies crypto asset synchronization and data integrity
 """
+import os
 import sys
 sys.path.insert(0, '.')
+
+# ─── DATABASE_URL Check ─────────────────────────────────────────────────────
+# Railway PostgreSQL is the primary data store. SQLite is fallback only.
+if not os.environ.get("DATABASE_URL"):
+    print("=" * 80)
+    print("⚠️  WARNING: DATABASE_URL not set")
+    print("=" * 80)
+    print("Using SQLite fallback (data/market_data.db)")
+    print("For production data, set DATABASE_URL to Railway PostgreSQL:")
+    print("  export DATABASE_URL='postgresql://...'")
+    print("See SYSTEM_DESIGN.md for architecture details.")
+    print("=" * 80)
+    print()
 
 print("="*80)
 print("NEUROVEST INFRASTRUCTURE HEALTH CHECK")
@@ -51,62 +65,75 @@ print("-"*80)
 
 try:
     from core.data_manager_postgres import DataManager
-    from sqlalchemy import text
 
     dm = DataManager()
 
-    # Check crypto data
-    with dm.engine.connect() as conn:
-        # Count crypto rows
-        crypto_query = text("""
+    # Check crypto data based on backend type
+    if dm.backend == 'postgresql':
+        from sqlalchemy import text
+        with dm.engine.connect() as conn:
+            result = conn.execute(
+                text("""
+                    SELECT ticker, COUNT(*) as row_count
+                    FROM price_data
+                    WHERE ticker LIKE '%_USDT'
+                    GROUP BY ticker
+                    ORDER BY ticker
+                """)
+            )
+            db_cryptos = {row[0]: row[1] for row in result}
+
+            # Check predictions
+            pred_result = conn.execute(text("""
+                SELECT COUNT(DISTINCT ticker) FROM predictions
+                WHERE ticker LIKE '%_USDT'
+            """))
+            crypto_preds = pred_result.scalar()
+    else:
+        # SQLite backend
+        conn = dm._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("""
             SELECT ticker, COUNT(*) as row_count
             FROM price_data
-            WHERE ticker IN :tickers
+            WHERE ticker LIKE '%_USDT'
             GROUP BY ticker
             ORDER BY ticker
         """)
+        db_cryptos = {row[0]: row[1] for row in cursor.fetchall()}
 
-        # Convert list to tuple for SQL IN clause
-        result = conn.execute(
-            text("""
-                SELECT ticker, COUNT(*) as row_count
-                FROM price_data
+        # Check predictions table exists and get count
+        try:
+            cursor.execute("""
+                SELECT COUNT(DISTINCT ticker) FROM predictions
                 WHERE ticker LIKE '%_USDT'
-                GROUP BY ticker
-                ORDER BY ticker
             """)
-        )
+            crypto_preds = cursor.fetchone()[0]
+        except Exception:
+            # Predictions table may not exist in SQLite
+            crypto_preds = 0
 
-        db_cryptos = {row[0]: row[1] for row in result}
+    print(f"Crypto assets with data: {len(db_cryptos)}/{len(expected_cryptos)}")
+    print(f"\n{'Ticker':<15} {'Rows':<10} {'Status':<15}")
+    print("-"*80)
 
-        print(f"Crypto assets with data: {len(db_cryptos)}/{len(expected_cryptos)}")
-        print(f"\n{'Ticker':<15} {'Rows':<10} {'Status':<15}")
-        print("-"*80)
+    for ticker in expected_cryptos:
+        rows = db_cryptos.get(ticker, 0)
+        status = "✅ Has data" if rows > 0 else "❌ NO DATA"
+        print(f"{ticker:<15} {rows:<10,} {status:<15}")
 
-        for ticker in expected_cryptos:
-            rows = db_cryptos.get(ticker, 0)
-            status = "✅ Has data" if rows > 0 else "❌ NO DATA"
-            print(f"{ticker:<15} {rows:<10,} {status:<15}")
+    missing_data = [t for t in expected_cryptos if db_cryptos.get(t, 0) == 0]
+    if missing_data:
+        print(f"\n❌ {len(missing_data)} cryptos missing data: {', '.join(missing_data)}")
+    else:
+        print("\n✅ All cryptos have data")
 
-        missing_data = [t for t in expected_cryptos if db_cryptos.get(t, 0) == 0]
-        if missing_data:
-            print(f"\n❌ {len(missing_data)} cryptos missing data: {', '.join(missing_data)}")
-        else:
-            print("\n✅ All cryptos have data")
+    print(f"\nCrypto predictions: {crypto_preds}/{len(expected_cryptos)}")
 
-        # Check predictions
-        pred_result = conn.execute(text("""
-            SELECT COUNT(DISTINCT ticker) FROM predictions
-            WHERE ticker LIKE '%_USDT'
-        """))
-        crypto_preds = pred_result.scalar()
-
-        print(f"\nCrypto predictions: {crypto_preds}/{len(expected_cryptos)}")
-
-        if crypto_preds < len(expected_cryptos):
-            print(f"❌ Missing predictions for {len(expected_cryptos) - crypto_preds} cryptos")
-        else:
-            print("✅ All cryptos have predictions")
+    if crypto_preds < len(expected_cryptos):
+        print(f"❌ Missing predictions for {len(expected_cryptos) - crypto_preds} cryptos")
+    else:
+        print("✅ All cryptos have predictions")
 
     dm.close()
 
@@ -124,7 +151,7 @@ files_to_check = [
     ('reload_crypto_max_history.py', 'Crypto reload script'),
     ('bootstrap_all.sh', 'Bootstrap script'),
     ('predict_all_assets.py', 'Prediction script'),
-    ('train_multi_asset.py', 'Training script')
+    ('archive/train_scripts/train_multi_asset.py', 'Training script')
 ]
 
 for filename, description in files_to_check:
