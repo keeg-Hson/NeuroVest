@@ -254,17 +254,29 @@ def evaluate_period(
     n_trades = trades.sum()
 
     if n_trades > 0:
-        trade_returns = fwd_returns[trades] - cost
-        period_return = trade_returns.sum()
-        wins = trade_returns > 0
-        win_rate = wins.mean() if len(wins) > 0 else 0
-        avg_win = trade_returns[wins].mean() if wins.any() else 0
-        avg_loss = trade_returns[~wins].mean() if (~wins).any() else 0
+        raw_trade_returns = fwd_returns[trades]
+        # Filter out NaN trade returns
+        valid_trade_mask = ~np.isnan(raw_trade_returns)
+        trade_returns = raw_trade_returns[valid_trade_mask] - cost
+        n_valid_trades = len(trade_returns)
 
-        # Period Sharpe (annualized approximation)
-        if trade_returns.std() > 0:
-            sharpe_period = (trade_returns.mean() / trade_returns.std()) * np.sqrt(252)
+        if n_valid_trades > 0:
+            period_return = trade_returns.sum()
+            wins = trade_returns > 0
+            win_rate = wins.mean()
+            avg_win = trade_returns[wins].mean() if wins.any() else 0
+            avg_loss = trade_returns[~wins].mean() if (~wins).any() else 0
+
+            # Period Sharpe (annualized approximation)
+            if len(trade_returns) > 1 and trade_returns.std() > 0:
+                sharpe_period = (trade_returns.mean() / trade_returns.std()) * np.sqrt(252)
+            else:
+                sharpe_period = 0
         else:
+            period_return = 0
+            win_rate = 0
+            avg_win = 0
+            avg_loss = 0
             sharpe_period = 0
     else:
         period_return = 0
@@ -275,7 +287,9 @@ def evaluate_period(
 
     # Gross return (before costs)
     if n_trades > 0:
-        period_return_gross = fwd_returns[trades].sum()
+        valid_gross = fwd_returns[trades]
+        valid_gross = valid_gross[~np.isnan(valid_gross)]
+        period_return_gross = valid_gross.sum() if len(valid_gross) > 0 else 0
     else:
         period_return_gross = 0
 
