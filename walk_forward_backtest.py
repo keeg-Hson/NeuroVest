@@ -279,8 +279,9 @@ def evaluate_period(
     else:
         period_return_gross = 0
 
-    # Benchmark (buy and hold)
-    benchmark_return = fwd_returns.sum()
+    # Benchmark (buy and hold) - handle NaN values
+    valid_returns = fwd_returns[~np.isnan(fwd_returns)]
+    benchmark_return = valid_returns.sum() if len(valid_returns) > 0 else 0.0
 
     return {
         'n_trades': n_trades,
@@ -291,7 +292,7 @@ def evaluate_period(
         'period_return': period_return,
         'period_return_gross': period_return_gross,
         'benchmark_return': benchmark_return,
-        'excess_return': period_return - benchmark_return,
+        'excess_return': period_return - benchmark_return if not np.isnan(benchmark_return) else 0,
         'win_rate': win_rate,
         'avg_win': avg_win,
         'avg_loss': avg_loss,
@@ -343,9 +344,13 @@ def run_walk_forward(
 
     cost = (config.fee_bps + config.slippage_bps) * 1e-4
 
+    test_days = end_idx - test_start_idx
+    test_years = test_days / 252
+
     print(f"\nStarting walk-forward backtest...")
-    print(f"  Total period: {df.index[start_idx].date()} to {df.index[end_idx-1].date()}")
-    print(f"  Min training: {min_train_days} days ({config.min_train_years} years)")
+    print(f"  Data range: {df.index[start_idx].date()} to {df.index[end_idx-1].date()}")
+    print(f"  Initial training: {min_train_days} days ({config.min_train_years} years)")
+    print(f"  Test period: ~{test_days} days ({test_years:.1f} years)")
     print(f"  Step size: {config.step_days} days")
     print(f"  Retrain frequency: {config.retrain_freq} days")
     print()
@@ -437,18 +442,21 @@ def run_walk_forward(
     if results.periods:
         results.n_periods = len(results.periods)
         results.n_trades = sum(p.n_trades for p in results.periods)
-        results.total_return = sum(p.period_return for p in results.periods)
-        results.benchmark_return = sum(p.benchmark_return for p in results.periods)
+        results.total_return = sum(p.period_return for p in results.periods if not np.isnan(p.period_return))
+        benchmark_returns = [p.benchmark_return for p in results.periods if not np.isnan(p.benchmark_return)]
+        results.benchmark_return = sum(benchmark_returns) if benchmark_returns else 0.0
         results.excess_return = results.total_return - results.benchmark_return
-        results.avg_auc = np.mean([p.auc for p in results.periods])
-        results.avg_precision = np.mean([p.precision for p in results.periods if p.n_trades > 0])
+        results.avg_auc = np.mean([p.auc for p in results.periods if not np.isnan(p.auc)])
+        precision_values = [p.precision for p in results.periods if p.n_trades > 0 and not np.isnan(p.precision)]
+        results.avg_precision = np.mean(precision_values) if precision_values else 0.0
 
         # Win rate across all trades
         if len(results.predictions_df) > 0:
-            trades_df = results.predictions_df[results.predictions_df['y_pred'] == 1]
+            trades_df = results.predictions_df[results.predictions_df['y_pred'] == 1].copy()
             if len(trades_df) > 0:
-                trade_returns = trades_df['fwd_ret'] - cost
-                results.win_rate = (trade_returns > 0).mean()
+                trade_returns = trades_df['fwd_ret'].dropna() - cost
+                if len(trade_returns) > 0:
+                    results.win_rate = (trade_returns > 0).mean()
 
         # Sharpe ratio on period returns
         period_returns = [p.period_return for p in results.periods]
@@ -462,6 +470,7 @@ def run_walk_forward(
         # Max drawdown
         if len(results.predictions_df) > 0:
             trades_df = results.predictions_df[results.predictions_df['y_pred'] == 1].copy()
+            trades_df = trades_df.dropna(subset=['fwd_ret'])
             if len(trades_df) > 0:
                 trades_df['trade_ret'] = trades_df['fwd_ret'] - cost
                 trades_df['cum_ret'] = (1 + trades_df['trade_ret']).cumprod()
