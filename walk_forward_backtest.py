@@ -68,6 +68,13 @@ class WalkForwardConfig:
     # Feature pruning
     prune_features: bool = True
 
+    # Regime protection
+    use_regime_filter: bool = False   # Enable regime-based filters
+    vix_max: float = 30.0             # Don't trade when VIX > this
+    trend_filter: bool = False        # Only trade when price > SMA200
+    drawdown_pause: float = 0.10      # Pause trading after 10% drawdown
+    recovery_threshold: float = 0.05  # Resume after 5% recovery from low
+
     # Mode
     quick_mode: bool = False          # Faster but less accurate
 
@@ -115,6 +122,124 @@ class WalkForwardResults:
     avg_precision: float = 0.0
     n_periods: int = 0
     n_trades: int = 0
+    n_trades_blocked: int = 0  # Trades blocked by regime filter
+
+
+def compute_regime_signals(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compute regime indicators for risk management.
+
+    Returns DataFrame with:
+    - vix: VIX level (if available)
+    - sma_200: 200-day simple moving average
+    - above_sma200: True if price > SMA200
+    - regime_risk: Combined risk score (higher = riskier)
+    """
+    regime = pd.DataFrame(index=df.index)
+
+    # Get close price
+    close = df['close'] if 'close' in df.columns else None
+
+    if close is not None:
+        # Trend filter: price vs 200-day SMA
+        regime['sma_200'] = close.rolling(200).mean()
+        regime['above_sma200'] = close > regime['sma_200']
+
+        # Volatility: 20-day realized vol (annualized)
+        returns = close.pct_change()
+        regime['realized_vol'] = returns.rolling(20).std() * np.sqrt(252) * 100
+
+        # Drawdown from recent high
+        rolling_max = close.rolling(63).max()  # ~3 month high
+        regime['drawdown'] = (close / rolling_max) - 1
+
+    # VIX from features (if available)
+    vix_cols = [c for c in df.columns if 'vix' in c.lower() and 'level' in c.lower()]
+    if vix_cols:
+        regime['vix'] = df[vix_cols[0]]
+    elif 'vix_level' in df.columns:
+        regime['vix'] = df['vix_level']
+    else:
+        # Estimate VIX from realized vol if not available
+        if 'realized_vol' in regime.columns:
+            regime['vix'] = regime['realized_vol'] * 1.2  # Rough approximation
+        else:
+            regime['vix'] = 20.0  # Default neutral
+
+    # Combined risk score (0-1, higher = riskier)
+    risk_score = pd.Series(0.0, index=df.index)
+
+    # VIX component (0-0.4)
+    if 'vix' in regime.columns:
+        vix_risk = np.clip((regime['vix'] - 15) / 35, 0, 1) * 0.4
+        risk_score += vix_risk.fillna(0)
+
+    # Trend component (0-0.3)
+    if 'above_sma200' in regime.columns:
+        trend_risk = (~regime['above_sma200']).astype(float) * 0.3
+        risk_score += trend_risk.fillna(0)
+
+    # Drawdown component (0-0.3)
+    if 'drawdown' in regime.columns:
+        dd_risk = np.clip(-regime['drawdown'] / 0.20, 0, 1) * 0.3
+        risk_score += dd_risk.fillna(0)
+
+    regime['risk_score'] = risk_score
+
+    return regime
+
+
+def apply_regime_filter(
+    y_pred: np.ndarray,
+    y_prob: np.ndarray,
+    regime_data: pd.DataFrame,
+    config: WalkForwardConfig,
+    cumulative_return: float = 0.0,
+    low_watermark: float = 0.0,
+) -> Tuple[np.ndarray, int]:
+    """
+    Apply regime filters to trading decisions.
+
+    Returns:
+        - Modified y_pred array with blocked trades set to 0
+        - Count of trades blocked
+    """
+    if not config.use_regime_filter:
+        return y_pred, 0
+
+    filtered_pred = y_pred.copy()
+    trades_blocked = 0
+
+    for i in range(len(y_pred)):
+        if y_pred[i] != 1:
+            continue
+
+        block_trade = False
+
+        # VIX filter
+        if 'vix' in regime_data.columns:
+            vix = regime_data['vix'].iloc[i] if i < len(regime_data) else np.nan
+            if not np.isnan(vix) and vix > config.vix_max:
+                block_trade = True
+
+        # Trend filter
+        if config.trend_filter and 'above_sma200' in regime_data.columns:
+            above_sma = regime_data['above_sma200'].iloc[i] if i < len(regime_data) else True
+            if not above_sma:
+                block_trade = True
+
+        # Drawdown pause
+        if cumulative_return < -config.drawdown_pause:
+            # Check if we've recovered enough from the low
+            recovery = cumulative_return - low_watermark
+            if recovery < config.recovery_threshold:
+                block_trade = True
+
+        if block_trade:
+            filtered_pred[i] = 0
+            trades_blocked += 1
+
+    return filtered_pred, trades_blocked
 
 
 def load_data(prune_features: bool = True) -> Tuple[pd.DataFrame, List[str]]:
@@ -231,13 +356,18 @@ def evaluate_period(
     fwd_returns: np.ndarray,
     prob_threshold: float,
     cost: float,
+    y_pred_override: np.ndarray = None,
 ) -> Dict:
     """Evaluate model performance for a period"""
     from sklearn.metrics import (
         accuracy_score, precision_score, recall_score, roc_auc_score
     )
 
-    y_pred = (y_prob >= prob_threshold).astype(int)
+    # Use override if provided (e.g., after regime filtering)
+    if y_pred_override is not None:
+        y_pred = y_pred_override
+    else:
+        y_pred = (y_prob >= prob_threshold).astype(int)
 
     # Classification metrics
     try:
@@ -330,6 +460,9 @@ def run_walk_forward(
         slippage_bps=config.slippage_bps,
     )
 
+    # Compute regime signals for filtering
+    regime_df = compute_regime_signals(df)
+
     # Filter to valid features
     valid_features = [f for f in feature_cols if f in df.columns]
 
@@ -355,6 +488,11 @@ def run_walk_forward(
     current_model = None
     last_train_idx = 0
     period_num = 0
+    total_trades_blocked = 0
+
+    # Track cumulative state for drawdown protection
+    cumulative_return = 0.0
+    low_watermark = 0.0
 
     cost = (config.fee_bps + config.slippage_bps) * 1e-4
 
@@ -367,6 +505,8 @@ def run_walk_forward(
     print(f"  Test period: ~{test_days} days ({test_years:.1f} years)")
     print(f"  Step size: {config.step_days} days")
     print(f"  Retrain frequency: {config.retrain_freq} days")
+    if config.use_regime_filter:
+        print(f"  Regime filter: ENABLED (VIX max={config.vix_max}, trend={config.trend_filter})")
     print()
 
     test_idx = test_start_idx
@@ -415,11 +555,32 @@ def run_walk_forward(
         # Get predictions
         y_prob = predict_proba(current_model, X_test)
 
-        # Evaluate period
+        # Initial predictions (before regime filter)
+        y_pred_initial = (y_prob >= config.prob_threshold).astype(int)
+
+        # Apply regime filter if enabled
+        if config.use_regime_filter:
+            test_regime = regime_df.iloc[test_idx:test_end_idx]
+            y_pred_filtered, trades_blocked = apply_regime_filter(
+                y_pred_initial, y_prob, test_regime, config,
+                cumulative_return, low_watermark
+            )
+            total_trades_blocked += trades_blocked
+        else:
+            y_pred_filtered = y_pred_initial
+            trades_blocked = 0
+
+        # Evaluate period with filtered predictions
         metrics = evaluate_period(
             y_test, y_prob, fwd_returns,
-            config.prob_threshold, cost
+            config.prob_threshold, cost,
+            y_pred_override=y_pred_filtered  # Use filtered predictions
         )
+
+        # Update cumulative state for drawdown protection
+        cumulative_return += metrics['period_return']
+        if cumulative_return < low_watermark:
+            low_watermark = cumulative_return
 
         # Store predictions
         for i, idx in enumerate(test_df.index):
@@ -428,9 +589,11 @@ def run_walk_forward(
                 'period': period_num,
                 'y_true': y_test[i],
                 'y_prob': y_prob[i],
-                'y_pred': int(y_prob[i] >= config.prob_threshold),
+                'y_pred': int(y_pred_filtered[i]),
+                'y_pred_raw': int(y_pred_initial[i]),  # Before filter
                 'fwd_ret': fwd_returns[i],
                 'close': test_df['close'].iloc[i],
+                'regime_blocked': int(y_pred_initial[i]) - int(y_pred_filtered[i]),
             })
 
         # Store period result
@@ -448,8 +611,9 @@ def run_walk_forward(
 
         ret_str = f"{metrics['period_return']*100:+.2f}%" if not np.isnan(metrics['period_return']) else "N/A"
         bench_str = f"{metrics['benchmark_return']*100:+.2f}%" if not np.isnan(metrics['benchmark_return']) else "N/A"
+        blocked_str = f" [blocked: {trades_blocked}]" if trades_blocked > 0 else ""
         print(f"  Test: {period_result.period_start} to {period_result.period_end} | "
-              f"AUC: {metrics['auc']:.3f} | Trades: {metrics['n_trades']} | "
+              f"AUC: {metrics['auc']:.3f} | Trades: {metrics['n_trades']}{blocked_str} | "
               f"Return: {ret_str} | Benchmark: {bench_str}")
 
         # Move to next period
@@ -459,6 +623,9 @@ def run_walk_forward(
     results.predictions_df = pd.DataFrame(all_predictions)
     if len(results.predictions_df) > 0:
         results.predictions_df.set_index('date', inplace=True)
+
+    # Store trades blocked count
+    results.n_trades_blocked = total_trades_blocked
 
     # Calculate aggregate metrics
     if results.periods:
@@ -671,10 +838,17 @@ def print_summary(results: WalkForwardResults):
     print(f"  Step size: {results.config.step_days} days")
     print(f"  Retrain frequency: {results.config.retrain_freq} days")
     print(f"  Probability threshold: {results.config.prob_threshold}")
+    if results.config.use_regime_filter:
+        print(f"  Regime filter: ENABLED")
+        print(f"    - VIX max: {results.config.vix_max}")
+        print(f"    - Trend filter: {results.config.trend_filter}")
+        print(f"    - Drawdown pause: {results.config.drawdown_pause*100:.1f}%")
 
     print(f"\nResults:")
     print(f"  Periods evaluated: {results.n_periods}")
     print(f"  Total trades: {results.n_trades}")
+    if results.n_trades_blocked > 0:
+        print(f"  Trades blocked by regime filter: {results.n_trades_blocked}")
     print(f"  Average AUC: {results.avg_auc:.4f}")
     print(f"  Average Precision: {results.avg_precision:.4f}")
 
@@ -748,6 +922,16 @@ Examples:
     parser.add_argument('--no-plot', action='store_true',
                         help='Skip generating plots')
 
+    # Regime filter options
+    parser.add_argument('--regime-filter', action='store_true',
+                        help='Enable regime-based risk filters')
+    parser.add_argument('--vix-max', type=float, default=30.0,
+                        help='Max VIX level to trade (default: 30)')
+    parser.add_argument('--trend-filter', action='store_true',
+                        help='Only trade when price > 200-day SMA')
+    parser.add_argument('--drawdown-pause', type=float, default=0.10,
+                        help='Pause trading after this drawdown (default: 0.10 = 10%%)')
+
     args = parser.parse_args()
 
     # Build configuration
@@ -761,6 +945,10 @@ Examples:
         prob_threshold=args.threshold,
         prune_features=not args.no_prune,
         quick_mode=args.quick,
+        use_regime_filter=args.regime_filter,
+        vix_max=args.vix_max,
+        trend_filter=args.trend_filter,
+        drawdown_pause=args.drawdown_pause,
     )
 
     if args.quick:
