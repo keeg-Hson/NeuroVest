@@ -391,6 +391,13 @@ def run_walk_forward(
         y_test = test_df['y'].values
         fwd_returns = test_df['fwd_ret_raw'].values
 
+        # Skip periods with all NaN forward returns (end of data)
+        valid_fwd = ~np.isnan(fwd_returns)
+        if not valid_fwd.any():
+            print(f"  Skipping period (no valid forward returns)")
+            test_idx = test_end_idx
+            continue
+
         # Get predictions
         y_prob = predict_proba(current_model, X_test)
 
@@ -425,10 +432,11 @@ def run_walk_forward(
         )
         results.periods.append(period_result)
 
+        ret_str = f"{metrics['period_return']*100:+.2f}%" if not np.isnan(metrics['period_return']) else "N/A"
+        bench_str = f"{metrics['benchmark_return']*100:+.2f}%" if not np.isnan(metrics['benchmark_return']) else "N/A"
         print(f"  Test: {period_result.period_start} to {period_result.period_end} | "
               f"AUC: {metrics['auc']:.3f} | Trades: {metrics['n_trades']} | "
-              f"Return: {metrics['period_return']*100:+.2f}% | "
-              f"Benchmark: {metrics['benchmark_return']*100:+.2f}%")
+              f"Return: {ret_str} | Benchmark: {bench_str}")
 
         # Move to next period
         test_idx = test_end_idx
@@ -458,9 +466,9 @@ def run_walk_forward(
                 if len(trade_returns) > 0:
                     results.win_rate = (trade_returns > 0).mean()
 
-        # Sharpe ratio on period returns
-        period_returns = [p.period_return for p in results.periods]
-        if np.std(period_returns) > 0:
+        # Sharpe ratio on period returns (exclude NaN)
+        period_returns = [p.period_return for p in results.periods if not np.isnan(p.period_return)]
+        if len(period_returns) > 1 and np.std(period_returns) > 0:
             # Annualize: assume step_days per period
             periods_per_year = 252 / config.step_days
             results.sharpe_ratio = (
@@ -657,11 +665,14 @@ def print_summary(results: WalkForwardResults):
     print(f"  Average Precision: {results.avg_precision:.4f}")
 
     print(f"\nPerformance:")
-    print(f"  Strategy Return: {results.total_return*100:+.2f}%")
-    print(f"  Benchmark Return: {results.benchmark_return*100:+.2f}%")
-    print(f"  Excess Return: {results.excess_return*100:+.2f}%")
+    strat_ret = results.total_return if not np.isnan(results.total_return) else 0
+    bench_ret = results.benchmark_return if not np.isnan(results.benchmark_return) else 0
+    excess_ret = results.excess_return if not np.isnan(results.excess_return) else 0
+    print(f"  Strategy Return: {strat_ret*100:+.2f}%")
+    print(f"  Benchmark Return: {bench_ret*100:+.2f}%")
+    print(f"  Excess Return: {excess_ret*100:+.2f}%")
     print(f"  Sharpe Ratio: {results.sharpe_ratio:.2f}")
-    print(f"  Max Drawdown: {results.max_drawdown*100:.2f}%" if results.max_drawdown else "  Max Drawdown: N/A")
+    print(f"  Max Drawdown: {results.max_drawdown*100:.2f}%" if results.max_drawdown and not np.isnan(results.max_drawdown) else "  Max Drawdown: N/A")
     print(f"  Win Rate: {results.win_rate*100:.1f}%")
 
     # Interpretation
@@ -675,10 +686,10 @@ def print_summary(results: WalkForwardResults):
     else:
         print(f"  Model shows minimal predictive value (AUC={results.avg_auc:.3f})")
 
-    if results.excess_return > 0:
-        print(f"  Strategy outperformed benchmark by {results.excess_return*100:.2f}%")
+    if excess_ret > 0:
+        print(f"  Strategy outperformed benchmark by {excess_ret*100:.2f}%")
     else:
-        print(f"  Strategy underperformed benchmark by {abs(results.excess_return)*100:.2f}%")
+        print(f"  Strategy underperformed benchmark by {abs(excess_ret)*100:.2f}%")
 
     if results.sharpe_ratio > 1.0:
         print(f"  Sharpe ratio is attractive (>{1.0})")
