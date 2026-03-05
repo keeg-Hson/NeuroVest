@@ -1,43 +1,46 @@
-# 🧠 NeuroVest (Beta)
+# NeuroVest (Beta)
 
-**AI-Powered Economic Forecasting Platform**
+**Economic Forecasting Platform**
+
 Predict market trends. Identify undervalued assets. Translate data into financial insight.
+
+**Live Dashboard:** [neurovestdemo.up.railway.app](https://neurovestdemo.up.railway.app)
 
 ---
 
-## 📘 Overview
+## Overview
 
-**NeuroVest** is an advanced **economic forecasting and market analysis platform** that helps investors and analysts anticipate financial trends before they happen.
+NeuroVest is an economic forecasting and market analysis platform that helps investors and analysts anticipate financial trends before they happen.
 
-Built around a **machine learning forecasting engine**, NeuroVest analyzes both live and historical data to detect spikes, crashes, and valuation shifts using a combination of quantitative, sentiment, and macroeconomic indicators.
+Built around a machine learning forecasting engine, NeuroVest analyzes both live and historical data to detect spikes, crashes, and valuation shifts using a combination of quantitative, sentiment, and macroeconomic indicators.
 
 It bridges the gap between traditional financial modeling and intelligent automation, offering a data-driven lens for understanding the markets.
 
 ---
 
-## 📈 Model Performance
+## Model Performance
 
 ### Current Production Metrics (March 2026)
 
 | Metric | Value | Benchmark |
 |--------|-------|-----------|
-| **Accuracy** | 78.62% | - |
-| **AUC** | 0.7792 | - |
-| **Sharpe Ratio** | 2.55 | vs 0.42 buy-and-hold |
-| **Max Drawdown** | -5.4% | vs -55% buy-and-hold |
-| **Win Rate** | 54.0% | - |
-| **Precision** | 86.99% | When model signals |
-| **Sortino Ratio** | 3.12 | - |
-| **Profit Factor** | 1.87 | - |
+| Accuracy | 78.62% | - |
+| AUC | 0.7792 | - |
+| Sharpe Ratio | 2.55 | vs 0.42 buy-and-hold |
+| Max Drawdown | -5.4% | vs -55% buy-and-hold |
+| Win Rate | 54.0% | - |
+| Precision | 86.99% | When model signals |
+| Sortino Ratio | 3.12 | - |
+| Profit Factor | 1.87 | - |
 
 ### Ensemble Models (164 Features)
 
 | Model | Accuracy | Precision | Recall | F1 Score |
 |-------|----------|-----------|--------|----------|
-| **XGBoost (Regime)** | 64.29% | 38.08% | 42.12% | 0.400 |
-| **LightGBM (Regime)** | 62.06% | 36.88% | 48.10% | 0.417 |
-| **CatBoost (Regime)** | 61.67% | 37.57% | 53.80% | 0.442 |
-| **Ensemble** | 63.98% | 38.95% | 48.37% | 0.432 |
+| XGBoost (Regime) | 64.29% | 38.08% | 42.12% | 0.400 |
+| LightGBM (Regime) | 62.06% | 36.88% | 48.10% | 0.417 |
+| CatBoost (Regime) | 61.67% | 37.57% | 53.80% | 0.442 |
+| Ensemble | 63.98% | 38.95% | 48.37% | 0.432 |
 
 ### Threshold Strategy (Precision-Focused)
 
@@ -45,7 +48,7 @@ It bridges the gap between traditional financial modeling and intelligent automa
 |----------|-----------|-----------|----------|--------|
 | Ultra-Conservative | 0.65 | 100% | 100% | 4 |
 | Conservative | 0.55 | 92.6% | 92.6% | 27 |
-| **Precision-Focused** | **0.45** | **~87%** | **54%** | **~50** |
+| Precision-Focused | 0.45 | ~87% | 54% | ~50 |
 | Balanced | 0.50 | 38.7% | 52.7% | 619 |
 | Aggressive | 0.40 | 31.6% | 52.4% | 880 |
 
@@ -62,20 +65,20 @@ It bridges the gap between traditional financial modeling and intelligent automa
 
 ---
 
-## 🚀 Features
+## Features
 
 - **Forecasting Engine** - Predicts market regimes (spike, crash, neutral) using ensemble of XGBoost, LightGBM, CatBoost, and LSTM models.
-- **Signal Integration** – Merges macroeconomic indicators (FRED), sentiment data (Reddit + NewsAPI), and technical metrics (RSI, MACD, momentum).
-- **Automated Backtesting** – Simulates performance, calculating Sharpe ratio, Sortino ratio, max drawdown, and profit factor.
-- **Parameter Sweeps** – Optimizes model thresholds for maximum profitability or precision.
-- **Multi-Asset Coverage** – 31 stocks/ETFs/commodities + 10 cryptocurrencies.
-- **Production Automation** – Railway-deployed worker with scheduled training (weekly) and predictions (daily).
-- **Comprehensive Logging** – Stores predictions, metrics, and thresholds for reproducibility.
-- **Modular Design** – Easily extendable for new models or data sources.
+- **Signal Integration** - Merges macroeconomic indicators (FRED), sentiment data (Reddit + NewsAPI), and technical metrics (RSI, MACD, momentum).
+- **Automated Backtesting** - Simulates performance, calculating Sharpe ratio, Sortino ratio, max drawdown, and profit factor.
+- **Parameter Sweeps** - Optimizes model thresholds for maximum profitability or precision.
+- **Multi-Asset Coverage** - 31 stocks/ETFs/commodities + 10 cryptocurrencies.
+- **Production Automation** - Railway-deployed worker with scheduled training (weekly) and predictions (daily).
+- **Comprehensive Logging** - Stores predictions, metrics, and thresholds for reproducibility.
+- **Modular Design** - Easily extendable for new models or data sources.
 
 ---
 
-## 🧩 Architecture
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -105,7 +108,7 @@ train.py  predict.py  backtest.py  dashboard_   api_server.py
 
 ---
 
-## 📁 Repository Structure
+## Repository Structure
 
 ```
 .
@@ -142,7 +145,7 @@ train.py  predict.py  backtest.py  dashboard_   api_server.py
 
 ---
 
-## ⚙️ Setup
+## Setup
 
 ### Requirements
 - Python 3.10+
@@ -214,23 +217,23 @@ python3 evaluate_targets.py           # Test labeling strategies
 
 ---
 
-## 📊 Example Outputs
-- `logs/daily_predictions.csv` – Model predictions with confidence scores.
-- `logs/backtest_results.csv` – Simulated capital growth and key performance metrics.
-- `configs/best_thresholds.json` – Optimal crash/spike threshold configuration.
-- `all_models_comparison.csv` – Full model comparison with metrics.
-- `optimization_metric_comparison.csv` – Threshold optimization results.
+## Example Outputs
+- `logs/daily_predictions.csv` - Model predictions with confidence scores.
+- `logs/backtest_results.csv` - Simulated capital growth and key performance metrics.
+- `configs/best_thresholds.json` - Optimal crash/spike threshold configuration.
+- `all_models_comparison.csv` - Full model comparison with metrics.
+- `optimization_metric_comparison.csv` - Threshold optimization results.
 
 ---
 
-## 🧭 Development Status
+## Development Status
 
 **Version:** Beta 1.1
 **Stage:** Production - Full ML pipeline deployed on Railway with automated scheduling.
 **Last Updated:** March 2026
 
 ### Completed
-- End-to-end pipeline: data → model → prediction → evaluation
+- End-to-end pipeline: data -> model -> prediction -> evaluation
 - Integration of sentiment and macroeconomic signals
 - Automated optimization and backtesting modules
 - Production deployment on Railway with PostgreSQL
@@ -245,7 +248,7 @@ python3 evaluate_targets.py           # Test labeling strategies
 
 ---
 
-## 🛠️ Roadmap
+## Roadmap
 
 | Phase | Focus | Status |
 |-------|--------|---------|
@@ -259,18 +262,13 @@ python3 evaluate_targets.py           # Test labeling strategies
 
 ---
 
-## 📜 License
+## License
 MIT License - free for public and commercial use. Attribution appreciated.
 
 ---
 
-## 👤 Author
+## Author
 
-Built by [**Keegan Hutchinson**](https://github.com/keeg-Hson)  
+Built by [Keegan Hutchinson](https://github.com/keeg-Hson)
+
 Feedback, contributions, and collaboration are always welcome.
-
-> NeuroVest - Invest with intelligence.
-
-
-
-
