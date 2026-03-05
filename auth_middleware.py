@@ -1,7 +1,10 @@
 """
 Simple API Key Authentication Middleware
+
+Note: Streamlit is imported lazily inside UI-specific methods so that this
+module can be safely imported by the FastAPI server without pulling in the
+Streamlit runtime.
 """
-import streamlit as st
 import secrets
 import pandas as pd
 from sqlalchemy import text
@@ -56,6 +59,7 @@ class AuthManager:
     @staticmethod
     def get_session_user():
         """Get current user from session"""
+        import streamlit as st
         if 'user_id' not in st.session_state:
             # For demo purposes, create anonymous user if none exists
             if 'api_key' not in st.session_state:
@@ -83,6 +87,7 @@ class AuthManager:
     @staticmethod
     def require_auth():
         """Show auth UI and return user_id or None"""
+        import streamlit as st
         with st.sidebar:
             st.markdown("---")
             st.markdown("### 🔑 Authentication")
@@ -194,18 +199,17 @@ def save_custom_asset_to_db(ticker, asset_type, df, user_id):
         data_to_insert['ticker'] = ticker
         data_to_insert['user_id'] = user_id
 
-        # Bulk insert
         records = data_to_insert.to_dict('records')
 
         with dm.engine.begin() as conn:
             # Delete existing data for this user+ticker
             conn.execute(
                 text("DELETE FROM price_data WHERE ticker = :ticker AND user_id = :user_id"),
-                {"ticker": ticker, "user_id": user_id}
+                {"ticker": ticker, "user_id": user_id},
             )
 
-            # Insert new data
-            for record in records:
+            # Bulk insert all records in a single round-trip
+            if records:
                 conn.execute(
                     text("""
                     INSERT INTO price_data
@@ -213,16 +217,7 @@ def save_custom_asset_to_db(ticker, asset_type, df, user_id):
                     VALUES (:ticker, :timestamp, :open, :high, :low, :close, :volume, :user_id)
                     ON CONFLICT (ticker, timestamp) DO NOTHING
                     """),
-                    {
-                        "ticker": record['ticker'],
-                        "timestamp": record['timestamp'],
-                        "open": record['open'],
-                        "high": record['high'],
-                        "low": record['low'],
-                        "close": record['close'],
-                        "volume": record['volume'],
-                        "user_id": record['user_id']
-                    }
+                    records,
                 )
 
         dm.close()

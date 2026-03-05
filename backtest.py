@@ -17,10 +17,9 @@ from utils import load_SPY_data, load_asset_data
 # Regime-adaptive position sizing (Feb 2026)
 USE_REGIME_POSITION_SIZING = os.getenv("USE_REGIME_SIZING", "1").lower() in ("1", "true", "yes")
 
-# Auto-refresh SPY data on backtest run (optional, silently skips if script missing)
-_update_script = pathlib.Path(__file__).with_name("update_spy_data.py")
-if _update_script.exists():
-    subprocess.run([sys.executable, str(_update_script)], check=False)
+# NOTE: Auto-refresh of SPY data was removed from module-level code.
+# Importing this module no longer triggers a subprocess call.
+# Call update_spy_data.py explicitly before running a backtest if needed.
 
 
 def _assert_predictions_schema(df: pd.DataFrame) -> None:

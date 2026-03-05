@@ -40,8 +40,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize rate limiter
-limiter = Limiter(key_func=get_remote_address)
+# ============================================================================
+# Shared DB instance — reuses SQLAlchemy connection pool across all requests.
+# Do NOT create a new DataManager per request; use this module-level instance.
+# ============================================================================
+_dm = DataManager()
 
 # Tier-based rate limits
 RATE_LIMITS = {
@@ -50,6 +53,50 @@ RATE_LIMITS = {
     'pro': "300/minute",
     'enterprise': "10000/minute"
 }
+
+# ============================================================================
+# Tier-aware rate limit key function
+# Returns "ip:limit_string" so slowapi can apply the correct per-tier cap.
+# The API key → tier lookup is cached in Redis (or in-process dict fallback)
+# to avoid a DB round-trip on every request.
+# ============================================================================
+_tier_cache: dict[str, str] = {}  # in-process fallback when Redis is unavailable
+
+
+def _get_tier_for_key(api_key: str) -> str:
+    """Return tier string for an API key, using cache to avoid repeated DB hits."""
+    if api_key in _tier_cache:
+        return _tier_cache[api_key]
+    cache_key = f"tier:{api_key[:16]}"
+    cached = cache.get(cache_key)
+    if cached:
+        _tier_cache[api_key] = cached
+        return cached
+    try:
+        from sqlalchemy import text
+        with _dm.engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT tier FROM users WHERE api_key = :k"),
+                {"k": api_key},
+            )
+            row = result.fetchone()
+        tier = (row[0] or "free") if row else "free"
+    except Exception:
+        tier = "free"
+    cache.set(cache_key, tier, ttl=300)
+    _tier_cache[api_key] = tier
+    return tier
+
+
+def _dynamic_rate_limit(request: Request) -> str:
+    """Return the rate-limit string appropriate for this request's API key tier."""
+    api_key = request.headers.get("x-api-key", "")
+    tier = _get_tier_for_key(api_key) if api_key else "free"
+    return RATE_LIMITS.get(tier, RATE_LIMITS["free"])
+
+
+# Initialize rate limiter using the dynamic per-tier function
+limiter = Limiter(key_func=get_remote_address)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -156,38 +203,37 @@ class ErrorResponse(BaseModel):
 # ============================================================================
 
 async def verify_api_key(x_api_key: str = Header(..., description="Your API key")):
-    """Validate API key from header and return user with tier"""
-    dm = DataManager()
-
+    """Validate API key from header and return user with tier.
+    Uses the shared _dm engine (connection pooled) instead of opening a new connection.
+    """
     try:
-        with dm.engine.connect() as conn:
-            from sqlalchemy import text
+        from sqlalchemy import text
+        with _dm.engine.connect() as conn:
             result = conn.execute(
                 text("SELECT id, username, tier FROM users WHERE api_key = :api_key"),
-                {"api_key": x_api_key}
+                {"api_key": x_api_key},
             )
             user = result.fetchone()
-
-        dm.close()
 
         if not user:
             logger.warning(f"Invalid API key attempted: {x_api_key[:8]}...")
             raise HTTPException(
                 status_code=401,
-                detail="Invalid API key. Register at /api/auth/register to get a key."
+                detail="Invalid API key. Register at /api/auth/register to get a key.",
             )
 
         user_dict = {
             'user_id': user[0],
             'username': user[1],
-            'tier': user[2] if len(user) > 2 and user[2] else 'free'
+            'tier': user[2] if len(user) > 2 and user[2] else 'free',
         }
 
         logger.info(f"Authenticated user: {user_dict['user_id']} (tier: {user_dict['tier']})")
         return user_dict
 
+    except HTTPException:
+        raise
     except Exception as e:
-        dm.close()
         logger.error(f"Auth error: {e}")
         raise HTTPException(status_code=401, detail="Authentication failed")
 
@@ -199,6 +245,44 @@ def get_user_rate_limit(user: dict) -> str:
     """Get rate limit string for user's tier"""
     tier = user.get('tier', 'free')
     return RATE_LIMITS.get(tier, RATE_LIMITS['free'])
+
+# ============================================================================
+# Prediction formatting helper — single source of truth
+# ============================================================================
+
+def _format_prediction_row(row) -> dict:
+    """Convert a raw predictions DB row into the standard API response dict.
+
+    Centralises the probability derivation and confidence bucketing that was
+    previously copy-pasted across four endpoints.
+    """
+    ensemble_prob = float(row['ensemble_prob'])
+    label = row['prediction_label']
+
+    remaining = 1.0 - ensemble_prob
+    other_prob = remaining / 2.0
+
+    if label == 'CRASH':
+        prob_crash, prob_normal, prob_spike = ensemble_prob, other_prob, other_prob
+    elif label == 'SPIKE':
+        prob_crash, prob_normal, prob_spike = other_prob, other_prob, ensemble_prob
+    else:  # NORMAL
+        prob_crash, prob_normal, prob_spike = other_prob, ensemble_prob, other_prob
+
+    conf_score = float(row.get('confidence_score', 0.5))
+    confidence = 'high' if conf_score >= 0.7 else ('medium' if conf_score >= 0.5 else 'low')
+
+    return {
+        "ticker": row['ticker'],
+        "prediction_date": str(row['prediction_date']),
+        "prediction_label": label,
+        "prob_crash": round(prob_crash, 3),
+        "prob_normal": round(prob_normal, 3),
+        "prob_spike": round(prob_spike, 3),
+        "confidence": confidence,
+        "timestamp": datetime.now().isoformat(),
+    }
+
 
 # ============================================================================
 # API Endpoints
@@ -292,18 +376,14 @@ def health_check():
     - Number of assets available
     """
     try:
-        dm = DataManager()
-
-        # Check database connectivity
-        assets = dm.get_all_assets()  # Returns list of (ticker, asset_type) tuples
+        # Check database connectivity using shared connection pool
+        assets = _dm.get_all_assets()  # Returns list of (ticker, asset_type) tuples
 
         # Get latest prediction
-        latest = dm.get_latest_predictions(limit=1)
+        latest = _dm.get_latest_predictions(limit=1)
         last_pred = None
         if len(latest) > 0:
             last_pred = str(latest.iloc[0]['prediction_date'])
-
-        dm.close()
 
         logger.info(f"Health check successful: {len(assets)} assets, last prediction: {last_pred}")
 
@@ -344,7 +424,7 @@ def health_check():
     ```
     """
 )
-@limiter.limit("300/minute")  # Max for non-enterprise
+@limiter.limit(_dynamic_rate_limit)
 def get_all_predictions(
     request: Request,
     limit: int = Query(100, le=1000, description="Maximum predictions to return"),
@@ -370,9 +450,7 @@ def get_all_predictions(
             logger.info("Returning cached predictions")
             return cached
 
-        dm = DataManager()
-        df = dm.get_latest_predictions(limit=limit)
-        dm.close()
+        df = _dm.get_latest_predictions(limit=limit)
 
         if len(df) == 0:
             logger.warning("No predictions found in database")
@@ -382,37 +460,7 @@ def get_all_predictions(
         df = df.sort_values('prediction_date', ascending=False)
         latest = df.groupby('ticker').first().reset_index()
 
-        predictions = []
-        for _, row in latest.iterrows():
-            # Derive 3-class probabilities from ensemble_prob and prediction_label
-            ensemble_prob = float(row['ensemble_prob'])
-            label = row['prediction_label']
-
-            # Distribute remaining probability across other classes
-            remaining = 1.0 - ensemble_prob
-            other_prob = remaining / 2.0
-
-            if label == 'CRASH':
-                prob_crash, prob_normal, prob_spike = ensemble_prob, other_prob, other_prob
-            elif label == 'SPIKE':
-                prob_crash, prob_normal, prob_spike = other_prob, other_prob, ensemble_prob
-            else:  # NORMAL
-                prob_crash, prob_normal, prob_spike = other_prob, ensemble_prob, other_prob
-
-            # Derive confidence from confidence_score
-            conf_score = float(row.get('confidence_score', 0.5))
-            confidence = 'high' if conf_score >= 0.7 else ('medium' if conf_score >= 0.5 else 'low')
-
-            predictions.append({
-                "ticker": row['ticker'],
-                "prediction_date": str(row['prediction_date']),
-                "prediction_label": label,
-                "prob_crash": round(prob_crash, 3),
-                "prob_normal": round(prob_normal, 3),
-                "prob_spike": round(prob_spike, 3),
-                "confidence": confidence,
-                "timestamp": datetime.now().isoformat()
-            })
+        predictions = [_format_prediction_row(row) for _, row in latest.iterrows()]
 
         logger.info(f"Returning {len(predictions)} predictions")
 
@@ -455,7 +503,7 @@ def get_all_predictions(
     ```
     """
 )
-@limiter.limit("300/minute")
+@limiter.limit(_dynamic_rate_limit)
 def get_prediction(
     request: Request,
     ticker: str,
@@ -482,58 +530,37 @@ def get_prediction(
             logger.info(f"Returning cached prediction for {ticker_upper}")
             return cached
 
-        dm = DataManager()
-        df = dm.get_latest_predictions(limit=1000)
-        dm.close()
+        # Targeted single-ticker query — avoids fetching all rows and filtering in Python
+        from sqlalchemy import text
+        with _dm.engine.connect() as conn:
+            result = conn.execute(
+                text("""
+                    SELECT * FROM predictions
+                    WHERE UPPER(ticker) = :ticker
+                    ORDER BY prediction_date DESC
+                    LIMIT 1
+                """),
+                {"ticker": ticker_upper},
+            )
+            row = result.fetchone()
+            if row is None:
+                columns = result.keys()
+            else:
+                columns = result.keys()
 
-        # Filter for this ticker (case-insensitive)
-        ticker_df = df[df['ticker'].str.upper() == ticker_upper]
-
-        if len(ticker_df) == 0:
+        if row is None:
             logger.warning(f"No predictions found for ticker: {ticker_upper}")
             raise HTTPException(
                 status_code=404,
-                detail=f"No predictions found for {ticker}. Available assets: /api/assets"
+                detail=f"No predictions found for {ticker}. Available assets: /api/assets",
             )
 
-        # Get most recent prediction
-        row = ticker_df.sort_values('prediction_date', ascending=False).iloc[0]
-
-        # Derive 3-class probabilities from ensemble_prob and prediction_label
-        ensemble_prob = float(row['ensemble_prob'])
-        label = row['prediction_label']
-
-        # Distribute remaining probability across other classes
-        remaining = 1.0 - ensemble_prob
-        other_prob = remaining / 2.0
-
-        if label == 'CRASH':
-            prob_crash, prob_normal, prob_spike = ensemble_prob, other_prob, other_prob
-        elif label == 'SPIKE':
-            prob_crash, prob_normal, prob_spike = other_prob, other_prob, ensemble_prob
-        else:  # NORMAL
-            prob_crash, prob_normal, prob_spike = other_prob, ensemble_prob, other_prob
-
-        # Derive confidence from confidence_score
-        conf_score = float(row.get('confidence_score', 0.5))
-        confidence = 'high' if conf_score >= 0.7 else ('medium' if conf_score >= 0.5 else 'low')
-
-        response = {
-            "ticker": row['ticker'],
-            "prediction_date": str(row['prediction_date']),
-            "prediction_label": label,
-            "prob_crash": round(prob_crash, 3),
-            "prob_normal": round(prob_normal, 3),
-            "prob_spike": round(prob_spike, 3),
-            "confidence": confidence,
-            "timestamp": datetime.now().isoformat()
-        }
-
-        logger.info(f"Returning prediction for {ticker_upper}: {label}")
+        row_dict = dict(zip(columns, row))
+        response = _format_prediction_row(row_dict)
+        logger.info(f"Returning prediction for {ticker_upper}: {response['prediction_label']}")
 
         # Cache for 5 minutes
         cache.set(cache_key, response, ttl=300)
-
         return response
 
     except HTTPException:
@@ -570,9 +597,7 @@ def get_assets(user: dict = Depends(verify_api_key)):
     try:
         logger.info(f"User {user['user_id']} requesting assets list")
 
-        dm = DataManager()
-        assets = dm.get_all_assets()  # Returns list of (ticker, asset_type) tuples
-        dm.close()
+        assets = _dm.get_all_assets()  # Returns list of (ticker, asset_type) tuples
 
         # Extract just the ticker names
         tickers = [ticker for ticker, asset_type in assets]
@@ -655,7 +680,7 @@ def register_user(username: str = Query(..., min_length=3, max_length=50)):
     ```
     """
 )
-@limiter.limit("300/minute")
+@limiter.limit(_dynamic_rate_limit)
 def get_prediction_history(
     request: Request,
     ticker: str,
@@ -677,59 +702,31 @@ def get_prediction_history(
         ticker_upper = ticker.upper()
         logger.info(f"User {user['user_id']} requesting {days} days history for {ticker_upper}")
 
-        dm = DataManager()
-
-        # Query predictions table directly with date filter
-        from datetime import timedelta
         cutoff_date = datetime.now() - timedelta(days=days)
 
-        with dm.engine.connect() as conn:
-            from sqlalchemy import text
+        from sqlalchemy import text
+        with _dm.engine.connect() as conn:
             result = conn.execute(
                 text("""
                     SELECT * FROM predictions
-                    WHERE ticker = :ticker
+                    WHERE UPPER(ticker) = :ticker
                       AND prediction_date >= :cutoff_date
                     ORDER BY prediction_date DESC
                 """),
-                {"ticker": ticker_upper, "cutoff_date": cutoff_date.date()}
+                {"ticker": ticker_upper, "cutoff_date": cutoff_date.date()},
             )
-            df = pd.DataFrame(result.fetchall(), columns=result.keys())
+            rows = result.fetchall()
+            columns = result.keys()
 
-        dm.close()
-
-        if len(df) == 0:
+        if not rows:
             return []
 
-        # Convert to API format
-        predictions = []
-        for _, row in df.iterrows():
-            ensemble_prob = float(row['ensemble_prob'])
-            label = row['prediction_label']
-
-            remaining = 1.0 - ensemble_prob
-            other_prob = remaining / 2.0
-
-            if label == 'CRASH':
-                prob_crash, prob_normal, prob_spike = ensemble_prob, other_prob, other_prob
-            elif label == 'SPIKE':
-                prob_crash, prob_normal, prob_spike = other_prob, other_prob, ensemble_prob
-            else:
-                prob_crash, prob_normal, prob_spike = other_prob, ensemble_prob, other_prob
-
-            conf_score = float(row.get('confidence_score', 0.5))
-            confidence = 'high' if conf_score >= 0.7 else ('medium' if conf_score >= 0.5 else 'low')
-
-            predictions.append({
-                "ticker": row['ticker'],
-                "prediction_date": str(row['prediction_date']),
-                "prediction_label": label,
-                "prob_crash": round(prob_crash, 3),
-                "prob_normal": round(prob_normal, 3),
-                "prob_spike": round(prob_spike, 3),
-                "confidence": confidence,
-                "timestamp": str(row['prediction_timestamp'])
-            })
+        predictions = [_format_prediction_row(dict(zip(columns, r))) for r in rows]
+        # Override timestamp with the actual prediction_timestamp from the DB row
+        for i, r in enumerate(rows):
+            row_dict = dict(zip(columns, r))
+            if 'prediction_timestamp' in row_dict:
+                predictions[i]['timestamp'] = str(row_dict['prediction_timestamp'])
 
         logger.info(f"Returning {len(predictions)} historical predictions")
         return predictions
@@ -764,7 +761,7 @@ def get_prediction_history(
     ```
     """
 )
-@limiter.limit("300/minute")
+@limiter.limit(_dynamic_rate_limit)
 def get_batch_predictions(
     request: Request,
     tickers: List[str],
@@ -783,43 +780,25 @@ def get_batch_predictions(
     try:
         logger.info(f"User {user['user_id']} requesting batch predictions for {len(tickers)} assets")
 
-        dm = DataManager()
-        df = dm.get_latest_predictions(limit=1000)
-        dm.close()
-
-        # Filter for requested tickers
         tickers_upper = [t.upper() for t in tickers]
-        filtered = df[df['ticker'].str.upper().isin(tickers_upper)]
 
-        predictions = []
-        for _, row in filtered.iterrows():
-            ensemble_prob = float(row['ensemble_prob'])
-            label = row['prediction_label']
+        from sqlalchemy import text
+        placeholders = ", ".join(f":t{i}" for i in range(len(tickers_upper)))
+        params = {f"t{i}": v for i, v in enumerate(tickers_upper)}
+        with _dm.engine.connect() as conn:
+            result = conn.execute(
+                text(f"""
+                    SELECT DISTINCT ON (UPPER(ticker)) *
+                    FROM predictions
+                    WHERE UPPER(ticker) IN ({placeholders})
+                    ORDER BY UPPER(ticker), prediction_date DESC
+                """),
+                params,
+            )
+            rows = result.fetchall()
+            columns = result.keys()
 
-            remaining = 1.0 - ensemble_prob
-            other_prob = remaining / 2.0
-
-            if label == 'CRASH':
-                prob_crash, prob_normal, prob_spike = ensemble_prob, other_prob, other_prob
-            elif label == 'SPIKE':
-                prob_crash, prob_normal, prob_spike = other_prob, other_prob, ensemble_prob
-            else:
-                prob_crash, prob_normal, prob_spike = other_prob, ensemble_prob, other_prob
-
-            conf_score = float(row.get('confidence_score', 0.5))
-            confidence = 'high' if conf_score >= 0.7 else ('medium' if conf_score >= 0.5 else 'low')
-
-            predictions.append({
-                "ticker": row['ticker'],
-                "prediction_date": str(row['prediction_date']),
-                "prediction_label": label,
-                "prob_crash": round(prob_crash, 3),
-                "prob_normal": round(prob_normal, 3),
-                "prob_spike": round(prob_spike, 3),
-                "confidence": confidence,
-                "timestamp": datetime.now().isoformat()
-            })
-
+        predictions = [_format_prediction_row(dict(zip(columns, r))) for r in rows]
         logger.info(f"Returning {len(predictions)} batch predictions")
         return predictions
 

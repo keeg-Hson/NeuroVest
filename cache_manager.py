@@ -113,7 +113,9 @@ class CacheManager:
 
     def clear_pattern(self, pattern: str):
         """
-        Clear all keys matching pattern
+        Clear all keys matching pattern.
+
+        Uses SCAN instead of KEYS to avoid blocking Redis on large key sets.
 
         Args:
             pattern: Redis key pattern (e.g., "prediction:*")
@@ -122,10 +124,17 @@ class CacheManager:
             return
 
         try:
-            keys = self.client.keys(pattern)
-            if keys:
-                self.client.delete(*keys)
-                logger.info(f"Cache CLEAR: {len(keys)} keys matching {pattern}")
+            deleted = 0
+            cursor = 0
+            while True:
+                cursor, keys = self.client.scan(cursor, match=pattern, count=100)
+                if keys:
+                    self.client.delete(*keys)
+                    deleted += len(keys)
+                if cursor == 0:
+                    break
+            if deleted:
+                logger.info(f"Cache CLEAR: {deleted} keys matching {pattern}")
         except Exception as e:
             logger.error(f"Cache clear error: {e}")
 
