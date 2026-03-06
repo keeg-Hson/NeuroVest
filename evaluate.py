@@ -433,6 +433,25 @@ def main():
     rep_df.to_csv(METRIC_OUTPUT_CSV)
     print(f"\n[eval] Saved detailed report → {METRIC_OUTPUT_CSV}")
 
+    # Save machine-readable summary for update_metrics_docs.py
+    import json as _json
+    _summary = {
+        "n_rows": len(sub),
+        "accuracy": report.get("accuracy", 0.0),
+        "auc": float(auc) if "auc" in dir() else None,
+        "balanced_accuracy": float(bal_acc),
+        "precision_1": report.get("1", {}).get("precision", 0.0),
+        "recall_1": report.get("1", {}).get("recall", 0.0),
+        "f1_1": report.get("1", {}).get("f1-score", 0.0),
+        "support_0": int(report.get("0", {}).get("support", 0)),
+        "support_1": int(report.get("1", {}).get("support", 0)),
+        "pred_long_0": int((sub["PredLong"] == 0).sum()),
+        "pred_long_1": int((sub["PredLong"] == 1).sum()),
+    }
+    _summary_path = METRIC_OUTPUT_CSV.parent / "evaluate_metrics.json"
+    _summary_path.write_text(_json.dumps(_summary, indent=2))
+    print(f"[eval] Saved metrics summary → {_summary_path}")
+
 
 if __name__ == "__main__":
     main()

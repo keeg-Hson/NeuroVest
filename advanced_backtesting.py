@@ -602,6 +602,44 @@ def main():
     # Run comprehensive validation
     validation_results = run_comprehensive_validation(assets, dummy_results, models)
 
+    # Save results for update_metrics_docs.py
+    import json as _json
+    from pathlib import Path as _Path
+    _out_dir = _Path("outputs")
+    _out_dir.mkdir(exist_ok=True)
+    _save = {}
+    mc = validation_results.get("monte_carlo") or {}
+    st = validation_results.get("statistical") or {}
+    if mc:
+        _save["monte_carlo"] = {
+            "mean_final_value": mc.get("mean_final_value"),
+            "median_final_value": mc.get("median_final_value"),
+            "min_final_value": mc.get("min_final_value"),
+            "max_final_value": mc.get("max_final_value"),
+            "mean_return": mc.get("mean_return"),
+            "median_return": mc.get("median_return"),
+            "percentile_5": mc.get("percentile_5"),
+            "percentile_95": mc.get("percentile_95"),
+            "probability_profit": mc.get("probability_profit"),
+            "mean_max_drawdown": mc.get("mean_max_drawdown"),
+            "worst_max_drawdown": mc.get("worst_max_drawdown"),
+        }
+    if st:
+        _save["statistical"] = {
+            "n_trades": st.get("n_trades"),
+            "mean_return_pct": st.get("mean_return_pct"),
+            "t_statistic": st.get("t_statistic"),
+            "p_value": st.get("p_value"),
+            "ci_lower": st.get("ci_lower"),
+            "ci_upper": st.get("ci_upper"),
+            "sharpe_ratio": st.get("sharpe_ratio"),
+            "win_rate_pct": st.get("win_rate_pct"),
+        }
+    if _save:
+        _out_path = _out_dir / "advanced_backtest_results.json"
+        _out_path.write_text(_json.dumps(_save, indent=2))
+        print(f"✓ Saved advanced backtest results → {_out_path}")
+
     print("\n✓ Advanced backtesting complete!")
 
     return validation_results
