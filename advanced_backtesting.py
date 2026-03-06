@@ -561,27 +561,35 @@ def main():
         start_date='2015-01-01'
     )
 
-    # Load models
+    # Load models — try production regime models first, fall back to dummy
     print("\n📦 Loading models...")
-    try:
-        with open('models/xgboost_ultimate.pkl', 'rb') as f:
-            xgb_model = pickle.load(f)
-        with open('models/lightgbm_ultimate.pkl', 'rb') as f:
-            lgb_model = pickle.load(f)
-        with open('models/random_forest_ultimate.pkl', 'rb') as f:
-            rf_model = pickle.load(f)
-        with open('models/neural_net_ultimate.pkl', 'rb') as f:
-            nn_model = pickle.load(f)
-        with open('models/scaler_ultimate.pkl', 'rb') as f:
-            scaler = pickle.load(f)
-
-        models = (xgb_model, lgb_model, rf_model, nn_model, scaler)
-        print("✓ Models loaded successfully")
-
-    except Exception as e:
-        print(f"✗ Error loading models: {e}")
-        print("⚠️  Creating dummy models for testing...")
-        models = (None, None, None, None, None)
+    _model_candidates = [
+        ('models/xgboost_regime.pkl',   'models/lightgbm_regime.pkl',
+         'models/catboost_regime.pkl',  None, None),
+        ('models/xgboost_ultimate.pkl', 'models/lightgbm_ultimate.pkl',
+         'models/random_forest_ultimate.pkl', 'models/neural_net_ultimate.pkl',
+         'models/scaler_ultimate.pkl'),
+    ]
+    models = (None, None, None, None, None)
+    for candidate in _model_candidates:
+        try:
+            loaded = []
+            for path in candidate:
+                if path is None:
+                    loaded.append(None)
+                else:
+                    with open(path, 'rb') as f:
+                        loaded.append(pickle.load(f))
+            models = tuple(loaded)
+            print(f"✓ Models loaded: {[p for p in candidate if p]}")
+            break
+        except FileNotFoundError:
+            continue
+        except Exception as e:
+            print(f"⚠️  Could not load model set ({e}), trying next...")
+            continue
+    else:
+        print("⚠️  No saved models found — using dummy models for framework demonstration.")
 
     # Create dummy backtest results for demonstration
     dummy_results = {

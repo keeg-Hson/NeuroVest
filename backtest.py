@@ -907,7 +907,11 @@ def run_backtest(
 
     # annualize by elapsed trading days between first signal and last exit
     if len(trades) > 1:
-        start = pd.to_datetime(trades.index.min(), errors="coerce")
+        # trades.index is signal_time which may be NaT; fall back to entry_time
+        raw_start = pd.to_datetime(trades.index.min(), errors="coerce")
+        if pd.isna(raw_start) and "entry_time" in trades.columns:
+            raw_start = pd.to_datetime(trades["entry_time"].min(), errors="coerce")
+        start = raw_start
         end = pd.to_datetime(trades["exit_time"].max(), errors="coerce")
         if pd.notna(start) and pd.notna(end) and end > start:
             elapsed_days = max(1, (end - start).days)
@@ -972,7 +976,10 @@ def run_backtest(
 
     # Calculate buy-and-hold benchmark for the same period
     if len(trades) > 1:
-        start = pd.to_datetime(trades.index.min(), errors="coerce")
+        raw_start = pd.to_datetime(trades.index.min(), errors="coerce")
+        if pd.isna(raw_start) and "entry_time" in trades.columns:
+            raw_start = pd.to_datetime(trades["entry_time"].min(), errors="coerce")
+        start = raw_start
         end = pd.to_datetime(trades["exit_time"].max(), errors="coerce")
         if pd.notna(start) and pd.notna(end):
             # Get prices at start and end
