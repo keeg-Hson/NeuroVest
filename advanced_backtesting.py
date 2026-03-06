@@ -16,6 +16,7 @@ import numpy as np
 import pickle
 import joblib
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Dict, List, Tuple
 import warnings
 warnings.filterwarnings('ignore')
@@ -592,20 +593,38 @@ def main():
     else:
         print("⚠️  No saved models found — using dummy models for framework demonstration.")
 
-    # Create dummy backtest results for demonstration
-    dummy_results = {
-        'trades': pd.DataFrame({
-            'pnl_pct': np.random.normal(1.5, 3.0, 50)  # 50 trades, mean 1.5%, std 3%
-        })
+    # Load real trade log produced by backtest.py
+    trade_log_path = Path('logs/trade_log.csv')
+    if not trade_log_path.exists():
+        print("\n[error] logs/trade_log.csv not found.")
+        print("  Run backtest.py first to generate real trade results:")
+        print("  python3 backtest.py")
+        print("  Then re-run this script.")
+        return {}
+
+    trade_log = pd.read_csv(trade_log_path)
+    if 'return_pct' not in trade_log.columns:
+        print(f"\n[error] logs/trade_log.csv is missing 'return_pct' column.")
+        print(f"  Columns found: {list(trade_log.columns)}")
+        print("  Re-run backtest.py to regenerate a valid trade log.")
+        return {}
+
+    if len(trade_log) < 10:
+        print(f"\n[error] Only {len(trade_log)} trades in trade_log.csv — need at least 10 for meaningful validation.")
+        print("  Check that backtest.py ran successfully and produced trades.")
+        return {}
+
+    print(f"\n[info] Loaded {len(trade_log)} real trades from {trade_log_path}")
+    real_results = {
+        'trades': trade_log.rename(columns={'return_pct': 'pnl_pct'})
     }
 
     # Run comprehensive validation
-    validation_results = run_comprehensive_validation(assets, dummy_results, models)
+    validation_results = run_comprehensive_validation(assets, real_results, models)
 
     # Save results for update_metrics_docs.py
     import json as _json
-    from pathlib import Path as _Path
-    _out_dir = _Path("outputs")
+    _out_dir = Path("outputs")
     _out_dir.mkdir(exist_ok=True)
     _save = {}
     mc = validation_results.get("monte_carlo") or {}
