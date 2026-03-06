@@ -1,8 +1,14 @@
-# NeuroVest (Beta)
+# NeuroVest
+
+![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green)
+![Status](https://img.shields.io/badge/Status-Beta-orange)
+![Platform](https://img.shields.io/badge/Deployed-Railway-blueviolet?logo=railway)
+![Models](https://img.shields.io/badge/Models-XGBoost%20%7C%20LightGBM%20%7C%20CatBoost-informational)
+![Accuracy](https://img.shields.io/badge/Accuracy-80.88%25-brightgreen)
+![AUC](https://img.shields.io/badge/AUC-0.7792-brightgreen)
 
 **Economic Forecasting Platform**
-
-Predict market trends. Identify undervalued assets. Translate data into financial insight.
 
 **Live Dashboard:** [neurovestdemo.up.railway.app](https://neurovestdemo.up.railway.app)
 
@@ -10,11 +16,9 @@ Predict market trends. Identify undervalued assets. Translate data into financia
 
 ## Overview
 
-NeuroVest is an economic forecasting and market analysis platform that helps investors and analysts anticipate financial trends before they happen.
+NeuroVest is a market analysis and economic forecasting platform built around an ensemble machine learning engine. It analyzes live and historical market data to detect regime shifts, spikes, and drawdown risk using a combination of technical, sentiment, and macroeconomic indicators.
 
-Built around a machine learning forecasting engine, NeuroVest analyzes both live and historical data to detect spikes, crashes, and valuation shifts using a combination of quantitative, sentiment, and macroeconomic indicators.
-
-It bridges the gap between traditional financial modeling and intelligent automation, offering a data-driven lens for understanding the markets.
+The system runs on Railway with automated daily predictions and weekly retraining, backed by a PostgreSQL data store.
 
 ---
 
@@ -22,89 +26,111 @@ It bridges the gap between traditional financial modeling and intelligent automa
 
 ### Current Production Metrics (March 2026)
 
-| Metric | Value | Benchmark |
-|--------|-------|-----------|
-| Accuracy | 78.62% | - |
-| AUC | 0.7792 | - |
-| Sharpe Ratio | 2.55 | vs 0.42 buy-and-hold |
-| Max Drawdown | -5.4% | vs -55% buy-and-hold |
-| Win Rate | 54.0% | - |
-| Precision | 86.99% | When model signals |
-| Sortino Ratio | 3.12 | - |
-| Profit Factor | 1.87 | - |
+Metrics are sourced from `evaluate.py` (6,511 labeled samples) and `advanced_backtesting.py` (Monte Carlo, 1,000 simulations). Run `update_metrics_docs.py` to regenerate `docs/METRICS_SUMMARY.md` after new evaluation runs.
+
+| Metric | Value | Notes |
+|--------|-------|-------|
+| Accuracy | 80.88% | 6,511 rows, threshold 0.380 |
+| AUC | 0.7792 | Using Proba column |
+| Balanced Accuracy | 68.05% | Accounts for class imbalance |
+| Precision (Long signals) | 81.3% | Class 1 at threshold 0.380 |
+| Recall (Long signals) | 39.6% | Precision-focused by design |
+| F1 Score (Long signals) | 0.532 | |
+| Win Rate | 66.0% | Monte Carlo, 100 trades/sim |
+| Sharpe Ratio | 6.78 | Monte Carlo mean |
+| Mean Max Drawdown | -9.62% | Monte Carlo mean across 1,000 sims |
+| Worst Max Drawdown | -24.04% | Worst case across all simulations |
+| Monte Carlo Median Return | +242.35% | Starting from $100k, 100 trades |
+| Probability of Profit | 100.0% | Across all 1,000 simulations |
+| Statistical Significance | p = 0.0040 | t = 3.02, significant at 5% |
+| Walk-Forward Windows | 33 | 2015 to 2026, 0.5-year test windows |
 
 ### Ensemble Models (164 Features)
 
+From `comprehensive_model_evaluation.py`, 80/20 train/test split.
+
 | Model | Accuracy | Precision | Recall | F1 Score |
 |-------|----------|-----------|--------|----------|
-| XGBoost (Regime) | 64.29% | 38.08% | 42.12% | 0.400 |
-| LightGBM (Regime) | 62.06% | 36.88% | 48.10% | 0.417 |
-| CatBoost (Regime) | 61.67% | 37.57% | 53.80% | 0.442 |
-| Ensemble | 63.98% | 38.95% | 48.37% | 0.432 |
+| XGBoost (Regime) | 64.06% | 37.71% | 42.70% | 0.400 |
+| LightGBM (Regime) | 60.94% | 36.36% | 51.89% | 0.428 |
+| CatBoost (Regime) | 62.77% | 38.59% | 54.86% | 0.453 |
+| Ensemble | 63.83% | 39.05% | 51.08% | 0.443 |
 
-### Threshold Strategy (Precision-Focused)
+### Monte Carlo Simulation (1,000 Runs, 100 Trades Each)
+
+| Metric | Value |
+|--------|-------|
+| Mean Final Portfolio | $362,489 |
+| Median Final Portfolio | $342,349 |
+| Min Final Portfolio | $135,363 |
+| Max Final Portfolio | $923,860 |
+| Mean Total Return | +262.49% |
+| 5th Percentile Return | +111.35% |
+| 95th Percentile Return | +469.48% |
+| Probability of Profit | 100.0% |
+
+### Threshold Strategy
 
 | Strategy | Threshold | Precision | Win Rate | Trades |
 |----------|-----------|-----------|----------|--------|
-| Ultra-Conservative | 0.65 | 100% | 100% | 4 |
-| Conservative | 0.55 | 92.6% | 92.6% | 27 |
-| Precision-Focused | 0.45 | ~87% | 54% | ~50 |
-| Balanced | 0.50 | 38.7% | 52.7% | 619 |
-| Aggressive | 0.40 | 31.6% | 52.4% | 880 |
+| Ultra-Conservative | 0.80 | 100% | 100% | 2 |
+| Conservative | 0.65 | ~100% | ~100% | ~4 |
+| **Precision-Focused (Production)** | **0.380** | **81.3%** | **66.0%** | **~871** |
+| Balanced | 0.40 | ~52% | ~52% | ~880 |
 
 ### Feature Engineering Impact
 
 | Stage | Features | Accuracy | Improvement |
 |-------|----------|----------|-------------|
-| Baseline | 103 | 58.4% | - |
+| Baseline | 103 | 58.4% | -- |
 | + Cross-Asset | 130 | 61.5% | +3.1% |
-| + Macro (FINAL) | 164 | 62.3% | +3.9% |
+| + Macro (Final) | 164 | 62.3% | +3.9% |
 
-> See `docs/METRICS_SUMMARY.md` for detailed breakdown of all metrics, features, and model strengths.
-> See `SYSTEM_DESIGN.md` for architecture and canonical file references.
+See `docs/METRICS_SUMMARY.md` for full breakdown of all metrics, features, and validation details.
+See `SYSTEM_DESIGN.md` for architecture and canonical file references.
 
 ---
 
 ## Features
 
-- **Forecasting Engine** - Predicts market regimes (spike, crash, neutral) using ensemble of XGBoost, LightGBM, CatBoost, and LSTM models.
-- **Signal Integration** - Merges macroeconomic indicators (FRED), sentiment data (Reddit + NewsAPI), and technical metrics (RSI, MACD, momentum).
-- **Automated Backtesting** - Simulates performance, calculating Sharpe ratio, Sortino ratio, max drawdown, and profit factor.
-- **Parameter Sweeps** - Optimizes model thresholds for maximum profitability or precision.
-- **Multi-Asset Coverage** - 31 stocks/ETFs/commodities + 10 cryptocurrencies.
+- **Forecasting Engine** - Predicts market regimes (spike, crash, neutral) using an ensemble of XGBoost, LightGBM, and CatBoost.
+- **Signal Integration** - Merges macroeconomic indicators (FRED), sentiment data (Reddit and NewsAPI), and technical indicators (RSI, MACD, momentum).
+- **Automated Backtesting** - Simulates performance with Sharpe ratio, Sortino ratio, max drawdown, and profit factor.
+- **Monte Carlo Validation** - 1,000-run simulation with statistical significance testing and confidence intervals.
+- **Walk-Forward Testing** - 33 out-of-sample windows from 2015 to 2026 with no look-ahead bias.
+- **Parameter Sweeps** - Threshold optimization across precision/recall trade-off curves.
+- **Multi-Asset Coverage** - 31 stocks, ETFs, and commodities plus 10 cryptocurrencies.
 - **Production Automation** - Railway-deployed worker with scheduled training (weekly) and predictions (daily).
-- **Comprehensive Logging** - Stores predictions, metrics, and thresholds for reproducibility.
-- **Modular Design** - Easily extendable for new models or data sources.
+- **Modular Design** - Extendable for new models or data sources.
 
 ---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                   Railway PostgreSQL                         │
-│              (PRIMARY DATA STORE)                            │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-              ┌────────────┴────────────┐
-              │   DataManager           │
-              │   (core/data_manager_   │
-              │    postgres.py)         │
-              └────────────┬────────────┘
-                           │
-              ┌────────────▼────────────┐
-              │   Feature Engineering   │
-              │   build_feature_table.py│
-              └────────────┬────────────┘
-                           │
-    ┌──────────┬───────────┼───────────┬──────────┐
-    │          │           │           │          │
-    ▼          ▼           ▼           ▼          ▼
-train.py  predict.py  backtest.py  dashboard_   api_server.py
-                                   comprehensive.py
++-------------------------------------------------------------+
+|                   Railway PostgreSQL                         |
+|              (PRIMARY DATA STORE)                            |
++------------------------------+------------------------------+
+                               |
+              +----------------+-----------------+
+              |   DataManager                    |
+              |   (core/data_manager_postgres.py)|
+              +----------------+-----------------+
+                               |
+              +----------------+-----------------+
+              |   Feature Engineering            |
+              |   build_feature_table.py         |
+              +----------------+-----------------+
+                               |
+    +----------+---------------+---------------+-----------+
+    |          |               |               |           |
+    v          v               v               v           v
+train.py  predict.py      backtest.py   dashboard_     api_server.py
+                                        comprehensive.py
 ```
 
-> See `SYSTEM_DESIGN.md` for complete architecture documentation.
+See `SYSTEM_DESIGN.md` for complete architecture documentation.
 
 ---
 
@@ -112,35 +138,36 @@ train.py  predict.py  backtest.py  dashboard_   api_server.py
 
 ```
 .
-├── SYSTEM_DESIGN.md          # Architecture & single source of truth
-├── config.py                 # Global configuration (canonical)
-├── train.py                  # Model training entry point (canonical)
-├── predict.py                # Prediction entry point (canonical)
-├── backtest.py               # Backtesting entry point (canonical)
-├── main.py                   # Interactive menu
-├── neurovest_cli.py          # CLI interface
-├── build_feature_table.py    # Feature engineering (canonical)
-├── dashboard_comprehensive.py # Streamlit dashboard
-│
-├── core/                     # Core modules
-│   ├── data_manager_postgres.py  # Data management (PostgreSQL/SQLite)
-│   ├── data_pipeline.py          # Training pipeline
-│   ├── prediction_engine.py      # Prediction system
-│   └── models/base_models.py     # Model architectures
-│
-├── config/assets.yaml        # Asset definitions (59 assets)
-├── configs/                  # Trading profiles & thresholds
-├── data/                     # Local data cache
-├── logs/                     # Predictions & metrics
-├── models/                   # Trained model files
-│
-├── docs/
-│   └── METRICS_SUMMARY.md    # Detailed performance metrics
-│
-└── archive/                  # Deprecated code (DO NOT USE)
-    ├── legacy_scripts/
-    ├── train_scripts/
-    └── predict_scripts/
++-- SYSTEM_DESIGN.md              # Architecture and single source of truth
++-- config.py                     # Global configuration (canonical)
++-- train.py                      # Model training entry point
++-- predict.py                    # Prediction entry point
++-- backtest.py                   # Backtesting entry point
++-- advanced_backtesting.py       # Monte Carlo and walk-forward validation
++-- evaluate.py                   # Model evaluation
++-- update_metrics_docs.py        # Regenerates docs/METRICS_SUMMARY.md
++-- main.py                       # Interactive menu
++-- neurovest_cli.py              # CLI interface
++-- build_feature_table.py        # Feature engineering (canonical)
++-- dashboard_comprehensive.py    # Streamlit dashboard
+|
++-- core/
+|   +-- data_manager_postgres.py  # Data management (PostgreSQL/SQLite)
+|   +-- data_pipeline.py          # Training pipeline
+|   +-- prediction_engine.py      # Prediction system
+|   +-- models/base_models.py     # Model architectures
+|
++-- config/assets.yaml            # Asset definitions (59 assets)
++-- configs/                      # Trading profiles and thresholds
++-- data/                         # Local data cache
++-- logs/                         # Predictions and metrics
++-- models/                       # Trained model files
+|
++-- docs/
+|   +-- METRICS_SUMMARY.md        # Detailed performance metrics (auto-generated)
+|
++-- outputs/                      # Backtest output files
++-- archive/                      # Deprecated code (do not use)
 ```
 
 ---
@@ -148,14 +175,17 @@ train.py  predict.py  backtest.py  dashboard_   api_server.py
 ## Setup
 
 ### Requirements
+
 - Python 3.10+
-- Install dependencies:
-  ```bash
-  pip install -r requirements.txt
-  ```
+
+```bash
+pip install -r requirements.txt
+```
 
 ### Environment Variables
-Create a `.env` file in the project root with your credentials:
+
+Create a `.env` file in the project root:
+
 ```bash
 # Required for production (Railway PostgreSQL)
 DATABASE_URL=postgresql://user:pass@host:port/db
@@ -170,79 +200,88 @@ NEWSAPI_KEY=your_newsapi_key
 FRED_API_KEY=your_fred_api_key
 ```
 
-> **Note:** Without `DATABASE_URL`, the system falls back to local SQLite which may show empty data.
+Without `DATABASE_URL`, the system falls back to local SQLite which may return empty data.
 
 ### Quick Start
+
 ```bash
-# Clone repository
 git clone https://github.com/keeg-Hson/NeuroVest.git
 cd NeuroVest
-
-# Install dependencies
 pip install -r requirements.txt
 
 # Update market data
 python3 update_data.py update
 
-# Generate live predictions
+# Generate predictions
 python3 predict.py
 
 # Run backtest
 python3 backtest.py
 
-# Optimize thresholds
-python3 sweep_runner.py
+# Evaluate model
+python3 evaluate.py
 
-# Execute full pipeline
+# Run advanced validation (Monte Carlo, walk-forward, stress tests)
+python3 advanced_backtesting.py
+
+# Regenerate metrics documentation
+python3 update_metrics_docs.py
+
+# Full pipeline
 python3 run_all.py
 ```
 
 ### Diagnostic Commands
+
 ```bash
-# System Health
-python3 health_check.py               # Full 7-check audit
-python3 diagnose_system.py            # Data, models, predictions, pipeline
+# System health
+python3 health_check.py
+python3 diagnose_system.py
 
-# Database (Railway)
-python3 diagnose_database.py          # PostgreSQL connection check
+# Database
+python3 diagnose_database.py
 
-# Model Evaluation
-python3 evaluate.py                   # Unified evaluation
-python3 extract_metrics.py --comprehensive  # Extract real metrics
-
-# Horizon/Target Testing
-python3 evaluate_horizons.py          # Test prediction timeframes
-python3 evaluate_targets.py           # Test labeling strategies
+# Evaluation
+python3 evaluate.py
+python3 extract_metrics.py --comprehensive
+python3 evaluate_horizons.py
+python3 evaluate_targets.py
 ```
 
 ---
 
 ## Example Outputs
-- `logs/daily_predictions.csv` - Model predictions with confidence scores.
-- `logs/backtest_results.csv` - Simulated capital growth and key performance metrics.
-- `configs/best_thresholds.json` - Optimal crash/spike threshold configuration.
-- `all_models_comparison.csv` - Full model comparison with metrics.
-- `optimization_metric_comparison.csv` - Threshold optimization results.
+
+- `logs/daily_predictions.csv` - Model predictions with confidence scores
+- `logs/backtest_results.csv` - Simulated capital growth and key metrics
+- `logs/model_performance.csv` - Detailed classification report
+- `logs/evaluate_metrics.json` - Evaluation metrics summary
+- `outputs/advanced_backtest_results.json` - Monte Carlo and walk-forward results
+- `configs/best_thresholds.json` - Optimal threshold configuration
 
 ---
 
 ## Development Status
 
 **Version:** Beta 1.1
-**Stage:** Production - Full ML pipeline deployed on Railway with automated scheduling.
+**Stage:** Production - full ML pipeline deployed on Railway with automated scheduling.
 **Last Updated:** March 2026
 
 ### Completed
-- End-to-end pipeline: data -> model -> prediction -> evaluation
-- Integration of sentiment and macroeconomic signals
-- Automated optimization and backtesting modules
+
+- End-to-end pipeline: data, feature engineering, training, prediction, evaluation
+- Walk-forward validation: 33 out-of-sample windows, 2015 to 2026
+- Monte Carlo simulation: 1,000 runs, 100% probability of profit
+- Statistical significance: p = 0.0040 (t-test on trade returns)
+- Sentiment and macroeconomic signal integration
 - Production deployment on Railway with PostgreSQL
-- Multi-asset support (31 stocks/ETFs + 10 cryptocurrencies)
+- Multi-asset support (31 stocks/ETFs plus 10 cryptocurrencies)
 - Streamlit dashboard for visualization
-- Weighted ensemble achieving 68.8% accuracy
-- Cross-asset and macro feature engineering (+3.9% accuracy gain)
+- Weighted ensemble with 164 features across 8 categories
+- Automated metrics documentation via `update_metrics_docs.py`
 
 ### In Progress
+
 - Broker API integration (Alpaca, IBKR)
 - Natural language market summarization
 
@@ -251,18 +290,19 @@ python3 evaluate_targets.py           # Test labeling strategies
 ## Roadmap
 
 | Phase | Focus | Status |
-|-------|--------|---------|
-| 1. Core ML Forecasting | Model training, prediction, logging | Complete |
-| 2. Backtesting & Optimization | Strategy simulation and threshold sweeps | Complete |
-| 3. Automation & Scheduling | Railway worker with daily/weekly jobs | Complete |
-| 4. Dashboard / Visualization | Streamlit web interface | Complete |
-| 5. Multi-Asset Coverage | 41 assets (stocks, crypto, commodities) | Complete |
-| 6. Ensemble Models | Weighted ensemble (68.8% accuracy) | Complete |
-| 7. Trade Execution | Broker API integration | In Progress |
+|-------|-------|--------|
+| 1 | Core ML Forecasting: training, prediction, logging | Complete |
+| 2 | Backtesting and Optimization: walk-forward, Monte Carlo | Complete |
+| 3 | Automation and Scheduling: Railway worker | Complete |
+| 4 | Dashboard and Visualization: Streamlit | Complete |
+| 5 | Multi-Asset Coverage: 41 assets | Complete |
+| 6 | Ensemble Models: 164 features, regime detection | Complete |
+| 7 | Trade Execution: broker API integration | In Progress |
 
 ---
 
 ## License
+
 MIT License - free for public and commercial use. Attribution appreciated.
 
 ---
@@ -271,4 +311,4 @@ MIT License - free for public and commercial use. Attribution appreciated.
 
 Built by [Keegan Hutchinson](https://github.com/keeg-Hson)
 
-Feedback, contributions, and collaboration are always welcome.
+Feedback, contributions, and collaboration are welcome.
