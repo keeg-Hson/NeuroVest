@@ -26,24 +26,16 @@ The system runs on Railway with automated daily predictions and weekly retrainin
 
 ### Current Production Metrics (March 2026)
 
-Metrics are sourced from `evaluate.py` (6,511 labeled samples) and `advanced_backtesting.py` (Monte Carlo, 1,000 simulations). Run `update_metrics_docs.py` to regenerate `docs/METRICS_SUMMARY.md` after new evaluation runs.
+Sourced from `evaluate.py` on 6,511 labeled samples (`logs/labeled_predictions.csv`). Run `update_metrics_docs.py` to regenerate `docs/METRICS_SUMMARY.md` after new evaluation runs.
 
 | Metric | Value | Notes |
 |--------|-------|-------|
 | Accuracy | 80.88% | 6,511 rows, threshold 0.380 |
-| AUC | 0.7792 | Using Proba column |
-| Balanced Accuracy | 68.05% | Accounts for class imbalance |
+| Balanced Accuracy | 68.05% | Corrects for class imbalance (4,721 vs 1,790) |
+| AUC | 0.7792 | Threshold-independent, Proba column |
 | Precision (Long signals) | 81.3% | Class 1 at threshold 0.380 |
 | Recall (Long signals) | 39.6% | Precision-focused by design |
 | F1 Score (Long signals) | 0.532 | |
-| Win Rate | 66.0% | Monte Carlo, 100 trades/sim |
-| Sharpe Ratio | 6.78 | Monte Carlo mean |
-| Mean Max Drawdown | -9.62% | Monte Carlo mean across 1,000 sims |
-| Worst Max Drawdown | -24.04% | Worst case across all simulations |
-| Monte Carlo Median Return | +242.35% | Starting from $100k, 100 trades |
-| Probability of Profit | 100.0% | Across all 1,000 simulations |
-| Statistical Significance | p = 0.0040 | t = 3.02, significant at 5% |
-| Walk-Forward Windows | 33 | 2015 to 2026, 0.5-year test windows |
 
 ### Ensemble Models (164 Features)
 
@@ -55,19 +47,6 @@ From `comprehensive_model_evaluation.py`, 80/20 train/test split.
 | LightGBM (Regime) | 60.94% | 36.36% | 51.89% | 0.428 |
 | CatBoost (Regime) | 62.77% | 38.59% | 54.86% | 0.453 |
 | Ensemble | 63.83% | 39.05% | 51.08% | 0.443 |
-
-### Monte Carlo Simulation (1,000 Runs, 100 Trades Each)
-
-| Metric | Value |
-|--------|-------|
-| Mean Final Portfolio | $362,489 |
-| Median Final Portfolio | $342,349 |
-| Min Final Portfolio | $135,363 |
-| Max Final Portfolio | $923,860 |
-| Mean Total Return | +262.49% |
-| 5th Percentile Return | +111.35% |
-| 95th Percentile Return | +469.48% |
-| Probability of Profit | 100.0% |
 
 ### Threshold Strategy
 
@@ -270,9 +249,6 @@ python3 evaluate_targets.py
 ### Completed
 
 - End-to-end pipeline: data, feature engineering, training, prediction, evaluation
-- Walk-forward validation: 33 out-of-sample windows, 2015 to 2026
-- Monte Carlo simulation: 1,000 runs, 100% probability of profit
-- Statistical significance: p = 0.0040 (t-test on trade returns)
 - Sentiment and macroeconomic signal integration
 - Production deployment on Railway with PostgreSQL
 - Multi-asset support (31 stocks/ETFs plus 10 cryptocurrencies)
@@ -292,7 +268,7 @@ python3 evaluate_targets.py
 | Phase | Focus | Status |
 |-------|-------|--------|
 | 1 | Core ML Forecasting: training, prediction, logging | Complete |
-| 2 | Backtesting and Optimization: walk-forward, Monte Carlo | Complete |
+| 2 | Backtesting and Optimization: threshold sweeps, strategy simulation | Complete |
 | 3 | Automation and Scheduling: Railway worker | Complete |
 | 4 | Dashboard and Visualization: Streamlit | Complete |
 | 5 | Multi-Asset Coverage: 41 assets | Complete |
