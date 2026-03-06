@@ -7,8 +7,13 @@ Uses pandas_datareader with fallback to local SPY data + realistic variations
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-import pandas_datareader as pdr
 import os
+try:
+    import pandas_datareader as pdr
+    _PDR_AVAILABLE = True
+except Exception:
+    pdr = None
+    _PDR_AVAILABLE = False
 
 def download_yahoo_data(ticker, start_date, end_date):
     """
@@ -23,6 +28,8 @@ def download_yahoo_data(ticker, start_date, end_date):
         DataFrame with OHLCV data
     """
     try:
+        if not _PDR_AVAILABLE or pdr is None:
+            raise ImportError("pandas_datareader unavailable")
         # Try pandas_datareader first
         df = pdr.get_data_yahoo(ticker, start=start_date, end=end_date)
 

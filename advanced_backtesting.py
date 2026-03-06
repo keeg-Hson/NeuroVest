@@ -14,6 +14,7 @@ Comprehensive validation system including:
 import pandas as pd
 import numpy as np
 import pickle
+import joblib
 from datetime import datetime, timedelta
 from typing import Dict, List, Tuple
 import warnings
@@ -185,6 +186,7 @@ def monte_carlo_simulation(
         print("⚠️  Not enough trades for Monte Carlo simulation")
         return {}
 
+    np.random.seed(42)
     final_values = []
     max_drawdowns = []
 
@@ -578,8 +580,7 @@ def main():
                 if path is None:
                     loaded.append(None)
                 else:
-                    with open(path, 'rb') as f:
-                        loaded.append(pickle.load(f))
+                    loaded.append(joblib.load(path))
             models = tuple(loaded)
             print(f"✓ Models loaded: {[p for p in candidate if p]}")
             break

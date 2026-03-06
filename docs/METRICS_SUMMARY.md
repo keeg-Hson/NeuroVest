@@ -134,28 +134,29 @@ True out-of-sample validation — no look-ahead bias. Retrains every 63 days on 
 ## Monte Carlo Validation (`advanced_backtesting.py`)
 
 1,000 simulations × 100 trades — demonstrates statistical robustness of the edge.
+**Seeded (`np.random.seed(42)`) for reproducibility.**
 
 | Metric | Value |
 |--------|-------|
-| **Mean portfolio value** | $556,649 (from $100k) |
-| **Median total return** | +434.44% |
-| **5th percentile return** | +193.41% |
-| **95th percentile return** | +773.78% |
+| **Mean portfolio value** | $697,117 (from $100k) |
+| **Median total return** | +574.08% |
+| **5th percentile return** | +336.42% |
+| **95th percentile return** | +930.54% |
 | **Probability of profit** | 100.0% |
-| **Mean max drawdown** | −10.40% |
-| **Worst max drawdown** | −26.39% |
+| **Mean max drawdown** | −6.22% |
+| **Worst max drawdown** | −16.53% |
 
 ### Statistical Significance
 
 | Test | Result |
 |------|--------|
-| T-statistic | 3.76 |
-| P-value | 0.0005 |
+| T-statistic | 5.27 |
+| P-value | <0.0001 |
 | Significant at 5%? | ✅ YES |
-| 95% CI for mean return | [+0.80%, +2.65%] per trade |
-| Mean return per trade | +1.73% |
-| Win rate (significance test) | 76.0% |
-| Sharpe (statistical test) | 8.44 |
+| 95% CI for mean return | [+1.21%, +2.69%] per trade |
+| Mean return per trade | +1.95% |
+| Win rate (significance test) | 78.0% |
+| Sharpe (statistical test) | 11.84 |
 
 **Strategy returns are statistically significant (p < 0.05).**
 
@@ -204,7 +205,7 @@ True out-of-sample validation — no look-ahead bias. Retrains every 63 days on 
 ### Strengths
 
 1. **Validated Predictive Skill**: Walk-forward AUC of 0.637 over 36 out-of-sample periods (5 years) with zero look-ahead bias
-2. **Statistically Significant Edge**: p = 0.0017, 100% probability of profit across 1,000 Monte Carlo simulations
+2. **Statistically Significant Edge**: p < 0.0001, 100% probability of profit across 1,000 Monte Carlo simulations (seed=42)
 3. **High Precision When It Fires**: 81.3% precision at threshold 0.45 — model is selective, not noisy
 4. **Crypto Alpha**: BTC (+257%, Sharpe 2.46), ETH (+368%, Sharpe 2.31), SOL per-asset (+16,127%, Sharpe 17.68)
 5. **Regime Awareness**: 11 regime features detect bull/bear/volatility environments
