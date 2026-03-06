@@ -75,8 +75,9 @@ def get_feature_list(include_extended: bool = False):
     """
     Get the production feature list.
 
-    This uses FeatureRegistry as the singular source of truth to ensure
-    consistency across dashboard, training, and prediction.
+    Delegates entirely to FeatureRegistry — the single source of truth.
+    If the registry cannot be imported the process fails loudly rather than
+    silently returning a stale, hand-maintained list.
 
     Args:
         include_extended: If True, includes experimental macro features
@@ -84,91 +85,23 @@ def get_feature_list(include_extended: bool = False):
     Returns:
         List of feature names
     """
-    try:
-        from core.feature_registry import FeatureRegistry
-        if include_extended:
-            return FeatureRegistry.get_all_features()
-        return FeatureRegistry.get_production_features()
-    except ImportError:
-        # Fallback to hardcoded list if registry not available
-        pass
-
-    # Fallback feature list (matches FeatureRegistry.get_production_features())
-    return [
-        # Core technical features
-        "MA_20", "EMA_12", "EMA_26", "MACD", "MACD_Signal", "MACD_Histogram",
-        "BB_Width", "BB_PctB", "ATR_14", "Stoch_K", "Stoch_D", "RSI", "RSI_Delta",
-        "VWAP_Dev", "KC_Width", "ADX", "Plus_DI", "Minus_DI",
-        # Momentum
-        "Price_Momentum_10", "ZMomentum", "Acceleration", "RSI_Momentum_5",
-        "RSI_ROC_5", "Return_Momentum_Ratio", "Return_Acceleration",
-        # Volatility
-        "Volatility", "Rolling_STD_5", "Vol_Percentile", "Volatility_Acceleration",
-        "BB_Width_Mean_10", "BB_Width_Std_10", "BB_Width_ZScore", "BB_Width_Lag1",
-        "BB_Width_Lag3", "BB_Width_Change", "Vol_Percentile_252", "High_Volatility",
-        "Ret_Skew_20", "Ret_Kurt_20",
-        # Volume
-        "OBV", "Vol_Ratio", "Volume_per_ATR", "Volume_Momentum_5", "OBV_Change_5", "OBV_Trend",
-        # Returns
-        "Daily_Return", "Return_Lag1", "Return_Lag3", "Return_Lag5", "Return_Lag7",
-        "Return_Lag10", "Return_Lag15", "RSI_Lag_1", "RSI_Lag_3", "RSI_Lag_5",
-        "RSI_Lag7", "RSI_Lag10", "Return_Lag1_MA5", "Return_Lag1_MA10",
-        "Return_Volatility_20", "Return_Skew_10", "Return_Kurt_10",
-        "Positive_Return_Streak", "Return_1d_vs_10d", "Return_3d_vs_10d",
-        "Returns_50d", "Volatility_50d", "RSI_50",
-        # Cross-asset (from CSV)
-        "Credit_Ratio", "Credit_Change_20d", "Credit_Stress", "Yield_10Y",
-        "Yield_Change_20d", "High_Yield_Regime", "DXY_Level", "DXY_Change_20d",
-        "Strong_Dollar", "Realized_Vol_20", "Realized_Vol_60", "High_Vol_Regime", "Vol_Spike",
-        # Macro (from CSV)
-        "Macro_10Y_Yield", "Rate_Change_3m", "Rate_Change_6m", "Tightening_Cycle",
-        "Easing_Cycle", "Recession_Signal", "Recovery_Signal", "Inflation_Proxy",
-        "Financial_Stress",
-        # Regime
-        "MA_200", "Price_vs_MA200", "MA200_Slope", "MA200_Distance_Vol", "Near_52w_High",
-        "Days_Above_MA20", "Trend_Consistency", "Regime_Score", "VIX_Percentile",
-        "VIX_Change", "Vol_Regime_Low", "Vol_Regime_Med", "Vol_Regime_High",
-        "Vol_Regime_Change", "Vol_Mean_Reversion", "Risk_On_Score", "Risk_On_Regime",
-        "Regime_MeanRevert", "Regime_Trending", "Regime_StrongTrend", "Trend_Direction",
-        "ADX_Slope", "Trend_Strengthening", "Market_Stress_Index", "High_Stress_Regime",
-        "Dollar_Strengthening", "Yields_Rising", "Credit_Tightening",
-        # Interactions
-        "BB_Width_x_RSI", "BB_Width_x_Return_Lag1", "BB_Width_x_Vol_Ratio",
-        "Return_Lag1_x_Return_Lag3", "Return_Trend_Strength", "RSI_x_Vol_Ratio",
-        "OBV_x_Return_Lag1", "RSI_x_Volatility", "Volume_x_Returns", "Volume_x_Volatility",
-        "MACD_x_RSI", "MACD_divergence", "Near_52w_High_x_Volatility",
-        "Near_52w_High_x_KC_Width", "Stoch_K_x_Volatility", "Return_Lag3_x_Volatility",
-        "Return_Lag5_x_ATR", "Near_52w_High_x_Return_Lag3", "BB_PctB_x_Stoch_K",
-        "Credit_Ratio_x_Volatility", "Realized_Vol_60_x_Volatility",
-        "Rate_Change_3m_x_MA200_Slope", "DXY_Level_x_Return_Lag5",
-        "Yield_10Y_x_Price_vs_MA200", "Trend_x_RiskOn", "HighVol_x_Trending",
-        "Stress_x_Downtrend", "MeanRevert_Opportunity",
-        "Trend_strength_10", "Trend_strength_20", "Trend_strength_50",
-    ]
+    from core.feature_registry import FeatureRegistry  # hard import — must succeed
+    if include_extended:
+        return FeatureRegistry.get_all_features()
+    return FeatureRegistry.get_production_features()
 
 
 def get_excluded_features():
     """
     Get features that should be excluded (zero importance or harmful).
 
+    Delegates entirely to FeatureRegistry — the single source of truth.
+
     Returns:
         List of feature names to exclude
     """
-    try:
-        from core.feature_registry import FeatureRegistry
-        return FeatureRegistry.get_excluded_features()
-    except ImportError:
-        pass
-
-    # Fallback list
-    return [
-        "RSI_Overbought", "RSI_Oversold", "RSI_Neutral", "Bull_Market",
-        "High_Fear", "VIX_Spike", "MA_20_50_Cross", "Pct_Above_MA20",
-        "Near_52w_Low", "Strong_Trend", "Vol_Expanding", "Return_Reversal",
-        "Low_Rate_Regime", "High_Rate_Regime", "High_Inflation",
-        "Expansion", "Contraction", "Sent_x_Vol", "RSI_x_NewsZ", "RSI_x_RedditZ",
-        "DayOfWeek_sin", "DayOfWeek_cos", "Month_sin", "Month_cos", "Quarter",
-    ]
+    from core.feature_registry import FeatureRegistry  # hard import — must succeed
+    return FeatureRegistry.get_excluded_features()
 
 
 def in_human_speak(label):

@@ -39,7 +39,8 @@ warnings.filterwarnings('ignore')
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from config import MODELS_DIR, LOGS_DIR, PREDICT_CFG, PREDICTION_THRESHOLD
-from utils import add_features, finalize_features, get_feature_list
+from utils import add_features, finalize_features
+from core.feature_registry import FeatureRegistry
 
 
 # =============================================================================
@@ -214,8 +215,8 @@ class ModelEnsembleLoader:
             if names:
                 return names
 
-        # Fall back to default feature list
-        return get_feature_list()
+        # Fall back to registry (single source of truth)
+        return FeatureRegistry.get_production_features()
 
 
 # =============================================================================
@@ -426,7 +427,7 @@ class PredictionEngine:
             X = X_df.values
         else:
             # Use specified or default feature names
-            feature_names = feature_names or self.feature_names or get_feature_list()
+            feature_names = feature_names or self.feature_names or FeatureRegistry.get_production_features()
             X_df = finalize_features(df_feat, feature_names)
             X = X_df.values
 
