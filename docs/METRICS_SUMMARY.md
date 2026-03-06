@@ -1,6 +1,6 @@
 # NeuroVest Model Metrics Summary
 
-**Last Updated:** 2026-03-06
+**Last Updated:** 2026-03-06 (run 2 — post model retrain)
 **Source of Truth:** This document consolidates metrics from `config.py`, `configs/best_thresholds.json`, and latest evaluation runs.
 **Accuracy Alignment:** All accuracy metrics now computed from `logs/labeled_predictions.csv` (same source for evaluate.py and backtest).
 **Architecture:** See `SYSTEM_DESIGN.md` for canonical file references.
@@ -55,22 +55,22 @@ Evaluated on 6,511 rows — full labeled prediction history.
 
 ## Ensemble Models (with Regime Features)
 
-From `comprehensive_model_evaluation.py` — 164 features, 6,501 rows, 80/20 split.
-Train: 5,201 rows | Test: 1,300 rows
+From `comprehensive_model_evaluation.py` — 164 features, 6,583 rows, 80/20 split.
+Train: 5,267 rows | Test: 1,316 rows
 
 | Model | Accuracy | Precision | Recall | F1 Score |
 |-------|----------|-----------|--------|----------|
-| **XGBoost** | 63.69% | 38.37% | 46.07% | 0.419 |
-| **LightGBM** | 62.69% | 38.11% | 50.41% | 0.434 |
-| **CatBoost** | 61.15% | 36.72% | 50.95% | 0.427 |
-| **Ensemble** | 63.85% | 39.28% | 50.14% | 0.440 |
+| **XGBoost** | 64.06% | 37.71% | 42.70% | 0.401 |
+| **LightGBM** | 60.94% | 36.36% | 51.89% | 0.428 |
+| **CatBoost** | 62.77% | 38.59% | 54.86% | 0.453 |
+| **Ensemble** | 63.83% | 39.05% | 51.08% | 0.443 |
 
 ### Profit Optimization (LightGBM, threshold sweep 0.30–0.95)
 
 | Strategy | Threshold | Avg Profit/Trade | Win Rate | N Trades | F1 |
 |----------|-----------|------------------|----------|----------|----|
-| **Best Profit** | 0.80 | 0.61% | 100.0% | 2 | 0.005 |
-| **Best F1** | 0.45 | 0.06% | 54.32% | 659 | 0.461 |
+| **Best Profit** | 0.80 | 1.32% | 100.0% | 4 | 0.016 |
+| **Best F1** | 0.40 | 0.05% | 53.29% | 865 | 0.470 |
 
 ---
 
@@ -80,22 +80,22 @@ True out-of-sample validation — no look-ahead bias. Retrains every 63 days on 
 
 | Parameter | Value |
 |-----------|-------|
-| Backtest period | 5.0 years (2020–2025) |
+| Backtest period | 5.0 years (2021–2026) |
 | Min training window | 2.0 years |
 | Step size | 21 days |
 | Retrain frequency | 63 days |
 | Periods evaluated | 36 |
-| Total trades | 232 |
+| Total trades | 214 |
 
 | Metric | Strategy | Benchmark (Buy & Hold) |
 |--------|----------|------------------------|
-| **Total Return** | +20.24% | +64.62% |
-| **Excess Return** | −44.38% | — |
-| **Sharpe Ratio** | 0.49 | — |
-| **Max Drawdown** | −19.90% | — |
-| **Win Rate** | 56.5% | — |
-| **Avg AUC** | 0.6374 | — |
-| **Avg Precision** | 0.4297 | — |
+| **Total Return** | +25.73% | +59.57% |
+| **Excess Return** | −33.84% | — |
+| **Sharpe Ratio** | 0.75 | — |
+| **Max Drawdown** | −17.66% | — |
+| **Win Rate** | 58.9% | — |
+| **Avg AUC** | 0.6504 | — |
+| **Avg Precision** | 0.4349 | — |
 
 > Walk-forward underperforms buy-and-hold on SPY in a predominantly bull market (2020–2025). The model's value is regime-specific: it adds alpha in high-volatility/crash environments and protects capital in drawdowns. See multi-asset results below for return context.
 
@@ -107,14 +107,14 @@ True out-of-sample validation — no look-ahead bias. Retrains every 63 days on 
 
 | Horizon | AUC | F1 | Precision | Recall | Positive% |
 |---------|-----|----|-----------|--------|-----------|
-| **1d** ✅ | **0.6368** | 0.353 | 0.383 | 0.328 | 27.5% |
-| 2d | 0.5903 | 0.396 | 0.437 | 0.363 | 35.9% |
-| 3d | 0.5755 | 0.457 | 0.487 | 0.430 | 41.3% |
-| 10d | 0.5401 | 0.490 | 0.585 | 0.422 | 53.0% |
-| 5d | 0.5372 | 0.454 | 0.506 | 0.411 | 46.2% |
-| 21d | 0.5295 | 0.471 | 0.631 | 0.375 | 59.4% |
+| **1d** ✅ | **0.6308** | 0.387 | 0.380 | 0.394 | 27.5% |
+| 2d | 0.5801 | 0.420 | 0.437 | 0.404 | 35.8% |
+| 3d | 0.5629 | 0.453 | 0.466 | 0.441 | 41.2% |
+| 5d | 0.5359 | 0.483 | 0.502 | 0.464 | 46.1% |
+| 10d | 0.5186 | 0.518 | 0.556 | 0.485 | 52.7% |
+| 21d | 0.5156 | 0.563 | 0.633 | 0.508 | 59.4% |
 
-**Recommendation:** 1-day horizon clearly dominates on AUC (0.637 vs next-best 0.590). Current production uses 1d.
+**Recommendation:** 1-day horizon clearly dominates on AUC (0.631 vs next-best 0.580). Current production uses 1d.
 
 ---
 
@@ -137,23 +137,25 @@ True out-of-sample validation — no look-ahead bias. Retrains every 63 days on 
 
 | Metric | Value |
 |--------|-------|
-| **Mean portfolio value** | $384,691 (from $100k) |
-| **Median total return** | +267.77% |
-| **5th percentile return** | +137.50% |
-| **95th percentile return** | +489.07% |
+| **Mean portfolio value** | $556,649 (from $100k) |
+| **Median total return** | +434.44% |
+| **5th percentile return** | +193.41% |
+| **95th percentile return** | +773.78% |
 | **Probability of profit** | 100.0% |
-| **Mean max drawdown** | −8.31% |
-| **Worst max drawdown** | −20.28% |
+| **Mean max drawdown** | −10.40% |
+| **Worst max drawdown** | −26.39% |
 
 ### Statistical Significance
 
 | Test | Result |
 |------|--------|
-| T-statistic | 3.32 |
-| P-value | 0.0017 |
+| T-statistic | 3.76 |
+| P-value | 0.0005 |
 | Significant at 5%? | ✅ YES |
-| 95% CI for mean return | [+0.53%, +2.16%] per trade |
-| Sharpe (statistical test) | 7.45 |
+| 95% CI for mean return | [+0.80%, +2.65%] per trade |
+| Mean return per trade | +1.73% |
+| Win rate (significance test) | 76.0% |
+| Sharpe (statistical test) | 8.44 |
 
 **Strategy returns are statistically significant (p < 0.05).**
 
@@ -279,6 +281,6 @@ From `config.py` RISK_CFG:
 
 ---
 
-*Generated: 2026-03-06*
+*Generated: 2026-03-06 (run 2, post model retrain with 82 new rows)*
 *Configuration: 1-day horizon, 0.5% positive threshold, 0.45 prediction threshold*
-*Data: 6,511 labeled predictions, 2000-01-03 → 2025-11-19*
+*Data: 6,583 rows (evaluate.py uses 6,511 labeled predictions; walk-forward uses full 6,583)*

@@ -326,7 +326,7 @@ def show_dashboard(selected_asset):
     <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 2rem; border-radius: 15px; color: white; margin: 2rem 0;">
         <h2 style="color: white; margin-top: 0;">🎯 What is NeuroVest?</h2>
         <p style="font-size: 1.2rem; line-height: 1.6;">
-            <b>NeuroVest is a Market Forecasting API</b> that predicts price movements using ensemble machine learning (XGBoost + LightGBM + CatBoost + LSTM) achieving <b>68.8% accuracy</b> on the weighted ensemble.
+            <b>NeuroVest is a Market Forecasting API</b> that predicts price movements using an ensemble of gradient-boosted models (XGBoost + LightGBM + CatBoost) with 164 engineered features, achieving <b>80.88% accuracy</b> on production predictions and <b>63.8% accuracy</b> on unseen test data.
         </p>
         <p style="font-size: 1.1rem; line-height: 1.6;">
             ✨ <b>Primary Function:</b> Generate 3-class forecasts (CRASH / NORMAL / SPIKE) for 41 assets including stocks, ETFs, crypto, and precious metals
@@ -455,11 +455,11 @@ def show_dashboard(selected_asset):
         <div style="background-color: #E8F5E9; padding: 1.5rem; border-radius: 10px;">
             <h4 style="color: #2E7D32; margin-top: 0;">Best Models</h4>
             <table style="width: 100%; color: #1B5E20;">
-                <tr><td><b>Weighted Ensemble</b></td><td style="text-align: right;"><b>68.8% accuracy</b></td></tr>
-                <tr><td>LSTM</td><td style="text-align: right;">67.8% accuracy</td></tr>
-                <tr><td>Regime-Switching</td><td style="text-align: right;">63.7% accuracy</td></tr>
-                <tr><td>XGBoost (Regime)</td><td style="text-align: right;">59.7% accuracy</td></tr>
-                <tr><td>LightGBM (Regime)</td><td style="text-align: right;">58.4% accuracy</td></tr>
+                <tr><td><b>Ensemble (Regime)</b></td><td style="text-align: right;"><b>63.8% accuracy</b></td></tr>
+                <tr><td>XGBoost (Regime)</td><td style="text-align: right;">64.1% accuracy</td></tr>
+                <tr><td>CatBoost (Regime)</td><td style="text-align: right;">62.8% accuracy</td></tr>
+                <tr><td>LightGBM (Regime)</td><td style="text-align: right;">60.9% accuracy</td></tr>
+                <tr><td>Production (all data)</td><td style="text-align: right;">80.9% accuracy</td></tr>
             </table>
         </div>
         """, unsafe_allow_html=True)
@@ -469,10 +469,10 @@ def show_dashboard(selected_asset):
         <div style="background-color: #E3F2FD; padding: 1.5rem; border-radius: 10px;">
             <h4 style="color: #1565C0; margin-top: 0;">Optimization Trade-offs</h4>
             <table style="width: 100%; color: #0D47A1;">
-                <tr><td><b>Strategy</b></td><td><b>Precision</b></td><td><b>Trades</b></td></tr>
-                <tr><td>Balanced (0.50)</td><td>38.7%</td><td>619</td></tr>
-                <tr><td>Conservative (0.55)</td><td>92.6%</td><td>27</td></tr>
-                <tr><td>Ultra-Cons (0.65)</td><td>100%</td><td>4</td></tr>
+                <tr><td><b>Strategy</b></td><td><b>Win Rate</b></td><td><b>Trades</b></td></tr>
+                <tr><td><b>Balanced (0.40)</b></td><td>53.3%</td><td>865</td></tr>
+                <tr><td>Precision (0.45)</td><td>54.3%</td><td>659</td></tr>
+                <tr><td>Ultra-Cons (0.80)</td><td>100%</td><td>4</td></tr>
             </table>
             <p style="font-size: 0.9rem; margin-top: 0.5rem;">Higher thresholds = fewer trades, higher precision</p>
         </div>

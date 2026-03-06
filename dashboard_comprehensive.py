@@ -31,15 +31,20 @@ import numpy as np
 
 
 def load_real_metrics() -> dict:
-    """Load actual metrics from logs/latest.json"""
+    """Load actual metrics from logs/latest.json.
+
+    backtest.py saves keys: total_return, sharpe (not sharpe_ratio),
+    max_drawdown, win_rate, model_accuracy, trades (not total_trades).
+    This function normalises those into the names the dashboard expects.
+    """
     metrics_path = Path("logs/latest.json")
     default_metrics = {
-        "total_return": 0,
-        "sharpe_ratio": 0,
-        "max_drawdown": 0,
-        "model_accuracy": 0,
-        "wf_accuracy": 0,
-        "win_rate": 0,
+        "total_return": 0.0,
+        "sharpe_ratio": 0.0,
+        "max_drawdown": 0.0,
+        "model_accuracy": 0.0,
+        "wf_accuracy": 0.0,
+        "win_rate": 0.0,
         "total_trades": 0,
         "years_tested": 0,
     }
@@ -47,7 +52,12 @@ def load_real_metrics() -> dict:
     if metrics_path.exists():
         try:
             with open(metrics_path) as f:
-                return json.load(f)
+                raw = json.load(f)
+            # Normalise key aliases written by backtest.py
+            raw.setdefault("sharpe_ratio", raw.get("sharpe", 0.0))
+            raw.setdefault("total_trades", raw.get("trades", 0))
+            raw.setdefault("wf_accuracy", raw.get("model_accuracy", 0.0))
+            return {**default_metrics, **raw}
         except Exception:
             pass
 
@@ -1748,11 +1758,12 @@ def show_model_performance():
     # 1. Feature analysis uses simplified GradientBoosting vs production XGBoost/LightGBM/CatBoost
     # 2. Production models use hyperparameter tuning, time-series CV, and feature selection
     # 3. Different evaluation methodology (time-based split vs cross-validation)
+    # Metrics from comprehensive_model_evaluation.py — 164 features, 80/20 time split
     benchmark_metrics = {
-        'xgboost': {'accuracy': 0.55, 'precision': 0.53, 'recall': 0.51, 'f1': 0.52},
-        'lightgbm': {'accuracy': 0.54, 'precision': 0.52, 'recall': 0.50, 'f1': 0.51},
-        'catboost': {'accuracy': 0.53, 'precision': 0.51, 'recall': 0.49, 'f1': 0.50},
-        'ensemble': {'accuracy': 0.57, 'precision': 0.54, 'recall': 0.52, 'f1': 0.53},
+        'xgboost':  {'accuracy': 0.6406, 'precision': 0.3771, 'recall': 0.4270, 'f1': 0.4005},
+        'lightgbm': {'accuracy': 0.6094, 'precision': 0.3636, 'recall': 0.5189, 'f1': 0.4276},
+        'catboost': {'accuracy': 0.6277, 'precision': 0.3859, 'recall': 0.5486, 'f1': 0.4531},
+        'ensemble': {'accuracy': 0.6383, 'precision': 0.3905, 'recall': 0.5108, 'f1': 0.4426},
     }
 
     arch1, arch2, arch3 = st.columns(3)
