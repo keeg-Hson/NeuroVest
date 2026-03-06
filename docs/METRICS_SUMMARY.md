@@ -1,7 +1,8 @@
 # NeuroVest Model Metrics Summary
 
-**Last Updated:** 2026-03-06 (run 2 — post model retrain)
+**Last Updated:** 2026-03-06 (run 3 — stable seeded Monte Carlo)
 **Source of Truth:** This document consolidates metrics from `config.py`, `configs/best_thresholds.json`, and latest evaluation runs.
+**Dashboard Source of Truth:** `dashboard_comprehensive.py` — reads `logs/latest.json` (written by `backtest.py`) for live trading metrics. See [Dashboard Data Flow](#dashboard-data-flow) below.
 **Accuracy Alignment:** All accuracy metrics now computed from `logs/labeled_predictions.csv` (same source for evaluate.py and backtest).
 **Architecture:** See `SYSTEM_DESIGN.md` for canonical file references.
 
@@ -134,29 +135,33 @@ True out-of-sample validation — no look-ahead bias. Retrains every 63 days on 
 ## Monte Carlo Validation (`advanced_backtesting.py`)
 
 1,000 simulations × 100 trades — demonstrates statistical robustness of the edge.
-**Seeded (`np.random.seed(42)`) for reproducibility.**
+**Seeded (`np.random.seed(42)`) for reproducibility within a given environment.**
+
+> Note: Monte Carlo samples from the walk-forward trade returns generated in the same run.
+> The seed guarantees reproducibility given identical trade data; values vary across environments
+> if the underlying trade history differs.
 
 | Metric | Value |
 |--------|-------|
-| **Mean portfolio value** | $697,117 (from $100k) |
-| **Median total return** | +574.08% |
-| **5th percentile return** | +336.42% |
-| **95th percentile return** | +930.54% |
+| **Mean portfolio value** | $980,502 (from $100k) |
+| **Median total return** | +849.42% |
+| **5th percentile return** | +531.96% |
+| **95th percentile return** | +1,327.52% |
 | **Probability of profit** | 100.0% |
-| **Mean max drawdown** | −6.22% |
-| **Worst max drawdown** | −16.53% |
+| **Mean max drawdown** | −5.57% |
+| **Worst max drawdown** | −13.16% |
 
 ### Statistical Significance
 
 | Test | Result |
 |------|--------|
-| T-statistic | 5.27 |
+| T-statistic | 6.33 |
 | P-value | <0.0001 |
 | Significant at 5%? | ✅ YES |
-| 95% CI for mean return | [+1.21%, +2.69%] per trade |
-| Mean return per trade | +1.95% |
-| Win rate (significance test) | 78.0% |
-| Sharpe (statistical test) | 11.84 |
+| 95% CI for mean return | [+1.56%, +3.01%] per trade |
+| Mean return per trade | +2.29% |
+| Win rate (significance test) | 80.0% |
+| Sharpe (statistical test) | 14.22 |
 
 **Strategy returns are statistically significant (p < 0.05).**
 
@@ -205,7 +210,7 @@ True out-of-sample validation — no look-ahead bias. Retrains every 63 days on 
 ### Strengths
 
 1. **Validated Predictive Skill**: Walk-forward AUC of 0.637 over 36 out-of-sample periods (5 years) with zero look-ahead bias
-2. **Statistically Significant Edge**: p < 0.0001, 100% probability of profit across 1,000 Monte Carlo simulations (seed=42)
+2. **Statistically Significant Edge**: p < 0.0001, 100% probability of profit across 1,000 Monte Carlo simulations (seed=42), Sharpe 14.22
 3. **High Precision When It Fires**: 81.3% precision at threshold 0.45 — model is selective, not noisy
 4. **Crypto Alpha**: BTC (+257%, Sharpe 2.46), ETH (+368%, Sharpe 2.31), SOL per-asset (+16,127%, Sharpe 17.68)
 5. **Regime Awareness**: 11 regime features detect bull/bear/volatility environments
@@ -255,18 +260,56 @@ From `config.py` RISK_CFG:
 
 ---
 
+## Dashboard Data Flow
+
+`dashboard_comprehensive.py` is the **deployed Streamlit dashboard**. It reads all metrics from a single chain:
+
+```
+backtest.py  →  logs/latest.json  →  dashboard_comprehensive.py  →  Streamlit UI
+```
+
+### Key aliasing (backtest.py → dashboard)
+
+| backtest.py saves | dashboard reads | Notes |
+|-------------------|-----------------|-------|
+| `"sharpe"` | `"sharpe_ratio"` | Normalized via `setdefault` in `load_real_metrics()` |
+| `"trades"` | `"total_trades"` | Same |
+| `"model_accuracy"` | `"wf_accuracy"` | Same |
+
+### Benchmark model metrics in dashboard
+
+`benchmark_metrics` in `dashboard_comprehensive.py` is **hardcoded** from `comprehensive_model_evaluation.py` results and must be manually updated when models are retrained:
+
+```python
+benchmark_metrics = {
+    'xgboost':  {'accuracy': 0.6406, 'precision': 0.3771, 'recall': 0.4270, 'f1': 0.4005},
+    'lightgbm': {'accuracy': 0.6094, 'precision': 0.3636, 'recall': 0.5189, 'f1': 0.4276},
+    'catboost': {'accuracy': 0.6277, 'precision': 0.3859, 'recall': 0.5486, 'f1': 0.4531},
+    'ensemble': {'accuracy': 0.6383, 'precision': 0.3905, 'recall': 0.5108, 'f1': 0.4426},
+}
+```
+
+**To refresh the dashboard after a new backtest run:**
+1. `python3 backtest.py` → writes `logs/latest.json`
+2. Dashboard auto-reads on next load — no code changes needed
+3. If ensemble models were retrained, update `benchmark_metrics` in `dashboard_comprehensive.py` manually
+
+---
+
 ## Files That Define the Model
 
 | File | Purpose | Status |
 |------|---------|--------|
 | `config.py` | Global configuration, locked parameters | **Source of Truth** |
 | `configs/best_thresholds.json` | Optimized thresholds | **Source of Truth** |
-| `core/feature_registry.py` | Canonical 164-feature definitions | **Source of Truth** |
+| `core/feature_registry.py` | Canonical 164-feature list (164 total, 35 excluded) | **Source of Truth** |
+| `logs/latest.json` | Live trading metrics written by `backtest.py` | **Dashboard Source of Truth** |
+| `dashboard_comprehensive.py` | Deployed Streamlit UI — reads `logs/latest.json` | **Dashboard Entry Point** |
 | `docs/model_changelog.md` | Official change log | **Source of Truth** |
 | `build_feature_table.py` | Feature engineering pipeline | Canonical |
 | `train.py` | Model training entry point | Canonical |
 | `predict.py` | Prediction entry point | Canonical |
-| `backtest.py` | Backtesting entry point | Canonical |
+| `backtest.py` | Backtesting entry point; writes `logs/latest.json` | Canonical |
 
 ---
 
@@ -282,6 +325,6 @@ From `config.py` RISK_CFG:
 
 ---
 
-*Generated: 2026-03-06 (run 2, post model retrain with 82 new rows)*
+*Generated: 2026-03-06 (run 3, stable seeded Monte Carlo + dashboard data flow documented)*
 *Configuration: 1-day horizon, 0.5% positive threshold, 0.45 prediction threshold*
 *Data: 6,583 rows (evaluate.py uses 6,511 labeled predictions; walk-forward uses full 6,583)*
