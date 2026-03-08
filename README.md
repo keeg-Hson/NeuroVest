@@ -78,7 +78,7 @@ See `SYSTEM_DESIGN.md` for architecture and canonical file references.
 - **Monte Carlo Validation** - 1,000-run simulation with statistical significance testing and confidence intervals.
 - **Walk-Forward Testing** - 33 out-of-sample windows from 2015 to 2026 with no look-ahead bias.
 - **Parameter Sweeps** - Threshold optimization across precision/recall trade-off curves.
-- **Multi-Asset Coverage** - 31 stocks, ETFs, and commodities plus 10 cryptocurrencies.
+- **Multi-Asset Coverage** - 63 assets: 36 equities/ETFs, 10 bond ETFs, 7 precious metals, and 10 cryptocurrencies.
 - **Production Automation** - Railway-deployed worker with scheduled training (weekly) and predictions (daily).
 - **Modular Design** - Extendable for new models or data sources.
 
@@ -136,7 +136,7 @@ See `SYSTEM_DESIGN.md` for complete architecture documentation.
 |   +-- prediction_engine.py      # Prediction system
 |   +-- models/base_models.py     # Model architectures
 |
-+-- config/assets.yaml            # Asset definitions (59 assets)
++-- config/assets.yaml            # Asset definitions (63 assets)
 +-- configs/                      # Trading profiles and thresholds
 +-- data/                         # Local data cache
 +-- logs/                         # Predictions and metrics
@@ -251,7 +251,7 @@ python3 evaluate_targets.py
 - End-to-end pipeline: data, feature engineering, training, prediction, evaluation
 - Sentiment and macroeconomic signal integration
 - Production deployment on Railway with PostgreSQL
-- Multi-asset support (31 stocks/ETFs plus 10 cryptocurrencies)
+- Multi-asset support (36 equities/ETFs, 10 bonds, 7 precious metals, 10 crypto)
 - Streamlit dashboard for visualization
 - Weighted ensemble with 164 features across 8 categories
 - Automated metrics documentation via `update_metrics_docs.py`
@@ -271,7 +271,7 @@ python3 evaluate_targets.py
 | 2 | Backtesting and Optimization: threshold sweeps, strategy simulation | Complete |
 | 3 | Automation and Scheduling: Railway worker | Complete |
 | 4 | Dashboard and Visualization: Streamlit | Complete |
-| 5 | Multi-Asset Coverage: 41 assets | Complete |
+| 5 | Multi-Asset Coverage: 63 assets | Complete |
 | 6 | Ensemble Models: 164 features, regime detection | Complete |
 | 7 | Trade Execution: broker API integration | In Progress |
 

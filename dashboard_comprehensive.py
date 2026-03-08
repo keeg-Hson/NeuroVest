@@ -3,7 +3,7 @@
 NeuroVest Comprehensive Forecasting Dashboard
 
 Full-featured interface showcasing ALL NeuroVest capabilities:
-- 41 assets (stocks, ETFs, crypto, precious metals)
+- 63 assets (equities, bonds, commodities, crypto)
 - Recession probability analysis
 - Asset valuation detection
 - LLM-powered market analysis
@@ -241,10 +241,11 @@ def _get_asset_categories():
     if USE_ASSET_MANAGER and _asset_manager:
         try:
             categories = _asset_manager.get_dashboard_categories()
-            # Merge stocks_etfs with sectors and bonds for display
-            stocks = {**categories.get('stocks_etfs', {}), **categories.get('sectors', {}), **categories.get('bonds', {})}
+            # Merge stocks_etfs with sectors only; keep bonds and precious_metals separate
+            stocks = {**categories.get('stocks_etfs', {}), **categories.get('sectors', {})}
             return {
                 'stocks_etfs': stocks,
+                'bonds': categories.get('bonds', {}),
                 'precious_metals': categories.get('precious_metals', {}),
                 'crypto': categories.get('crypto', {}),
             }
@@ -257,25 +258,34 @@ def _get_asset_categories():
             'SPY': 'S&P 500', 'QQQ': 'Nasdaq 100', 'IWM': 'Russell 2000',
             'DIA': 'Dow Jones', 'VTI': 'Total Stock Market', 'EEM': 'Emerging Markets',
             'XLF': 'Financials', 'XLK': 'Technology', 'XLE': 'Energy',
-            'DXY': 'US Dollar', 'HYG': 'High Yield Bonds', 'LQD': 'Investment Grade Bonds',
-            'TNX': '10Y Treasury', 'UUP': 'US Dollar Bull'
+            'XLV': 'Healthcare', 'XLI': 'Industrials', 'XLY': 'Consumer Discretionary',
+            'XLP': 'Consumer Staples', 'XLU': 'Utilities', 'XLB': 'Materials',
+            'XLRE': 'Real Estate', 'XLC': 'Communications',
+        },
+        'bonds': {
+            'AGG': 'Total Bond Market', 'BND': 'Total Bond Market Vanguard',
+            'TLT': '20+ Year Treasuries', 'IEF': '7-10 Year Treasuries',
+            'SHY': '1-3 Year Treasuries', 'LQD': 'Investment Grade Bonds',
+            'HYG': 'High Yield Bonds', 'JNK': 'SPDR High Yield Bonds',
+            'MUB': 'Municipal Bonds', 'EMB': 'Emerging Markets Bonds',
         },
         'precious_metals': {
             'GLD': 'Gold Trust', 'SLV': 'Silver Trust', 'GDX': 'Gold Miners',
             'GDXJ': 'Junior Gold Miners', 'IAU': 'iShares Gold',
-            'PPLT': 'Platinum', 'PALL': 'Palladium'
+            'PPLT': 'Platinum', 'PALL': 'Palladium',
         },
         'crypto': {
             'BTC/USDT': 'Bitcoin', 'ETH/USDT': 'Ethereum', 'SOL/USDT': 'Solana',
             'BNB/USDT': 'Binance Coin', 'XRP/USDT': 'Ripple', 'ADA/USDT': 'Cardano',
-            'DOGE/USDT': 'Dogecoin', 'AVAX/USDT': 'Avalanche',
-            'MATIC/USDT': 'Polygon', 'LINK/USDT': 'Chainlink'
-        }
+            'AVAX/USDT': 'Avalanche', 'DOT/USDT': 'Polkadot',
+            'MATIC/USDT': 'Polygon', 'LINK/USDT': 'Chainlink',
+        },
     }
 
 # Initialize asset dictionaries
 _categories = _get_asset_categories()
 STOCK_ETFS = _categories['stocks_etfs']
+BOND_ETFS = _categories['bonds']
 PRECIOUS_METALS = _categories['precious_metals']
 CRYPTO_ASSETS = _categories['crypto']
 
@@ -455,8 +465,9 @@ def main():
     db_assets = get_database_assets()
     downloaded = len(db_assets)
 
-    # Total supported assets (use actual count from database)
-    total_assets = len(db_assets) if db_assets else 40
+    # Total supported assets: use database count if populated, else AssetManager count
+    _am_total = len(_asset_manager.get_all_assets()) if _asset_manager else (len(STOCK_ETFS) + len(BOND_ETFS) + len(PRECIOUS_METALS) + len(CRYPTO_ASSETS))
+    total_assets = len(db_assets) if db_assets else _am_total
 
     st.sidebar.metric("Assets Downloaded", f"{downloaded}/{total_assets}")
 
@@ -515,7 +526,7 @@ def show_overview():
         <div class="info-card">
             <h3>What is NeuroVest?</h3>
             <p>
-                NeuroVest is an ensemble ML forecasting platform that predicts market movements across 41 assets.
+                NeuroVest is an ensemble ML forecasting platform that predicts market movements across 63 assets.
                 The system combines XGBoost, LightGBM, and CatBoost models trained on 126+ features to generate
                 three-class predictions (CRASH/NORMAL/SPIKE) with quantified confidence levels.
             </p>
@@ -688,17 +699,20 @@ def show_overview():
             db_crypto = sum(1 for _, atype in db_assets if atype == 'crypto')
             db_total = len(db_assets)
         except Exception:
-            db_stocks, db_crypto, db_total = 29, 11, 40  # Fallback to known counts
+            db_stocks, db_crypto, db_total = 36, 10, 63  # Fallback to known counts
 
+        _eq = len(STOCK_ETFS)
+        _bd = len(BOND_ETFS)
+        _pm = len(PRECIOUS_METALS)
+        _cr = len(CRYPTO_ASSETS)
         st.markdown(f"""
         <div class="feature-box">
-            <h4>Asset Coverage</h4>
+            <h4>Asset Coverage (63 total)</h4>
             <ul>
-                <li><b>{db_stocks} Stock/ETF Assets:</b> SPY, QQQ, IWM, DIA, VTI, sector ETFs, macro indicators</li>
-                <li><b>7 Precious Metals:</b> Gold, Silver, GDX, GDXJ, Platinum, Palladium</li>
-                <li><b>{db_crypto} Cryptocurrencies:</b> BTC, ETH, SOL, BNB, XRP, ADA, DOGE, AVAX, MATIC, LINK</li>
-                <li><b>Custom Data Imports:</b> Upload your own CSV files (feature available)</li>
-                <li><b>Portfolio Analysis:</b> Rebalancing frequency optimization</li>
+                <li><b>{_eq} Equities / ETFs:</b> SPY, QQQ, IWM, DIA, VTI, sector ETFs, thematic</li>
+                <li><b>{_bd} Bond ETFs:</b> AGG, TLT, IEF, LQD, HYG, MUB, EMB and more</li>
+                <li><b>{_pm} Precious Metals:</b> GLD, SLV, GDX, GDXJ, IAU, PPLT, PALL</li>
+                <li><b>{_cr} Cryptocurrencies:</b> BTC, ETH, BNB, SOL, XRP, ADA, AVAX, DOT, MATIC, LINK</li>
             </ul>
         </div>
         """, unsafe_allow_html=True)
@@ -721,9 +735,11 @@ def show_overview():
             crypto = sum(1 for _, atype in db_assets if atype == 'crypto')
 
             # Show actual counts from database (not hardcoded denominators)
-            st.markdown(f"Stocks: {stocks} assets")
+            st.markdown(f"Stocks/ETFs: {stocks} assets")
             st.markdown(f"Crypto: {crypto} assets")
-            st.markdown(f"Total: {len(db_assets)} assets")
+            st.markdown(f"DB total: {len(db_assets)} assets")
+            _cfg_total = len(STOCK_ETFS) + len(BOND_ETFS) + len(PRECIOUS_METALS) + len(CRYPTO_ASSETS)
+            st.markdown(f"Configured: {_cfg_total} assets")
         except Exception as e:
             st.markdown("Database connection error")
 
@@ -985,7 +1001,7 @@ def show_getting_started():
             <div style='color: #60a5fa; font-size: 2rem; margin-bottom: 0.5rem;'>1</div>
             <div style='color: white; font-weight: bold; margin-bottom: 0.5rem;'>Data Collection</div>
             <div style='color: #94a3b8; font-size: 0.9rem;'>
-                We collect price data, technical indicators, sentiment signals, and macro factors for 40+ assets daily.
+                We collect price data, technical indicators, sentiment signals, and macro factors for 63 assets daily.
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -1289,7 +1305,7 @@ def show_backtest_results():
         q_col1, q_col2 = st.columns(2)
 
         with q_col1:
-            available_assets = list(STOCK_ETFS.keys()) + list(CRYPTO_ASSETS.keys())
+            available_assets = list(STOCK_ETFS.keys()) + list(BOND_ETFS.keys()) + list(PRECIOUS_METALS.keys()) + list(CRYPTO_ASSETS.keys())
             quick_assets = st.multiselect(
                 "Select Assets",
                 available_assets,
@@ -1977,7 +1993,7 @@ def show_api_documentation():
         {"ticker": "QQQ", "signal": "SPIKE", "confidence": 0.65},
         ...
     ],
-    "count": 41,
+    "count": 63,
     "generated_at": "2024-01-23T16:30:00Z"
 }
         """, language="json")
@@ -1994,7 +2010,7 @@ def show_api_documentation():
         {"ticker": "BTC_USDT", "name": "Bitcoin", "type": "crypto"},
         ...
     ],
-    "count": 41
+    "count": 63
 }
         """, language="json")
 
@@ -2109,8 +2125,8 @@ def show_asset_manager():
 
     # ==================== SUMMARY STATISTICS ====================
 
-    # Calculate overall stats
-    all_assets = {**STOCK_ETFS, **PRECIOUS_METALS, **CRYPTO_ASSETS}
+    # Calculate overall stats — all configured asset categories
+    all_assets = {**STOCK_ETFS, **BOND_ETFS, **PRECIOUS_METALS, **CRYPTO_ASSETS}
     total_assets = len(all_assets)
 
     downloaded_count = 0
@@ -2143,7 +2159,7 @@ def show_asset_manager():
     # ==================== ASSET CATEGORIES ====================
 
     st.markdown("---")
-    tab1, tab2, tab3 = st.tabs(["Stocks & ETFs", "Precious Metals", "Cryptocurrency"])
+    tab1, tab2, tab3, tab4 = st.tabs(["Stocks & ETFs", "Bonds", "Precious Metals", "Cryptocurrency"])
 
     with tab1:
         st.markdown(f"### Stocks & ETFs ({len(STOCK_ETFS)} assets)")
@@ -2210,6 +2226,40 @@ def show_asset_manager():
                         st.error(f"Error: {result.stderr[:200] if result.stderr else 'Unknown error'}")
 
     with tab2:
+        st.markdown(f"### Bonds ({len(BOND_ETFS)} assets)")
+
+        bond_data = []
+        for ticker, name in BOND_ETFS.items():
+            status = check_asset_status(ticker)
+            df = load_asset_data(ticker)
+
+            if df is not None and len(df) > 0:
+                rows = len(df)
+                latest_date = df['Date'].max().strftime('%Y-%m-%d') if 'Date' in df.columns else '-'
+                latest_price = f"${df['Close'].iloc[-1]:.2f}" if 'Close' in df.columns else '-'
+            else:
+                rows = 0
+                latest_date = '-'
+                latest_price = '-'
+
+            bond_data.append({
+                'Ticker': ticker,
+                'Name': name,
+                'Status': 'Ready' if status == 'downloaded' else 'Not Downloaded',
+                'Records': rows if rows > 0 else '-',
+                'Latest Date': latest_date,
+                'Last Price': latest_price
+            })
+
+        df_bonds = pd.DataFrame(bond_data)
+        styled_bonds = df_bonds.style.applymap(highlight_status, subset=['Status'])
+        st.dataframe(styled_bonds, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+        st.markdown("**Download** included in the ETF package (download_equity_etfs.py)")
+        st.caption("All bond ETFs are downloaded alongside equities via Yahoo Finance v8")
+
+    with tab3:
         st.markdown(f"### Precious Metals ({len(PRECIOUS_METALS)} assets)")
 
         metal_data = []
@@ -2240,10 +2290,10 @@ def show_asset_manager():
         st.dataframe(styled_metals, use_container_width=True, hide_index=True)
 
         st.markdown("---")
-        st.markdown("**Download via ETFs package** (included with Download All ETFs)")
-        st.caption("GLD (Gold) and SLV (Silver) are downloaded with the ETF package")
+        st.markdown("**Download** included in the ETF package above (download_equity_etfs.py)")
+        st.caption("All precious metals are downloaded alongside equities via Yahoo Finance v8")
 
-    with tab3:
+    with tab4:
         st.markdown(f"### Cryptocurrency ({len(CRYPTO_ASSETS)} assets)")
 
         crypto_data = []
@@ -2718,7 +2768,7 @@ def show_valuation_detector():
     st.caption(f"Analysis generated: {eval_time}")
 
     # Asset selector
-    all_assets = list(STOCK_ETFS.keys()) + list(PRECIOUS_METALS.keys()) + list(CRYPTO_ASSETS.keys())
+    all_assets = list(STOCK_ETFS.keys()) + list(BOND_ETFS.keys()) + list(PRECIOUS_METALS.keys()) + list(CRYPTO_ASSETS.keys())
     downloaded_assets = [a for a in all_assets if check_asset_status(a) == "downloaded"]
 
     if not downloaded_assets:

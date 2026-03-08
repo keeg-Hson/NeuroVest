@@ -267,6 +267,26 @@ commodities:
     category: "Mining - Gold"
     threshold: 0.015
     enabled: true
+  GDXJ:
+    name: "Junior Gold Miners"
+    category: "Mining - Gold"
+    threshold: 0.018
+    enabled: true
+  IAU:
+    name: "iShares Gold"
+    category: "Precious Metals"
+    threshold: 0.008
+    enabled: true
+  PPLT:
+    name: "Platinum"
+    category: "Precious Metals"
+    threshold: 0.012
+    enabled: true
+  PALL:
+    name: "Palladium"
+    category: "Precious Metals"
+    threshold: 0.018
+    enabled: true
 
 # CRYPTOCURRENCY (via CCXT)
 # Thresholds calibrated to ~0.5x daily volatility
