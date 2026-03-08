@@ -34,6 +34,61 @@ from core.scheduler import (
     create_fallback_callback
 )
 
+# Asset configuration source
+from framework.asset_manager import AssetManager
+
+
+def create_paginated_ccxt_callback(symbol: str, exchange_name: str = 'binance',
+                                   timeframe: str = '1d'):
+    """
+    CCXT callback with full-history pagination.
+
+    Unlike the base create_ccxt_callback (single fetch, exchange-capped at
+    300-1000 candles), this loops until all available history is collected.
+    Uses Binance by default (1000 candles/request, data from 2017+).
+    """
+    def fetch_data():
+        try:
+            import ccxt
+            import pandas as pd
+
+            exchange = getattr(ccxt, exchange_name)({'enableRateLimit': True})
+
+            # Start from 2017-01-01 (Binance launch date)
+            since = exchange.parse8601('2017-01-01T00:00:00Z')
+
+            all_ohlcv = []
+            while True:
+                batch = exchange.fetch_ohlcv(symbol, timeframe, since=since, limit=1000)
+                if not batch:
+                    break
+                all_ohlcv.extend(batch)
+                last_ts = batch[-1][0]
+                since = last_ts + 86_400_000   # advance 1 day in ms
+                if since > exchange.milliseconds():
+                    break
+                if len(batch) < 1000:
+                    break
+                time.sleep(0.3)
+
+            if not all_ohlcv:
+                return None
+
+            df = pd.DataFrame(
+                all_ohlcv,
+                columns=['timestamp', 'Open', 'High', 'Low', 'Close', 'Volume']
+            )
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            df = df.drop_duplicates('timestamp').set_index('timestamp')
+            df['Adj_Close'] = df['Close']
+            return df
+
+        except Exception as e:
+            print(f"  Error fetching {symbol} from {exchange_name}: {e}")
+            return None
+
+    return fetch_data
+
 
 class WorkerScheduler:
     """Production-ready worker with full ML pipeline automation"""
@@ -60,35 +115,27 @@ class WorkerScheduler:
         # Initialize scheduler
         self.scheduler = DataScheduler(self.dm)
 
-        # Register stock assets - ALL 31 stock/ETF/commodity assets
-        stock_tickers = [
-            # Major indices (6)
-            'SPY', 'QQQ', 'IWM', 'DIA', 'VTI', 'EEM',
-            # Sector ETFs (3)
-            'XLF', 'XLK', 'XLE',
-            # Bonds & Treasury (6)
-            'TLT', 'IEF', 'SHY', 'HYG', 'LQD', 'TNX',
-            # Dollar (2)
-            'DXY', 'UUP',
-            # Precious metals (7)
-            'GLD', 'SLV', 'GDX', 'GDXJ', 'IAU', 'PPLT', 'PALL',
-            # Energy (2)
-            'USO', 'UNG',
-            # Agriculture (3)
-            'DBA', 'CORN', 'WEAT'
-        ]
+        # Load all configured assets from config/assets.yaml (currently 63)
+        asset_manager = AssetManager()
+        all_assets = asset_manager.get_all_assets()
 
-        print("📊 Registering stock/commodity assets...")
-        for ticker in stock_tickers:
-            self.dm.register_asset(ticker, 'stock', 'daily')
+        # Split into equity/commodity (yfinance) vs crypto (ccxt/Binance)
+        non_crypto = [a for a in all_assets if a.asset_type != 'crypto']
+        crypto_assets = [a for a in all_assets if a.asset_type == 'crypto']
+
+        print(f"📊 Registering {len(non_crypto)} stock/bond/commodity assets...")
+        for asset in non_crypto:
+            ticker = asset.ticker
+            self.dm.register_asset(ticker, asset.asset_type, 'daily')
 
             try:
-                # Fetch 3 years of historical data for ML training
-                callback = create_yfinance_callback(ticker, period='3y')
+                # period='max' → full history from inception on first load;
+                # update_from_source() keeps it incremental thereafter.
+                callback = create_yfinance_callback(ticker, period='max')
                 self.scheduler.register_update_callback(
                     ticker, callback, interval_minutes=60
                 )
-                print(f"  ✓ {ticker} (yfinance, 60min)")
+                print(f"  ✓ {ticker} (yfinance max history, 60min)")
             except Exception as e:
                 print(f"  ⚠️  {ticker} - Using fallback: {e}")
                 callback = create_fallback_callback(ticker)
@@ -96,36 +143,26 @@ class WorkerScheduler:
                     ticker, callback, interval_minutes=60
                 )
 
-        # Register crypto assets - MUST MATCH reload_crypto_max_history.py asset list!
-        # Using multiple exchanges to cover all 10 cryptos
-        crypto_symbols = [
-            ('BTC/USDT', 'BTC_USDT', 'coinbase'),
-            ('ETH/USDT', 'ETH_USDT', 'coinbase'),
-            ('SOL/USDT', 'SOL_USDT', 'coinbase'),
-            ('BNB/USDT', 'BNB_USDT', 'kucoin'),      # Not on Coinbase, use KuCoin
-            ('XRP/USDT', 'XRP_USDT', 'coinbase'),
-            ('ADA/USDT', 'ADA_USDT', 'coinbase'),
-            ('DOGE/USDT', 'DOGE_USDT', 'coinbase'),
-            ('AVAX/USDT', 'AVAX_USDT', 'coinbase'),
-            ('POL/USDT', 'POL_USDT', 'coinbase'),    # Polygon (formerly MATIC, rebranded Sept 2024)
-            ('LINK/USDT', 'LINK_USDT', 'coinbase')
-        ]
+        # Polygon rebranded MATIC → POL in Sept 2024.
+        # Binance still lists the asset; map config ticker to the correct Binance symbol.
+        BINANCE_SYMBOL_MAP = {
+            'MATIC/USDT': 'POL/USDT',   # Binance migrated MATIC to POL Sept 2024
+        }
 
-        print("\n₿ Registering crypto assets...")
-        for config in crypto_symbols:
-            symbol, ticker, exchange = config
+        print(f"\n₿ Registering {len(crypto_assets)} crypto assets via Binance (paginated)...")
+        for asset in crypto_assets:
+            symbol = BINANCE_SYMBOL_MAP.get(asset.ticker, asset.ticker)
+            ticker = asset.ticker.replace('/', '_')
             self.dm.register_asset(ticker, 'crypto', 'daily')
 
             try:
-                # Use specified exchange for each crypto
-                # Fetch 3 years of daily data for ML training (matches stock data)
-                callback = create_ccxt_callback(
-                    symbol, exchange, '1d', limit=1095  # 3 years of daily data
-                )
+                # Paginated fetch — overcomes Binance/exchange per-request candle caps.
+                # Fetches all history from 2017-01-01 forward.
+                callback = create_paginated_ccxt_callback(symbol, 'binance', '1d')
                 self.scheduler.register_update_callback(
-                    ticker, callback, interval_minutes=60  # Update daily, not every 15min
+                    ticker, callback, interval_minutes=60
                 )
-                print(f"  ✓ {ticker} ({exchange}, 60min)")
+                print(f"  ✓ {ticker} (binance paginated, 60min)")
             except Exception as e:
                 print(f"  ⚠️  {ticker} - Using fallback: {e}")
                 callback = create_fallback_callback(ticker, base_price=50000)
