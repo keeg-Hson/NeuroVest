@@ -477,7 +477,7 @@ def run_comprehensive_validation(
     print("\n[2/4] Running Monte Carlo simulation...")
     try:
         if 'trades' in backtest_results and len(backtest_results['trades']) > 0:
-            trade_returns = backtest_results['trades']['pnl_pct'].values / 100
+            trade_returns = backtest_results['trades']['pnl_pct'].values
             mc_results = monte_carlo_simulation(trade_returns.tolist())
             validation_results['monte_carlo'] = mc_results
         else:
@@ -500,7 +500,7 @@ def run_comprehensive_validation(
     print("\n[4/4] Running statistical significance tests...")
     try:
         if 'trades' in backtest_results and len(backtest_results['trades']) > 0:
-            trade_returns = backtest_results['trades']['pnl_pct'].values / 100
+            trade_returns = backtest_results['trades']['pnl_pct'].values
             stat_results = calculate_statistical_significance(trade_returns.tolist())
             validation_results['statistical'] = stat_results
         else:

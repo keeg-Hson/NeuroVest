@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Download equity ETF data for multi-asset training
+Download equity ETF data for multi-asset training.
 
-This is BETTER than crypto for SPY training because:
-- Same market structure (trading hours, fundamentals)
-- Similar volatility profiles
-- Proven cross-asset learning without distribution shift
-- 7x more training data
+Uses Yahoo Finance v8 chart API (unauthenticated, full history from inception).
+Saves to data_cache/ as {TICKER}_1d.csv.
+
+Usage:
+    python download_equity_etfs.py
 """
 
 import pandas as pd
@@ -14,79 +14,115 @@ from pathlib import Path
 from datetime import datetime
 import time
 import requests
-from io import StringIO
 
 DATA_CACHE = Path('data_cache')
 DATA_CACHE.mkdir(exist_ok=True)
 
-# User agent to avoid rate limiting
 HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
 }
 
-# Equity ETFs with similar characteristics to SPY
+# All equity/ETF assets matching config/assets.yaml
 EQUITY_ETFS = {
-    # Major Indexes
-    'QQQ': 'Nasdaq 100 (Tech-heavy)',
-    'IWM': 'Russell 2000 (Small caps)',
-    'DIA': 'Dow Jones (Blue chips)',
-    'VTI': 'Total Stock Market (Broader)',
-    'EFA': 'Developed Markets EAFE',
-    'EEM': 'Emerging Markets (International)',
-    'VWO': 'Emerging Markets Vanguard',
+    # Major indexes
+    'SPY':  'S&P 500',
+    'QQQ':  'Nasdaq 100',
+    'IWM':  'Russell 2000',
+    'DIA':  'Dow Jones',
+    'VTI':  'Total Stock Market',
+    'EFA':  'Developed Markets EAFE',
+    'EEM':  'Emerging Markets',
+    'VEA':  'Vanguard Developed Markets',
+    'VWO':  'Vanguard Emerging Markets',
+    'IEFA': 'iShares MSCI EAFE',
 
     # Sector ETFs
-    'XLF': 'Financials Sector',
-    'XLK': 'Technology Sector',
-    'XLE': 'Energy Sector',
-    'XLV': 'Healthcare Sector',
-    'XLI': 'Industrials Sector',
-    'XLY': 'Consumer Discretionary',
-    'XLP': 'Consumer Staples',
-    'XLU': 'Utilities Sector',
-    'XLRE': 'Real Estate Sector',
+    'XLF':  'Financials',
+    'XLK':  'Technology',
+    'XLE':  'Energy',
+    'XLV':  'Healthcare',
+    'XLI':  'Industrials',
+    'XLY':  'Consumer Discretionary',
+    'XLP':  'Consumer Staples',
+    'XLU':  'Utilities',
+    'XLB':  'Materials',
+    'XLRE': 'Real Estate',
+    'XLC':  'Communications',
+
+    # Style/Size
+    'VUG':  'Vanguard Growth',
+    'VTV':  'Vanguard Value',
+    'VO':   'Vanguard Mid-Cap',
+    'VB':   'Vanguard Small-Cap',
+    'IJH':  'iShares Mid-Cap',
+    'IJR':  'iShares Small-Cap',
+
+    # Thematic
+    'ARKK': 'ARK Innovation',
+    'SOXX': 'Semiconductor',
+    'SMH':  'VanEck Semiconductor',
+    'XBI':  'Biotech',
+    'TAN':  'Solar Energy',
+    'ICLN': 'Clean Energy',
 
     # Bonds
-    'AGG': 'Total Bond Market',
-    'BND': 'Total Bond Market Vanguard',
-    'TLT': '20+ Year Treasuries',
-    'IEF': '7-10 Year Treasuries',
-    'SHY': '1-3 Year Treasuries',
-    'LQD': 'Investment Grade Bonds',
-    'HYG': 'High Yield Bonds',
+    'AGG':  'Total Bond Market',
+    'BND':  'Total Bond Market Vanguard',
+    'TLT':  '20+ Year Treasuries',
+    'IEF':  '7-10 Year Treasuries',
+    'SHY':  '1-3 Year Treasuries',
+    'LQD':  'Investment Grade Bonds',
+    'HYG':  'High Yield Bonds',
+    'JNK':  'SPDR High Yield Bonds',
+    'MUB':  'Municipal Bonds',
+    'EMB':  'Emerging Markets Bonds',
 
-    # Precious Metals
-    'GLD': 'Gold Trust',
-    'SLV': 'Silver Trust',
-    'GDX': 'Gold Miners',
+    # Precious metals
+    'GLD':  'Gold Trust',
+    'SLV':  'Silver Trust',
+    'GDX':  'Gold Miners',
     'GDXJ': 'Junior Gold Miners',
-    'IAU': 'iShares Gold',
+    'IAU':  'iShares Gold',
     'PPLT': 'Platinum',
     'PALL': 'Palladium',
 
-    # Commodities
-    'USO': 'US Oil Fund',
-    'UNG': 'Natural Gas Fund',
+    # Broad commodities / energy
+    'USO':  'US Oil Fund',
+    'UNG':  'Natural Gas Fund',
+    'DBC':  'Commodity Tracking',
 }
 
-# Match SPY date range
 START_DATE = '2000-01-01'
-END_DATE = datetime.now().strftime('%Y-%m-%d')
-
-# Convert to Unix timestamps for Yahoo Finance API
 start_ts = int(datetime.strptime(START_DATE, '%Y-%m-%d').timestamp())
 end_ts = int(datetime.now().timestamp())
 
 print("=" * 80)
-print("MULTI-ASSET DATA DOWNLOAD (ETFs, Bonds, Precious Metals, Commodities)")
+print("MULTI-ASSET DATA DOWNLOAD")
+print(f"Assets: {len(EQUITY_ETFS)} | Source: Yahoo Finance v8 Chart API")
 print("=" * 80)
-print(f"\n✅ Downloading {len(EQUITY_ETFS)} assets:")
-print(f"   - Major indexes (QQQ, IWM, DIA, etc.)")
-print(f"   - Sector ETFs (XLF, XLK, XLE, etc.)")
-print(f"   - Bonds (TLT, HYG, LQD, etc.)")
-print(f"   - Precious metals (GLD, SLV, etc.)")
-print(f"   - Commodities (USO, UNG)")
-print("\n" + "=" * 80)
+
+
+def _parse_yf_v8(data: dict) -> pd.DataFrame:
+    """Parse Yahoo Finance v8 chart JSON into a standard OHLCV DataFrame."""
+    result = data['chart']['result'][0]
+    timestamps = result['timestamp']
+    quotes = result['indicators']['quote'][0]
+    adjclose_list = result['indicators'].get('adjclose', [{}])
+    adjclose = adjclose_list[0].get('adjclose', [None] * len(timestamps)) if adjclose_list else [None] * len(timestamps)
+
+    df = pd.DataFrame({
+        'Date':      pd.to_datetime(timestamps, unit='s').normalize(),
+        'Open':      quotes.get('open'),
+        'High':      quotes.get('high'),
+        'Low':       quotes.get('low'),
+        'Close':     quotes.get('close'),
+        'Adj Close': adjclose,
+        'Volume':    quotes.get('volume'),
+    })
+    df = df.dropna(subset=['Close'])
+    df = df.sort_values('Date').reset_index(drop=True)
+    return df
+
 
 successful = []
 failed = []
@@ -97,95 +133,76 @@ for ticker, name in EQUITY_ETFS.items():
     filepath = DATA_CACHE / filename
 
     try:
-        print(f"\n⬇ {ticker:6s} ({name:30s}) - Downloading...")
+        print(f"\n⬇ {ticker:6s} ({name:35s})", end='', flush=True)
 
-        # Try multiple Yahoo Finance endpoints with retry logic
-        endpoints = [
-            f"https://query1.finance.yahoo.com/v7/finance/download/{ticker}",
-            f"https://query2.finance.yahoo.com/v7/finance/download/{ticker}"
-        ]
+        url = (
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}"
+            f"?interval=1d&period1={start_ts}&period2={end_ts}"
+        )
 
         df = None
         last_error = None
 
-        for endpoint_idx, base_url in enumerate(endpoints):
-            url = f"{base_url}?period1={start_ts}&period2={end_ts}&interval=1d&events=history"
+        for attempt in range(3):
+            try:
+                resp = requests.get(url, headers=HEADERS, timeout=30)
+                resp.raise_for_status()
+                raw = resp.json()
 
-            # Try up to 3 times per endpoint
-            for attempt in range(3):
-                try:
-                    if attempt > 0:
-                        print(f"   Retry {attempt}/2...")
+                if raw.get('chart', {}).get('error'):
+                    raise ValueError(raw['chart']['error'])
 
-                    response = requests.get(url, headers=HEADERS, timeout=30)
-                    response.raise_for_status()
+                if not raw.get('chart', {}).get('result'):
+                    raise ValueError("Empty result")
 
-                    df = pd.read_csv(StringIO(response.text))
-
-                    if len(df) == 0:
-                        raise ValueError("No data returned")
-
-                    # Success!
-                    break
-
-                except requests.exceptions.HTTPError as e:
-                    if e.response.status_code == 401:
-                        last_error = f"401 Unauthorized (endpoint {endpoint_idx + 1})"
-                        # Don't retry 401 errors on same endpoint
-                        break
-                    last_error = str(e)
-                    if attempt < 2:
-                        time.sleep(2 ** attempt)  # Exponential backoff
-                except Exception as e:
-                    last_error = str(e)
-                    if attempt < 2:
-                        time.sleep(2 ** attempt)
-
-            if df is not None:
+                df = _parse_yf_v8(raw)
+                if len(df) == 0:
+                    raise ValueError("No rows after parsing")
                 break
 
+            except Exception as e:
+                last_error = str(e)
+                if attempt < 2:
+                    time.sleep(2 ** attempt)
+
+        # Fallback: try query2 subdomain
         if df is None:
-            raise ValueError(f"Failed all endpoints: {last_error}")
+            url2 = url.replace('query1', 'query2')
+            for attempt in range(2):
+                try:
+                    resp = requests.get(url2, headers=HEADERS, timeout=30)
+                    resp.raise_for_status()
+                    raw = resp.json()
+                    if raw.get('chart', {}).get('result'):
+                        df = _parse_yf_v8(raw)
+                        if len(df) > 0:
+                            break
+                except Exception as e:
+                    last_error = str(e)
+                    if attempt < 1:
+                        time.sleep(2)
 
-        # Date column is already present from Yahoo CSV
-        # Ensure consistent capitalization
-        if 'date' in df.columns:
-            df.rename(columns={'date': 'Date'}, inplace=True)
+        if df is None or len(df) == 0:
+            raise ValueError(f"All attempts failed: {last_error}")
 
-        # Save
         df.to_csv(filepath, index=False)
-
-        print(f"   ✓ {len(df):,} rows saved")
-        print(f"   Date range: {df['Date'].min()} to {df['Date'].max()}")
+        print(f" ✓  {len(df):,} rows  ({df['Date'].min().date()} → {df['Date'].max().date()})")
 
         successful.append(ticker)
         total_samples += len(df)
-
-        # Longer delay to avoid rate limiting
-        time.sleep(2)
+        time.sleep(0.5)
 
     except Exception as e:
-        print(f"   ✗ Error: {e}")
+        print(f" ✗  {e}")
         failed.append(ticker)
-        # Even longer delay after failure
-        time.sleep(3)
+        time.sleep(1)
 
 print("\n" + "=" * 80)
 print("DOWNLOAD SUMMARY")
 print("=" * 80)
 print(f"✓ Successful: {len(successful)}/{len(EQUITY_ETFS)}")
-print(f"✗ Failed: {len(failed)}/{len(EQUITY_ETFS)}")
-
-if successful:
-    print(f"\n📊 Total training samples available:")
-    print(f"   SPY only:           6,501 samples")
-    print(f"   New ETF data:     {total_samples:,} samples")
-    print(f"   Combined total:   {6501 + total_samples:,} samples")
-    print(f"   Increase:         {((6501 + total_samples) / 6501 - 1) * 100:.1f}%")
-
-    print(f"\n📁 Data saved to: {DATA_CACHE}/")
-    print(f"\nNext steps:")
-    print(f"  1. Update train_multi_asset.py to load equity ETFs")
-    print(f"  2. Train: python train_multi_asset.py")
-    print(f"  3. Compare to SPY-only baseline (71.0% accuracy)")
-    print(f"\n✅ Expected result: Better generalization without distribution shift")
+print(f"✗ Failed:     {len(failed)}/{len(EQUITY_ETFS)}")
+if failed:
+    print(f"  Failed tickers: {', '.join(failed)}")
+print(f"\nTotal rows downloaded: {total_samples:,}")
+print(f"Data saved to: {DATA_CACHE}/")
